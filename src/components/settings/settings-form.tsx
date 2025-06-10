@@ -4,7 +4,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react'; // Added useEffect
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -19,15 +19,16 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { AlertCircle, KeyRound, Bot, SlidersHorizontal, Zap, CheckCircle, AlertTriangle, Loader2 } from "lucide-react";
+import { AlertCircle, KeyRound, Bot, SlidersHorizontal, Zap, CheckCircle, AlertTriangle, Loader2, Save } from "lucide-react"; // Added Save
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { getAccountInformation } from "@/services/binance";
 import type { AccountInformation } from "@/types/binance";
+import { getSettings, saveSettings } from "@/services/settingsService"; // Added
 
 const settingsFormSchema = z.object({
-  binanceApiKey: z.string().optional(), // Made optional as .env can be a source
-  binanceSecretKey: z.string().optional(), // Made optional
+  binanceApiKey: z.string().optional(),
+  binanceSecretKey: z.string().optional(),
   buyAmountUsd: z.coerce.number().positive("Buy amount must be positive."),
   dipPercentage: z.coerce.number().min(-100, "Dip % too low").max(0, "Dip % must be negative or zero."),
   trailActivationProfit: z.coerce.number().positive("Trail activation profit must be positive."),
@@ -35,10 +36,9 @@ const settingsFormSchema = z.object({
   isBotActive: z.boolean().default(false),
 });
 
-type SettingsFormValues = z.infer<typeof settingsFormSchema>;
+export type SettingsFormValues = z.infer<typeof settingsFormSchema>;
 
-// Export defaultValues so it can be imported by other components (e.g., DashboardPage)
-export const defaultValues: Partial<SettingsFormValues> = {
+export const defaultValues: SettingsFormValues = {
   binanceApiKey: "",
   binanceSecretKey: "",
   buyAmountUsd: 100,
@@ -57,14 +57,37 @@ export function SettingsForm() {
 
   const { toast } = useToast();
   const [isTestingConnection, setIsTestingConnection] = useState(false);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    async function loadSettings() {
+      setIsLoadingSettings(true);
+      try {
+        console.log(`[${new Date().toISOString()}] SettingsForm: Attempting to load settings...`);
+        const savedSettings = await getSettings();
+        form.reset(savedSettings); // Populate form with loaded settings
+        console.log(`[${new Date().toISOString()}] SettingsForm: Settings loaded and form reset.`, savedSettings);
+      } catch (error) {
+        console.error(`[${new Date().toISOString()}] SettingsForm: Failed to load settings:`, error);
+        toast({
+          title: "Error Loading Settings",
+          description: "Could not load saved settings. Using defaults.",
+          variant: "destructive",
+        });
+        form.reset(defaultValues); // Reset to defaults on error
+      } finally {
+        setIsLoadingSettings(false);
+      }
+    }
+    loadSettings();
+  }, [form, toast]);
+
 
   async function handleTestConnection() {
     const { binanceApiKey, binanceSecretKey } = form.getValues();
     setIsTestingConnection(true);
     try {
-      // Call getAccountInformation. It will use form values if provided,
-      // otherwise it will attempt to use environment variables.
-      // If both are missing, it will throw an error.
       const accountInfo = await getAccountInformation(binanceApiKey, binanceSecretKey);
       toast({
         title: "Connection Successful!",
@@ -84,13 +107,38 @@ export function SettingsForm() {
     }
   }
 
-  function onSubmit(data: SettingsFormValues) {
-    console.log("Saving settings:", data);
-    // Here you would typically save data.binanceApiKey and data.binanceSecretKey
-    // to a secure backend if the user intends to persist them via the form,
-    // separate from .env configurations.
-    // For now, we just log and toast.
-    toast({ title: "Settings Action", description: "Settings form submitted. API keys from form (if any) are logged. Settings are not yet persisted." });
+  async function onSubmit(data: SettingsFormValues) {
+    setIsSaving(true);
+    console.log(`[${new Date().toISOString()}] SettingsForm: Attempting to save settings:`, data);
+    try {
+      await saveSettings(data);
+      toast({
+        title: "Settings Saved!",
+        description: "Your bot configurations have been successfully saved.",
+        variant: "default",
+        className: "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700 text-green-800 dark:text-green-300",
+      });
+      console.log(`[${new Date().toISOString()}] SettingsForm: Settings saved successfully.`);
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] SettingsForm: Error saving settings:`, error);
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred while saving.";
+      toast({
+        title: "Save Failed",
+        description: `Could not save settings: ${errorMessage}`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+  
+  if (isLoadingSettings) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground">Loading settings...</p>
+      </div>
+    );
   }
 
   return (
@@ -103,7 +151,7 @@ export function SettingsForm() {
               Binance API Connection
             </CardTitle>
             <CardDescription>
-              Connect your Binance account. Keys can be set in your <code>.env.local</code> file (recommended) or entered below.
+              Connect your Binance account. Keys can be set in your <code>.env.local</code> file (recommended for API keys) or entered below.
               Ensure API keys have trading permissions but NOT withdrawal permissions.
             </CardDescription>
           </CardHeader>
@@ -113,6 +161,7 @@ export function SettingsForm() {
               <AlertTitle className="text-primary font-semibold">Important Security Notice</AlertTitle>
               <AlertDescription>
                 For production, store API keys securely (e.g., <code>.env.local</code> or secret manager) and grant minimal permissions: Enable Spot & Margin Trading only. DO NOT enable withdrawals.
+                API keys entered here are saved to your database if you click "Save All Settings".
               </AlertDescription>
             </Alert>
             <FormField
@@ -120,7 +169,7 @@ export function SettingsForm() {
               name="binanceApiKey"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Binance API Key (Optional if in .env.local)</FormLabel>
+                  <FormLabel>Binance API Key (Optional if in .env.local and not saving here)</FormLabel>
                   <FormControl>
                     <Input placeholder="Enter your Binance API Key" {...field} />
                   </FormControl>
@@ -133,7 +182,7 @@ export function SettingsForm() {
               name="binanceSecretKey"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Binance Secret Key (Optional if in .env.local)</FormLabel>
+                  <FormLabel>Binance Secret Key (Optional if in .env.local and not saving here)</FormLabel>
                   <FormControl>
                     <Input type="password" placeholder="Enter your Binance Secret Key" {...field} />
                   </FormControl>
@@ -144,7 +193,7 @@ export function SettingsForm() {
             <Button
               type="button"
               onClick={handleTestConnection}
-              disabled={isTestingConnection}
+              disabled={isTestingConnection || isSaving}
               variant="outline"
               className="w-full md:w-auto"
             >
@@ -167,7 +216,7 @@ export function SettingsForm() {
               Bot Configuration
             </CardTitle>
             <CardDescription>
-              Define the parameters for your "Dip & Trail" trading strategy. These are currently default values.
+              Define the parameters for your "Dip & Trail" trading strategy.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -241,7 +290,7 @@ export function SettingsForm() {
               Bot Status
             </CardTitle>
             <CardDescription>
-              Enable or disable the trading bot. This setting is not yet connected to live bot actions.
+              Enable or disable the trading bot. This directly controls the bot's activity.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -253,13 +302,14 @@ export function SettingsForm() {
                   <div className="space-y-0.5">
                     <FormLabel className="text-base">Activate Bot</FormLabel>
                     <FormDescription>
-                      Turn the trading bot on or off. Changes will apply on the next cycle.
+                      Turn the trading bot on or off. Changes apply immediately to the next cycle.
                     </FormDescription>
                   </div>
                   <FormControl>
                     <Switch
                       checked={field.value}
                       onCheckedChange={field.onChange}
+                      disabled={isSaving}
                     />
                   </FormControl>
                 </FormItem>
@@ -268,8 +318,13 @@ export function SettingsForm() {
           </CardContent>
         </Card>
 
-        <Button type="submit" size="lg" className="w-full md:w-auto">
-          <Zap className="mr-2 h-5 w-5" /> Save All Settings (Currently Logs to Console)
+        <Button type="submit" size="lg" className="w-full md:w-auto" disabled={isSaving || isTestingConnection}>
+          {isSaving ? (
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+          ) : (
+            <Save className="mr-2 h-5 w-5" /> 
+          )}
+          Save All Settings
         </Button>
       </form>
     </Form>

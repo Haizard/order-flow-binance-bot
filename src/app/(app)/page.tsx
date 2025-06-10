@@ -7,8 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import Image from 'next/image';
 import { get24hrTicker } from '@/services/binance';
 import type { Ticker24hr } from '@/types/binance';
-import { defaultValues as defaultSettingsConfig } from '@/components/settings/settings-form';
 import type { SettingsFormValues } from '@/components/settings/settings-form';
+import { getSettings } from '@/services/settingsService'; // Import getSettings
 import { runBotCycle } from '@/core/bot';
 import * as tradeService from '@/services/tradeService';
 import type { Trade } from '@/types/trade';
@@ -63,24 +63,30 @@ async function calculateTotalPnlFromBotTrades(): Promise<number> {
 export default async function DashboardPage() {
   console.log(`[${new Date().toISOString()}] DashboardPage: Component rendering started.`);
 
-  const marketSymbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "SOLUSDT"]; // Added SOLUSDT for more variety
+  const marketSymbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "SOLUSDT"];
   const marketData = await getMarketData(marketSymbols);
 
-  // Use default settings and ensure bot is active for this cycle run
-  const botSettingsForCycle: SettingsFormValues = {
-    ...defaultSettingsConfig,
-    buyAmountUsd: defaultSettingsConfig.buyAmountUsd || 100,
-    dipPercentage: defaultSettingsConfig.dipPercentage || -4,
-    trailActivationProfit: defaultSettingsConfig.trailActivationProfit || 3,
-    trailDelta: defaultSettingsConfig.trailDelta || 1,
-    isBotActive: true, // Force bot to be active for demonstration of runBotCycle
-    binanceApiKey: defaultSettingsConfig.binanceApiKey || "",
-    binanceSecretKey: defaultSettingsConfig.binanceSecretKey || "",
-  };
-
-  // Run the bot cycle - this will potentially create/update trades in the DB
+  // Fetch current bot settings from the database
+  let botSettings: SettingsFormValues;
   try {
-    await runBotCycle(botSettingsForCycle, marketData);
+    botSettings = await getSettings();
+    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded bot settings.`);
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] DashboardPage: Failed to load bot settings, using emergency fallback:`, error);
+    // Emergency fallback if getSettings fails catastrophically, to prevent app crash.
+    // This should be a very rare case if getSettings itself has defaults.
+    botSettings = {
+        binanceApiKey: "", binanceSecretKey: "",
+        buyAmountUsd: 10, dipPercentage: -5,
+        trailActivationProfit: 2, trailDelta: 1, isBotActive: false
+    };
+  }
+
+
+  // Run the bot cycle with the loaded settings and market data
+  try {
+    // Pass both fetched settings and market data to runBotCycle
+    await runBotCycle(botSettings, marketData);
   } catch (botError) {
     console.error(`[${new Date().toISOString()}] DashboardPage: Error running bot cycle:`, botError);
   }
@@ -89,19 +95,18 @@ export default async function DashboardPage() {
   const activeTrades = await tradeService.getActiveTrades();
   const activeTradesCount = activeTrades.length;
   
-  // Bot status from settings (the actual setting, not forced one)
-  const botStatus = defaultSettingsConfig.isBotActive ? "Active" : "Inactive";
+  // Bot status from loaded settings
+  const botStatus = botSettings.isBotActive ? "Active" : "Inactive";
 
-
-  // Use dipPercentage from bot settings for display
-  const dipPercentageToUse = botSettingsForCycle.dipPercentage;
+  // Use dipPercentage from loaded bot settings for display
+  const dipPercentageToUse = botSettings.dipPercentage ?? -4; // Fallback if undefined
   
   const potentialDipBuys = marketData.filter(
     (ticker) => parseFloat(ticker.priceChangePercent) <= dipPercentageToUse &&
-                 !activeTrades.some(at => at.symbol === ticker.symbol) // Only show if not already an active trade
+                 !activeTrades.some(at => at.symbol === ticker.symbol)
   );
 
-  console.log(`[${new Date().toISOString()}] DashboardPage: Data fetching and bot cycle complete. Rendering UI. Dip threshold: ${dipPercentageToUse}%`);
+  console.log(`[${new Date().toISOString()}] DashboardPage: Data fetching and bot cycle complete. Dip threshold: ${dipPercentageToUse}%`);
 
   return (
     <div className="flex flex-col gap-8">
@@ -123,10 +128,10 @@ export default async function DashboardPage() {
             className="shadow-md"
           />
           <MetricCard
-            title="Bot Status (Setting)"
+            title="Bot Status"
             value={botStatus}
             icon={Bot}
-            description="Bot's configured status from settings (not necessarily current cycle)."
+            description="Bot's current operational status from saved settings."
             className={`shadow-md ${botStatus === "Active" ? "text-accent-foreground" : "text-destructive"}`}
           />
         </div>
