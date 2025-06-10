@@ -10,26 +10,27 @@ import { MongoClient, type Db, type Collection, type WithId } from 'mongodb';
 
 console.log(`[${new Date().toISOString()}] [tradeService] Module loading. Attempting to read MONGODB_URI from process.env...`);
 
-const MONGODB_URI = process.env.MONGODB_URI;
-const DB_NAME = process.env.MONGODB_DB_NAME || 'binanceTrailblazerDb'; // Updated default database name
+let MONGODB_URI = process.env.MONGODB_URI;
+// THIS IS A TEMPORARY FALLBACK FOR DEVELOPMENT ONLY.
+// DO NOT USE IN PRODUCTION. CONFIGURE .env.local PROPERLY.
+const MONGODB_URI_FALLBACK = "mongodb+srv://haithammisape:hrz123@cluster0.quboghr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 
-// Enhanced check with logging
 if (!MONGODB_URI) {
   const timestamp = new Date().toISOString();
-  console.error(`[${timestamp}] [tradeService] MONGODB_URI is NOT DEFINED or EMPTY.`);
-  console.error(`[${timestamp}] [tradeService] Value read from process.env.MONGODB_URI: "${MONGODB_URI}"`);
-  console.error(`[${timestamp}] [tradeService] PLEASE CHECK THE FOLLOWING:`);
-  console.error(`[${timestamp}] [tradeService] 1. Ensure a file named '.env.local' exists in the ROOT of your project (same level as package.json).`);
-  console.error(`[${timestamp}] [tradeService] 2. Ensure '.env.local' contains a line like: MONGODB_URI=your_actual_mongodb_connection_string_here`);
-  console.error(`[${timestamp}] [tradeService] 3. Ensure you have RESTARTED your Next.js development server (e.g., 'npm run dev') after creating or modifying '.env.local'.`);
-  console.error(`[${timestamp}] [tradeService] Listing all available environment variables for diagnostics:`);
-  console.error(JSON.stringify(process.env, null, 2));
-  throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
+  console.warn(`[${timestamp}] [tradeService] **************************************************************************************`);
+  console.warn(`[${timestamp}] [tradeService] WARNING: MONGODB_URI environment variable was not found.`);
+  console.warn(`[${timestamp}] [tradeService] Attempting to use a hardcoded fallback URI. `);
+  console.warn(`[${timestamp}] [tradeService] THIS IS A TEMPORARY MEASURE FOR DEVELOPMENT AND IS NOT SAFE FOR PRODUCTION.`);
+  console.warn(`[${timestamp}] [tradeService] PLEASE ENSURE YOUR .env.local FILE IS CORRECTLY CONFIGURED AND YOUR SERVER RESTARTED.`);
+  console.warn(`[${timestamp}] [tradeService] Using hardcoded URI (credentials hidden in this log for safety): ${MONGODB_URI_FALLBACK.substring(0, MONGODB_URI_FALLBACK.indexOf('@') + 1)}...`);
+  console.warn(`[${timestamp}] [tradeService] **************************************************************************************`);
+  MONGODB_URI = MONGODB_URI_FALLBACK;
 } else {
   const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] [tradeService] MONGODB_URI successfully loaded.`);
+  console.log(`[${timestamp}] [tradeService] MONGODB_URI successfully loaded from environment variables.`);
 }
 
+const DB_NAME = process.env.MONGODB_DB_NAME || 'binanceTrailblazerDb'; // Updated default database name
 
 // Cached connection promise
 // For Next.js, it's recommended to cache the client and the connection promise,
@@ -52,6 +53,9 @@ if (process.env.NODE_ENV === 'development') {
   // In development mode, use a global variable so that the value
   // is preserved across module reloads caused by HMR (Hot Module Replacement).
   if (!global._mongoClientPromise) {
+    if (!MONGODB_URI) { // Final check before creating client
+        throw new Error("CRITICAL: MONGODB_URI is still undefined even after fallback. Cannot initialize MongoDB client.");
+    }
     client = new MongoClient(MONGODB_URI);
     global._mongoClientPromise = client.connect();
     console.log(`[${new Date().toISOString()}] [MongoDB] New connection promise created (development).`);
@@ -59,6 +63,9 @@ if (process.env.NODE_ENV === 'development') {
   clientPromise = global._mongoClientPromise;
 } else {
   // In production mode, it's best to not use a global variable.
+   if (!MONGODB_URI) { // Final check before creating client
+        throw new Error("CRITICAL: MONGODB_URI is undefined. Cannot initialize MongoDB client in production.");
+    }
   client = new MongoClient(MONGODB_URI);
   clientPromise = client.connect();
   console.log(`[${new Date().toISOString()}] [MongoDB] New connection promise created (production).`);
@@ -68,6 +75,8 @@ async function getDb(): Promise<Db> {
   const connectedClient = await clientPromise;
   return connectedClient.db(DB_NAME);
 }
+
+const COLLECTION_NAME = 'trades'; // Define collection name
 
 async function getTradesCollection(): Promise<Collection<Trade>> {
   const db = await getDb();
@@ -98,10 +107,6 @@ export async function createTrade(tradeInput: NewTradeInput): Promise<Trade> {
   }
   
   console.log(`[${logTimestamp}] tradeService (MongoDB): Trade created with ID ${newTrade.id} and MongoDB _id ${result.insertedId}`);
-  // Convert the MongoDB document to a plain Trade object before returning
-  // This involves handling the _id field if you don't want it in your Trade type.
-  // However, our current Trade type doesn't include _id, and we map it out in retrieval functions.
-  // For create, newTrade already matches the Trade type.
   return newTrade; 
 }
 
@@ -118,9 +123,7 @@ export async function getActiveTrades(): Promise<Trade[]> {
     status: { $in: ['ACTIVE_BOUGHT', 'ACTIVE_TRAILING'] }
   }).toArray();
 
-  // Map MongoDB documents to Trade objects, excluding the _id field
   return activeTrades.map(tradeDoc => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { _id, ...tradeWithoutMongoId } = tradeDoc as WithId<Trade>;
     return tradeWithoutMongoId as Trade;
   });
@@ -139,9 +142,7 @@ export async function getClosedTrades(): Promise<Trade[]> {
     status: { $in: ['CLOSED_SOLD', 'CLOSED_ERROR'] }
   }).toArray();
   
-  // Map MongoDB documents to Trade objects, excluding the _id field
   return closedTrades.map(tradeDoc => {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { _id, ...tradeWithoutMongoId } = tradeDoc as WithId<Trade>;
     return tradeWithoutMongoId as Trade;
   });
@@ -167,17 +168,16 @@ export async function updateTrade(tradeId: string, updates: Partial<Omit<Trade, 
   }
 
   const result = await tradesCollection.findOneAndUpdate(
-    { id: tradeId }, // Filter by our application-specific 'id'
+    { id: tradeId }, 
     { $set: finalUpdates },
-    { returnDocument: 'after' } // Ensures the updated document is returned
+    { returnDocument: 'after' } 
   );
 
   if (!result) {
     console.error(`[${logTimestamp}] tradeService (MongoDB): Trade not found for update or update failed: ${tradeId}`);
     throw new Error(`Trade with ID ${tradeId} not found or update failed.`);
   }
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { _id, ...updatedTrade } = result as WithId<Trade>; // Cast and exclude _id
+  const { _id, ...updatedTrade } = result as WithId<Trade>; 
   return updatedTrade as Trade;
 }
 
@@ -191,12 +191,11 @@ export async function getTradeById(tradeId: string): Promise<Trade | null> {
   console.log(`[${logTimestamp}] tradeService.getTradeById (MongoDB) called for ID: ${tradeId}`);
   const tradesCollection = await getTradesCollection();
   
-  const tradeDoc = await tradesCollection.findOne({ id: tradeId }); // Filter by our application-specific 'id'
+  const tradeDoc = await tradesCollection.findOne({ id: tradeId }); 
   if (!tradeDoc) {
     return null;
   }
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { _id, ...tradeWithoutMongoId } = tradeDoc as WithId<Trade>; // Cast and exclude _id
+  const { _id, ...tradeWithoutMongoId } = tradeDoc as WithId<Trade>; 
   return tradeWithoutMongoId as Trade;
 }
 
