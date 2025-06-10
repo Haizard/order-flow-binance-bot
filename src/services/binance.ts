@@ -1,8 +1,8 @@
+
 'use server';
 import crypto from 'crypto'; // For HMAC SHA256 signature
 import type { Ticker24hr, AccountInformation } from '@/types/binance';
 
-// Updated to use Binance Spot Testnet API
 const BINANCE_API_BASE_URL = 'https://testnet.binance.vision/api/v3';
 
 /**
@@ -38,12 +38,22 @@ export async function get24hrTicker(symbol?: string): Promise<Ticker24hr | Ticke
 
 /**
  * Fetches account information using API key and secret.
+ * Prioritizes provided keys, then falls back to environment variables BINANCE_API_KEY and BINANCE_SECRET_KEY.
  * Requires API key with "Enable Reading" permission on Testnet.
- * @param apiKey Your Binance Testnet API key.
- * @param secretKey Your Binance Testnet API secret key.
+ * @param apiKeyInput Your Binance Testnet API key (optional).
+ * @param secretKeyInput Your Binance Testnet API secret key (optional).
  * @returns AccountInformation object.
  */
-export async function getAccountInformation(apiKey: string, secretKey: string): Promise<AccountInformation> {
+export async function getAccountInformation(apiKeyInput?: string, secretKeyInput?: string): Promise<AccountInformation> {
+  const apiKey = apiKeyInput || process.env.BINANCE_API_KEY;
+  const secretKey = secretKeyInput || process.env.BINANCE_SECRET_KEY;
+
+  if (!apiKey || !secretKey) {
+    throw new Error(
+      'API Key or Secret Key is missing. Ensure BINANCE_API_KEY and BINANCE_SECRET_KEY are set in your .env.local file, or provide them in the form.'
+    );
+  }
+
   const timestamp = Date.now();
   const queryString = `timestamp=${timestamp}`;
   
@@ -66,7 +76,6 @@ export async function getAccountInformation(apiKey: string, secretKey: string): 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ message: 'Failed to parse error response from Binance API' }));
       console.error('Binance API Error (getAccountInformation):', errorData);
-      // Try to provide a more specific error message from Binance if available
       const binanceErrorMessage = errorData.msg || errorData.message || `HTTP error ${response.status}`;
       throw new Error(`Failed to fetch account information: ${binanceErrorMessage}`);
     }
@@ -76,8 +85,7 @@ export async function getAccountInformation(apiKey: string, secretKey: string): 
   } catch (error) {
     console.error('Error fetching account information:', error);
     if (error instanceof Error) {
-      // If the error message already indicates it's a specific account fetch error, don't re-wrap it.
-      if(error.message.startsWith("Failed to fetch account information:")) {
+      if(error.message.startsWith("Failed to fetch account information:") || error.message.startsWith("API Key or Secret Key is missing")) {
         throw error;
       }
       throw new Error(`Network error or issue fetching account data: ${error.message}`);

@@ -1,3 +1,4 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -22,10 +23,11 @@ import { AlertCircle, KeyRound, Bot, SlidersHorizontal, Zap, CheckCircle, AlertT
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { getAccountInformation } from "@/services/binance";
+import type { AccountInformation } from "@/types/binance";
 
 const settingsFormSchema = z.object({
-  binanceApiKey: z.string().min(1, "API Key is required."),
-  binanceSecretKey: z.string().min(1, "Secret Key is required."),
+  binanceApiKey: z.string().optional(), // Made optional as .env can be a source
+  binanceSecretKey: z.string().optional(), // Made optional
   buyAmountUsd: z.coerce.number().positive("Buy amount must be positive."),
   dipPercentage: z.coerce.number().min(-100, "Dip % too low").max(0, "Dip % must be negative or zero."),
   trailActivationProfit: z.coerce.number().positive("Trail activation profit must be positive."),
@@ -57,18 +59,11 @@ export function SettingsForm() {
 
   async function handleTestConnection() {
     const { binanceApiKey, binanceSecretKey } = form.getValues();
-
-    if (!binanceApiKey || !binanceSecretKey) {
-      toast({
-        title: "API Keys Missing",
-        description: "Please enter both API Key and Secret Key to test the connection.",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setIsTestingConnection(true);
     try {
+      // Call getAccountInformation. It will use form values if provided,
+      // otherwise it will attempt to use environment variables.
+      // If both are missing, it will throw an error.
       const accountInfo = await getAccountInformation(binanceApiKey, binanceSecretKey);
       toast({
         title: "Connection Successful!",
@@ -89,8 +84,12 @@ export function SettingsForm() {
   }
 
   function onSubmit(data: SettingsFormValues) {
-    console.log(data);
-    toast({ title: "Settings Saved", description: "Your bot settings have been updated." });
+    console.log("Saving settings:", data);
+    // Here you would typically save data.binanceApiKey and data.binanceSecretKey 
+    // to a secure backend if the user intends to persist them via the form,
+    // separate from .env configurations.
+    // For now, we just log and toast.
+    toast({ title: "Settings Action", description: "Settings form submitted. API keys from form (if any) are logged." });
   }
 
   return (
@@ -103,7 +102,8 @@ export function SettingsForm() {
               Binance API Connection
             </CardTitle>
             <CardDescription>
-              Securely connect your Binance account. Ensure API keys have trading permissions but NOT withdrawal permissions.
+              Connect your Binance account. Keys can be set in your <code>.env.local</code> file (recommended) or entered below.
+              Ensure API keys have trading permissions but NOT withdrawal permissions.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -111,7 +111,7 @@ export function SettingsForm() {
               <AlertCircle className="h-5 w-5 text-primary" />
               <AlertTitle className="text-primary font-semibold">Important Security Notice</AlertTitle>
               <AlertDescription>
-                Never share your API Secret Key. For maximum security, create API keys with restricted access: enable Spot & Margin Trading only. DO NOT enable withdrawals.
+                For production, store API keys securely (e.g., <code>.env.local</code> or secret manager) and grant minimal permissions: Enable Spot & Margin Trading only. DO NOT enable withdrawals.
               </AlertDescription>
             </Alert>
             <FormField
@@ -119,7 +119,7 @@ export function SettingsForm() {
               name="binanceApiKey"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Binance API Key</FormLabel>
+                  <FormLabel>Binance API Key (Optional if in .env.local)</FormLabel>
                   <FormControl>
                     <Input placeholder="Enter your Binance API Key" {...field} />
                   </FormControl>
@@ -132,7 +132,7 @@ export function SettingsForm() {
               name="binanceSecretKey"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Binance Secret Key</FormLabel>
+                  <FormLabel>Binance Secret Key (Optional if in .env.local)</FormLabel>
                   <FormControl>
                     <Input type="password" placeholder="Enter your Binance Secret Key" {...field} />
                   </FormControl>
@@ -268,7 +268,7 @@ export function SettingsForm() {
         </Card>
 
         <Button type="submit" size="lg" className="w-full md:w-auto">
-          <Zap className="mr-2 h-5 w-5" /> Save Settings
+          <Zap className="mr-2 h-5 w-5" /> Save All Settings
         </Button>
       </form>
     </Form>
