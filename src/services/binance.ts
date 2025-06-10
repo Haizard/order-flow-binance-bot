@@ -17,7 +17,8 @@ export async function get24hrTicker(symbol?: string): Promise<Ticker24hr | Ticke
   }
 
   try {
-    const response = await fetch(url, { next: { revalidate: 10 } }); // Revalidate every 10 seconds
+    // console.log(`Fetching 24hr ticker for ${symbol || 'all'} at ${new Date().toISOString()}`);
+    const response = await fetch(url, { next: { revalidate: 5 } }); // Revalidate every 5 seconds
 
     if (!response.ok) {
       let parsedErrorData: any = {};
@@ -26,7 +27,7 @@ export async function get24hrTicker(symbol?: string): Promise<Ticker24hr | Ticke
         rawErrorBody = await response.text();
         parsedErrorData = JSON.parse(rawErrorBody);
       } catch (e) {
-        // JSON parsing failed, parsedErrorData remains empty or we can store raw body
+        // JSON parsing failed
       }
       
       const logDetails = (parsedErrorData && Object.keys(parsedErrorData).length > 0 && parsedErrorData.constructor === Object && parsedErrorData.msg) 
@@ -36,7 +37,8 @@ export async function get24hrTicker(symbol?: string): Promise<Ticker24hr | Ticke
       console.error('Binance API Error (get24hrTicker):', { 
         status: response.status, 
         statusText: response.statusText, 
-        details: logDetails
+        details: logDetails,
+        symbol: symbol || 'all'
       });
 
       const binanceSpecificMessage = parsedErrorData.msg || '';
@@ -46,14 +48,14 @@ export async function get24hrTicker(symbol?: string): Promise<Ticker24hr | Ticke
     }
 
     const data: Ticker24hr | Ticker24hr[] = await response.json();
+    // console.log(`Successfully fetched 24hr ticker data for ${symbol || 'all'} at ${new Date().toISOString()}`);
     return data;
   } catch (error) {
-    console.error(`Error in get24hrTicker (symbol: ${symbol || 'all'}):`, error instanceof Error ? error.message : error);
+    // Log the error but allow specific errors to be handled by the caller (e.g. getMarketData)
+    // console.error(`Error in get24hrTicker (symbol: ${symbol || 'all'}):`, error instanceof Error ? error.message : error);
     if (error instanceof Error) {
-      // If the error is already a specific Binance API error we constructed,
-      // or an API key configuration error, re-throw it as is.
-      if (error.message.startsWith('Failed to fetch ticker data from Binance API:') || 
-          error.message.startsWith('API Key or Secret Key is missing')) {
+      // If the error is already a specific Binance API error we constructed, re-throw it as is.
+      if (error.message.startsWith('Failed to fetch ticker data from Binance API:')) {
         throw error; 
       }
       // For other types of errors (e.g., network issues not caught by fetch's !response.ok), wrap them.
@@ -130,7 +132,7 @@ export async function getAccountInformation(apiKeyInput?: string, secretKeyInput
     const data: AccountInformation = await response.json();
     return data;
   } catch (error) {
-    console.error('Error in getAccountInformation:', error instanceof Error ? error.message : error);
+    // console.error('Error in getAccountInformation:', error instanceof Error ? error.message : error);
     if (error instanceof Error) {
        if(error.message.startsWith("Failed to fetch account information:") || error.message.startsWith("API Key or Secret Key is missing")) {
         throw error;

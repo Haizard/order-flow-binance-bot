@@ -44,10 +44,12 @@ async function fetchActiveTradesData(): Promise<ProcessedTrade[]> {
           pnlPercentage,
         });
       } else {
+        // Fallback if ticker data is not available or in unexpected format
         processedTrades.push({ ...trade, currentPrice: trade.buyPrice, pnl: 0, pnlPercentage: 0 });
       }
     } catch (error) {
-      console.error(`Failed to fetch ticker data for ${trade.symbol}:`, error);
+      console.error(`Failed to fetch ticker data for ${trade.symbol} in ActiveTradesList:`, error);
+      // Fallback on error
       processedTrades.push({ ...trade, currentPrice: trade.buyPrice, pnl: 0, pnlPercentage: 0 });
     }
   }
@@ -86,7 +88,8 @@ export async function ActiveTradesList() {
       <CardHeader>
         <CardTitle>Active Trades</CardTitle>
         <CardDescription className="space-y-1">
-          <span>
+          <span className="flex items-center text-xs text-muted-foreground">
+            <Info className="h-3 w-3 mr-1.5 flex-shrink-0" />
             Overview of displayed placeholder open positions. P&amp;L is calculated using live market prices, refreshed periodically.
           </span>
           {hasFetchError && (

@@ -12,7 +12,6 @@ async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
   const tickerPromises = symbols.map(async (symbol) => {
     try {
       const tickerData = await get24hrTicker(symbol.toUpperCase());
-      // get24hrTicker with a symbol is expected to return a single Ticker24hr object
       if (Array.isArray(tickerData)) {
         console.warn(`get24hrTicker returned an array for a single symbol request: ${symbol}. This is unexpected.`);
         return null;
