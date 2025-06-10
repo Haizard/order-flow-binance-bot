@@ -1,3 +1,4 @@
+
 import { TrendingUp } from 'lucide-react';
 import Link from 'next/link';
 import type { HTMLAttributes } from 'react';
@@ -16,7 +17,7 @@ export function Logo({ className, ...props }: LogoProps) {
       {...props}
     >
       <TrendingUp className="h-6 w-6 text-primary" />
-      <span className="font-headline">Binance Trailblazer</span>
+      <span className="font-headline">Haitham Scraper</span>
     </Link>
   );
 }
