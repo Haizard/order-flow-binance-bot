@@ -3,7 +3,7 @@
 // These are centrally managed for the entire bot's operation.
 
 /** Bot considers buying if 24hr change is less than or equal to this percentage (e.g., -5 for -5%). */
-export const GLOBAL_DIP_PERCENTAGE = -4;
+export const GLOBAL_DIP_PERCENTAGE = 100; // Temporarily set to 100 for testing buy logic
 
 /** Each trade will be for this amount in USD. */
 export const GLOBAL_BUY_AMOUNT_USD = 50;
@@ -39,3 +39,4 @@ export const BOT_GLOBAL_SETTINGS = {
     GLOBAL_TRAIL_DELTA,
     MONITORED_MARKET_SYMBOLS,
 };
+
