@@ -1,10 +1,10 @@
 
-import { DollarSign, ListChecks, Bot, TrendingUp, SearchX, TrendingDown, Activity, AlertTriangle, Info } from 'lucide-react';
+import { DollarSign, ListChecks, Bot, TrendingUp, SearchX, TrendingDown, Activity, AlertTriangle, Info, Percent } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/metric-card';
 import { ActiveTradesList } from '@/components/dashboard/active-trades-list';
 import { MarketOverviewItem } from '@/components/dashboard/market-overview-item';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { BotPerformanceChart } from '@/components/dashboard/bot-performance-chart'; // Import the new chart
+import { BotPerformanceChart } from '@/components/dashboard/bot-performance-chart';
 import { get24hrTicker } from '@/services/binance';
 import type { Ticker24hr } from '@/types/binance';
 import type { SettingsFormValues } from '@/components/settings/settings-form';
@@ -62,6 +62,26 @@ async function calculateTotalPnlFromBotTrades(userId: string): Promise<number> {
   return totalPnl;
 }
 
+async function calculateOverallPerformance(userId: string): Promise<string> {
+  const logTimestamp = new Date().toISOString();
+  console.log(`[${logTimestamp}] DashboardPage: calculateOverallPerformance called for user ${userId}`);
+  const closedTrades = await tradeService.getClosedTrades(userId);
+  const soldTrades = closedTrades.filter(
+    trade => trade.status === 'CLOSED_SOLD' && typeof trade.pnl === 'number'
+  );
+
+  if (soldTrades.length === 0) {
+    console.log(`[${logTimestamp}] DashboardPage: No CLOSED_SOLD trades found for performance calculation for user ${userId}.`);
+    return "0.0";
+  }
+
+  const profitableTrades = soldTrades.filter(trade => trade.pnl! > 0).length;
+  const winRate = (profitableTrades / soldTrades.length) * 100;
+  
+  console.log(`[${logTimestamp}] DashboardPage: Overall performance for user ${userId}: ${winRate.toFixed(1)}% (${profitableTrades}/${soldTrades.length})`);
+  return winRate.toFixed(1);
+}
+
 
 export default async function DashboardPage() {
   console.log(`[${new Date().toISOString()}] DashboardPage: Component rendering started for user ${DEMO_USER_ID}.`);
@@ -90,6 +110,8 @@ export default async function DashboardPage() {
   const totalPnl = await calculateTotalPnlFromBotTrades(DEMO_USER_ID);
   const activeTrades = await tradeService.getActiveTrades(DEMO_USER_ID);
   const activeTradesCount = activeTrades.length;
+  const overallPerformancePercent = await calculateOverallPerformance(DEMO_USER_ID);
+
 
   const dipPercentageToUse = BOT_GLOBAL_SETTINGS.GLOBAL_DIP_PERCENTAGE;
 
@@ -98,15 +120,14 @@ export default async function DashboardPage() {
                  !activeTrades.some(at => at.symbol === ticker.symbol)
   );
 
-  console.log(`[${new Date().toISOString()}] DashboardPage: Data fetching and bot cycle complete for user ${DEMO_USER_ID}. Global dip threshold: ${dipPercentageToUse}%`);
-  console.log(`[${new Date().toISOString()}] DashboardPage PRE-RENDER: Total P&L: ${totalPnl}, Active Trades: ${activeTradesCount}, Potential Dips: ${potentialDipBuys.length}, BTC Price (example): ${liveMarketData.find(t => t.symbol === 'BTCUSDT')?.lastPrice || 'N/A'}`);
+  console.log(`[${new Date().toISOString()}] DashboardPage PRE-RENDER: User: ${DEMO_USER_ID}, Total P&L: ${totalPnl}, Active Trades: ${activeTradesCount}, Overall Win Rate: ${overallPerformancePercent}%, Potential Dips: ${potentialDipBuys.length}, BTC Price (example): ${liveMarketData.find(t => t.symbol === 'BTCUSDT')?.lastPrice || 'N/A'}`);
 
 
   return (
     <div className="flex flex-col gap-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight font-headline mb-6">Bot Performance</h1>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           <MetricCard
             title="Total P&L (Bot)"
             value={`${totalPnl >= 0 ? '+' : ''}$${totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -119,6 +140,13 @@ export default async function DashboardPage() {
             value={activeTradesCount.toString()}
             icon={ListChecks}
             description="Number of bot's open positions. Prices and P&L are live. Auto-refreshes."
+            className="shadow-md"
+          />
+          <MetricCard
+            title="Overall Win Rate"
+            value={`${overallPerformancePercent}%`}
+            icon={Percent}
+            description="Percentage of profitable closed trades."
             className="shadow-md"
           />
         </div>
