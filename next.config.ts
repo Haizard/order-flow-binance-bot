@@ -4,7 +4,8 @@ import type {NextConfig} from 'next';
 if (process.env.NODE_ENV === 'development') {
   console.log(`[${new Date().toISOString()}] [next.config.ts] Attempting to load .env.local using dotenv...`);
   try {
-    const dotenvResult = require('dotenv').config({ path: '.env.local' });
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const dotenvResult = require('dotenv').config({ path: '.env.local' }); // Ensure path is explicitly to .env.local
     if (dotenvResult.error) {
       console.error(`[${new Date().toISOString()}] [next.config.ts] dotenv error loading .env.local:`, dotenvResult.error.message);
     } else {

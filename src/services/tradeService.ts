@@ -11,8 +11,7 @@ import { MongoClient, type Db, type Collection, type WithId } from 'mongodb';
 console.log(`[${new Date().toISOString()}] [tradeService] Module loading. Attempting to read MONGODB_URI from process.env...`);
 
 const MONGODB_URI = process.env.MONGODB_URI;
-const DB_NAME = process.env.MONGODB_DB_NAME || 'tradingBotDb'; // You can set a default or use an env var
-const COLLECTION_NAME = 'trades';
+const DB_NAME = process.env.MONGODB_DB_NAME || 'binanceTrailblazerDb'; // Updated default database name
 
 // Enhanced check with logging
 if (!MONGODB_URI) {
@@ -216,4 +215,3 @@ export async function clearAllTradesFromDb(): Promise<void> {
   const tradesCollection = await getTradesCollection();
   await tradesCollection.deleteMany({});
 }
-
