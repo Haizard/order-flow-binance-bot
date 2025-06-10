@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
+import { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -17,8 +18,10 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { AlertCircle, KeyRound, Bot, SlidersHorizontal, Zap } from "lucide-react";
+import { AlertCircle, KeyRound, Bot, SlidersHorizontal, Zap, CheckCircle, AlertTriangle, Loader2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useToast } from "@/hooks/use-toast";
+import { getAccountInformation } from "@/services/binance";
 
 const settingsFormSchema = z.object({
   binanceApiKey: z.string().min(1, "API Key is required."),
@@ -32,7 +35,6 @@ const settingsFormSchema = z.object({
 
 type SettingsFormValues = z.infer<typeof settingsFormSchema>;
 
-// Placeholder default values, in a real app these would come from user's saved settings
 const defaultValues: Partial<SettingsFormValues> = {
   binanceApiKey: "",
   binanceSecretKey: "",
@@ -50,10 +52,45 @@ export function SettingsForm() {
     mode: "onChange",
   });
 
+  const { toast } = useToast();
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
+
+  async function handleTestConnection() {
+    const { binanceApiKey, binanceSecretKey } = form.getValues();
+
+    if (!binanceApiKey || !binanceSecretKey) {
+      toast({
+        title: "API Keys Missing",
+        description: "Please enter both API Key and Secret Key to test the connection.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsTestingConnection(true);
+    try {
+      const accountInfo = await getAccountInformation(binanceApiKey, binanceSecretKey);
+      toast({
+        title: "Connection Successful!",
+        description: `Successfully connected to Binance. Account type: ${accountInfo.accountType}.`,
+        variant: "default",
+        className: "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700 text-green-800 dark:text-green-300",
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
+      toast({
+        title: "Connection Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsTestingConnection(false);
+    }
+  }
+
   function onSubmit(data: SettingsFormValues) {
-    // Handle form submission (e.g., save to backend)
     console.log(data);
-    // toast({ title: "Settings Saved", description: "Your bot settings have been updated." });
+    toast({ title: "Settings Saved", description: "Your bot settings have been updated." });
   }
 
   return (
@@ -103,6 +140,20 @@ export function SettingsForm() {
                 </FormItem>
               )}
             />
+            <Button 
+              type="button" 
+              onClick={handleTestConnection} 
+              disabled={isTestingConnection}
+              variant="outline"
+              className="w-full md:w-auto"
+            >
+              {isTestingConnection ? (
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+              ) : (
+                <CheckCircle className="mr-2 h-5 w-5" />
+              )}
+              Test Connection
+            </Button>
           </CardContent>
         </Card>
 

@@ -21,3 +21,23 @@ export interface Ticker24hr {
   lastId: number;
   count: number;
 }
+
+export interface Balance {
+  asset: string;
+  free: string;
+  locked: string;
+}
+
+export interface AccountInformation {
+  makerCommission: number;
+  takerCommission: number;
+  buyerCommission: number;
+  sellerCommission: number;
+  canTrade: boolean;
+  canWithdraw: boolean;
+  canDeposit: boolean;
+  updateTime: number;
+  accountType: string;
+  balances: Balance[];
+  permissions: string[];
+}
