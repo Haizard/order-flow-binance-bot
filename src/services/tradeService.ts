@@ -23,6 +23,8 @@ if (!MONGODB_URI) {
   console.error(`[${timestamp}] [tradeService] 1. Ensure a file named '.env.local' exists in the ROOT of your project (same level as package.json).`);
   console.error(`[${timestamp}] [tradeService] 2. Ensure '.env.local' contains a line like: MONGODB_URI=your_actual_mongodb_connection_string_here`);
   console.error(`[${timestamp}] [tradeService] 3. Ensure you have RESTARTED your Next.js development server (e.g., 'npm run dev') after creating or modifying '.env.local'.`);
+  console.error(`[${timestamp}] [tradeService] Listing all available environment variables for diagnostics:`);
+  console.error(JSON.stringify(process.env, null, 2));
   throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
 } else {
   const timestamp = new Date().toISOString();
@@ -214,3 +216,4 @@ export async function clearAllTradesFromDb(): Promise<void> {
   const tradesCollection = await getTradesCollection();
   await tradesCollection.deleteMany({});
 }
+
