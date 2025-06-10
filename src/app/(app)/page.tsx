@@ -8,12 +8,15 @@ import Image from 'next/image';
 import { get24hrTicker } from '@/services/binance';
 import type { Ticker24hr } from '@/types/binance';
 import type { SettingsFormValues } from '@/components/settings/settings-form';
-import { getSettings } from '@/services/settingsService'; // Import getSettings
+import { getSettings } from '@/services/settingsService';
 import { runBotCycle } from '@/core/bot';
 import * as tradeService from '@/services/tradeService';
-import type { Trade } from '@/types/trade';
+import { defaultSettingsValues } from "@/config/settings-defaults"; // Import new defaults
 
-export const dynamic = 'force-dynamic'; // Ensure the page is always dynamically rendered
+export const dynamic = 'force-dynamic';
+
+// Placeholder for current user ID - replace with actual auth system integration
+const DEMO_USER_ID = "user123";
 
 async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
   console.log(`[${new Date().toISOString()}] DashboardPage: getMarketData called for symbols:`, symbols);
@@ -36,10 +39,10 @@ async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
   return results.filter(item => item !== null) as Ticker24hr[];
 }
 
-async function calculateTotalPnlFromBotTrades(): Promise<number> {
-  console.log(`[${new Date().toISOString()}] DashboardPage: calculateTotalPnlFromBotTrades called`);
+async function calculateTotalPnlFromBotTrades(userId: string): Promise<number> {
+  console.log(`[${new Date().toISOString()}] DashboardPage: calculateTotalPnlFromBotTrades called for user ${userId}`);
   let totalPnl = 0;
-  const activeTradesFromDb = await tradeService.getActiveTrades();
+  const activeTradesFromDb = await tradeService.getActiveTrades(userId); // Use userId
 
   for (const trade of activeTradesFromDb) {
     try {
@@ -47,66 +50,58 @@ async function calculateTotalPnlFromBotTrades(): Promise<number> {
       if (tickerData && !Array.isArray(tickerData)) {
         const currentPrice = parseFloat(tickerData.lastPrice);
         totalPnl += (currentPrice - trade.buyPrice) * trade.quantity;
-        console.log(`[${new Date().toISOString()}] DashboardPage: Calculated P&L for bot trade ${trade.symbol}, current price: ${currentPrice}`);
       } else {
-        console.warn(`[${new Date().toISOString()}] DashboardPage: No ticker data for P&L calculation (bot trade ${trade.symbol})`);
+        console.warn(`[${new Date().toISOString()}] DashboardPage: No ticker data for P&L calculation (bot trade ${trade.symbol}, user ${userId})`);
       }
     } catch (error) {
-      console.error(`[${new Date().toISOString()}] DashboardPage: Failed to fetch ticker for P&L calculation (bot trade ${trade.symbol}):`, error instanceof Error ? error.message : String(error));
+      console.error(`[${new Date().toISOString()}] DashboardPage: Failed to fetch ticker for P&L calculation (bot trade ${trade.symbol}, user ${userId}):`, error instanceof Error ? error.message : String(error));
     }
   }
-  console.log(`[${new Date().toISOString()}] DashboardPage: Total P&L from bot trades calculated: ${totalPnl}`);
+  console.log(`[${new Date().toISOString()}] DashboardPage: Total P&L from bot trades for user ${userId} calculated: ${totalPnl}`);
   return totalPnl;
 }
 
 
 export default async function DashboardPage() {
-  console.log(`[${new Date().toISOString()}] DashboardPage: Component rendering started.`);
+  console.log(`[${new Date().toISOString()}] DashboardPage: Component rendering started for user ${DEMO_USER_ID}.`);
 
   const marketSymbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "SOLUSDT"];
-  const marketData = await getMarketData(marketSymbols);
+  const liveMarketData = await getMarketData(marketSymbols);
 
-  // Fetch current bot settings from the database
   let botSettings: SettingsFormValues;
   try {
-    botSettings = await getSettings();
-    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded bot settings.`);
+    // getSettings now guarantees returning SettingsFormValues
+    botSettings = await getSettings(DEMO_USER_ID);
+    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded bot settings for user ${DEMO_USER_ID}.`);
   } catch (error) {
-    console.error(`[${new Date().toISOString()}] DashboardPage: Failed to load bot settings, using emergency fallback:`, error);
-    // Emergency fallback if getSettings fails catastrophically, to prevent app crash.
-    // This should be a very rare case if getSettings itself has defaults.
+    console.error(`[${new Date().toISOString()}] DashboardPage: Failed to load bot settings for user ${DEMO_USER_ID}, using emergency fallback:`, error);
     botSettings = {
-        binanceApiKey: "", binanceSecretKey: "",
-        buyAmountUsd: 10, dipPercentage: -5,
-        trailActivationProfit: 2, trailDelta: 1, isBotActive: false
+        ...defaultSettingsValues,
+        userId: DEMO_USER_ID,
+        isBotActive: false // Ensure bot is inactive by default in this critical fallback
     };
   }
 
-
-  // Run the bot cycle with the loaded settings and market data
   try {
-    // Pass both fetched settings and market data to runBotCycle
-    await runBotCycle(botSettings, marketData);
+    // Pass userId, the fetched settings, and market data to runBotCycle
+    await runBotCycle(DEMO_USER_ID, botSettings, liveMarketData);
   } catch (botError) {
-    console.error(`[${new Date().toISOString()}] DashboardPage: Error running bot cycle:`, botError);
+    console.error(`[${new Date().toISOString()}] DashboardPage: Error running bot cycle for user ${DEMO_USER_ID}:`, botError);
   }
-  
-  const totalPnl = await calculateTotalPnlFromBotTrades();
-  const activeTrades = await tradeService.getActiveTrades();
-  const activeTradesCount = activeTrades.length;
-  
-  // Bot status from loaded settings
-  const botStatus = botSettings.isBotActive ? "Active" : "Inactive";
 
-  // Use dipPercentage from loaded bot settings for display
-  const dipPercentageToUse = botSettings.dipPercentage ?? -4; // Fallback if undefined
-  
-  const potentialDipBuys = marketData.filter(
+  const totalPnl = await calculateTotalPnlFromBotTrades(DEMO_USER_ID);
+  const activeTrades = await tradeService.getActiveTrades(DEMO_USER_ID);
+  const activeTradesCount = activeTrades.length;
+
+  const botStatus = botSettings.isBotActive ? "Active" : "Inactive";
+  const dipPercentageToUse = botSettings.dipPercentage;
+
+  const potentialDipBuys = liveMarketData.filter(
     (ticker) => parseFloat(ticker.priceChangePercent) <= dipPercentageToUse &&
                  !activeTrades.some(at => at.symbol === ticker.symbol)
   );
 
-  console.log(`[${new Date().toISOString()}] DashboardPage: Data fetching and bot cycle complete. Dip threshold: ${dipPercentageToUse}%`);
+  console.log(`[${new Date().toISOString()}] DashboardPage: Data fetching and bot cycle complete for user ${DEMO_USER_ID}. Dip threshold: ${dipPercentageToUse}%`);
 
   return (
     <div className="flex flex-col gap-8">
@@ -144,9 +139,9 @@ export default async function DashboardPage() {
             <Info className="h-3 w-3 mr-1.5" /> Live market data. Auto-refreshes periodically. Some symbols may be unavailable on Testnet.
           </CardDescription>
         </CardHeader>
-        {marketData.length > 0 ? (
+        {liveMarketData.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
-            {marketData.map(ticker => (
+            {liveMarketData.map(ticker => (
               <MarketOverviewItem key={ticker.symbol} ticker={ticker} />
             ))}
           </div>
@@ -173,7 +168,7 @@ export default async function DashboardPage() {
                 <Info className="h-3 w-3 mr-1.5" /> Based on live market data & bot settings. Auto-refreshes periodically. Excludes already active bot trades.
             </CardDescription>
         </CardHeader>
-        {marketData.length > 0 ? ( potentialDipBuys.length > 0 ? (
+        {liveMarketData.length > 0 ? ( potentialDipBuys.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
             {potentialDipBuys.map(ticker => (
               <MarketOverviewItem key={`${ticker.symbol}-dip`} ticker={ticker} />
@@ -198,11 +193,12 @@ export default async function DashboardPage() {
           </Card>
         )}
       </div>
-      
+
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <ActiveTradesList />
+          {/* ActiveTradesList now fetches its own data based on DEMO_USER_ID */}
+          <ActiveTradesList userId={DEMO_USER_ID} />
         </div>
         <Card className="shadow-md">
           <CardHeader>
@@ -214,10 +210,10 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="aspect-[16/9] w-full bg-muted rounded-md flex items-center justify-center">
-              <Image 
-                src="https://placehold.co/600x338.png" 
-                alt="Performance Chart Placeholder" 
-                width={600} 
+              <Image
+                src="https://placehold.co/600x338.png"
+                alt="Performance Chart Placeholder"
+                width={600}
                 height={338}
                 className="rounded-md object-cover"
                 data-ai-hint="chart graph"

@@ -5,13 +5,13 @@
  */
 
 import type { SettingsFormValues } from '@/components/settings/settings-form';
-import { defaultValues as defaultSettingsBase } from '@/components/settings/settings-form'; // Renamed to avoid conflict
+import { defaultSettingsValues } from "@/config/settings-defaults"; // Import new defaults
 import { MongoClient, type Db, type Collection, type WithId, type UpdateFilter } from 'mongodb';
 
 console.log(`[${new Date().toISOString()}] [settingsService] Module loading. Attempting to read MONGODB_URI from process.env...`);
 
 let MONGODB_URI = process.env.MONGODB_URI;
-const MONGODB_URI_FALLBACK = "mongodb+srv://haithammisape:hrz123@cluster0.quboghr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"; 
+const MONGODB_URI_FALLBACK = "mongodb+srv://haithammisape:hrz123@cluster0.quboghr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 
 if (!MONGODB_URI) {
   const timestamp = new Date().toISOString();
@@ -28,7 +28,7 @@ if (!MONGODB_URI) {
 
 
 const DB_NAME = process.env.MONGODB_DB_NAME || 'binanceTrailblazerDb';
-const COLLECTION_NAME = 'botSettings'; // Each document will be per user
+const COLLECTION_NAME = 'botSettings';
 
 interface CustomGlobal extends NodeJS.Global {
   _mongoSettingsClientPromise?: Promise<MongoClient>;
@@ -69,20 +69,22 @@ async function getSettingsCollection(): Promise<Collection<SettingsFormValues>> 
 
 /**
  * Retrieves the bot settings for a specific user from MongoDB.
- * If no settings are found for the user, returns null (or default settings with userId).
+ * If no settings are found for the user, returns default settings populated with the userId.
  * @param userId - The ID of the user whose settings to retrieve.
- * @returns A promise that resolves to the SettingsFormValues for the user, or null if not found.
+ * @returns A promise that resolves to the SettingsFormValues for the user.
  */
-export async function getSettings(userId: string): Promise<SettingsFormValues | null> {
+export async function getSettings(userId: string): Promise<SettingsFormValues> { // Changed return type
   const logTimestamp = new Date().toISOString();
   if (!userId) {
-    console.warn(`[${logTimestamp}] settingsService.getSettings (MongoDB): Called without userId. Returning null.`);
-    return null;
+    console.warn(`[${logTimestamp}] settingsService.getSettings (MongoDB): Called without userId. Returning default settings with a placeholder userId.`);
+    // This case should ideally be prevented by callers providing a valid userId.
+    // For robustness, return default settings with a temporary or generic userId if absolutely necessary,
+    // but this indicates a potential issue in the calling code.
+    return { ...defaultSettingsValues, userId: "UNKNOWN_USER_ID_IN_GETSETTINGS" };
   }
   console.log(`[${logTimestamp}] settingsService.getSettings (MongoDB) called for user: ${userId}`);
   const settingsCollection = await getSettingsCollection();
-  
-  // Find settings by userId. We assume userId is unique for settings.
+
   const settingsDoc = await settingsCollection.findOne({ userId: userId });
 
   if (settingsDoc) {
@@ -92,14 +94,12 @@ export async function getSettings(userId: string): Promise<SettingsFormValues | 
     return settingsWithoutMongoId as SettingsFormValues;
   } else {
     console.log(`[${logTimestamp}] settingsService (MongoDB): No settings found for user ${userId}. Returning new default settings object for this user.`);
-    // Return default settings populated with the provided userId, so the form can be initialized
-    return { ...defaultSettingsBase, userId: userId };
+    return { ...defaultSettingsValues, userId: userId };
   }
 }
 
 /**
  * Saves the bot settings for a specific user to MongoDB.
- * Uses updateOne with upsert to create or replace the settings document for the user.
  * @param userId - The ID of the user whose settings to save.
  * @param settings - The settings to save (should include the userId).
  * @returns A promise that resolves when settings are saved.
@@ -117,20 +117,17 @@ export async function saveSettings(userId: string, settings: SettingsFormValues)
   console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) called for user: ${userId} with:`, settings);
   const settingsCollection = await getSettingsCollection();
 
-  // Ensure the settings object includes the userId, which it should from the form.
-  // The filter will be on userId, and the $set operator will update all fields.
-  const { userId: settingsUserId, ...settingsDataToSet } = settings; // Separate userId from the rest of the data
+  const { userId: settingsUserId, ...settingsDataToSet } = settings;
 
   const updateOperation: UpdateFilter<SettingsFormValues> = {
-    $set: settingsDataToSet, // Set all fields from settings object
-    $setOnInsert: { userId: settingsUserId } // Ensure userId is set on insert
+    $set: settingsDataToSet,
+    $setOnInsert: { userId: settingsUserId }
   };
 
-
   const result = await settingsCollection.updateOne(
-    { userId: userId }, // Filter by userId
+    { userId: userId },
     updateOperation,
-    { upsert: true } // Create the document if it doesn't exist for this user
+    { upsert: true }
   );
 
   if (result.modifiedCount > 0 || result.upsertedCount > 0) {

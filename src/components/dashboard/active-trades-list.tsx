@@ -10,20 +10,26 @@ import type { Trade } from '@/types/trade';
 
 interface ProcessedTrade extends Trade {
   currentPrice: number;
-  pnl: number; // Overriding Trade's optional pnl to be required here after calculation
-  pnlPercentage: number; // Overriding Trade's optional pnlPercentage
+  pnl: number;
+  pnlPercentage: number;
 }
 
+interface ActiveTradesListProps {
+  userId: string; // Expect userId to be passed as a prop
+}
 
-async function fetchAndProcessActiveBotTrades(): Promise<ProcessedTrade[]> {
-  const botTrades = await tradeService.getActiveTrades();
+async function fetchAndProcessActiveBotTrades(userId: string): Promise<ProcessedTrade[]> {
+  const botTrades = await tradeService.getActiveTrades(userId); // Use userId
   const processedTrades: ProcessedTrade[] = [];
   let hasFetchError = false;
 
   for (const trade of botTrades) {
     try {
-      const tickerData = await get24hrTicker(trade.symbol) as Ticker24hr | null;
-      if (tickerData && !Array.isArray(tickerData)) {
+      const tickerResult = await get24hrTicker(trade.symbol);
+      // Ensure tickerResult is not an array before processing
+      const tickerData = Array.isArray(tickerResult) ? tickerResult.find(t => t.symbol === trade.symbol) || null : tickerResult;
+
+      if (tickerData) {
         const currentPrice = parseFloat(tickerData.lastPrice);
         const pnlValue = (currentPrice - trade.buyPrice) * trade.quantity;
         const pnlPercentageValue = (trade.buyPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.buyPrice * trade.quantity)) * 100;
@@ -34,33 +40,31 @@ async function fetchAndProcessActiveBotTrades(): Promise<ProcessedTrade[]> {
           pnlPercentage: pnlPercentageValue,
         });
       } else {
-        // Fallback if ticker data is not available or in unexpected format
         hasFetchError = true;
         processedTrades.push({ ...trade, currentPrice: trade.buyPrice, pnl: 0, pnlPercentage: 0 });
       }
     } catch (error) {
-      console.error(`Failed to fetch ticker data for ${trade.symbol} in ActiveTradesList:`, error);
+      console.error(`Failed to fetch ticker data for ${trade.symbol} (user ${userId}) in ActiveTradesList:`, error);
       hasFetchError = true;
-      // Fallback on error
       processedTrades.push({ ...trade, currentPrice: trade.buyPrice, pnl: 0, pnlPercentage: 0 });
     }
   }
   if(hasFetchError){
-      console.warn(`[${new Date().toISOString()}] ActiveTradesList: One or more trades had issues fetching live prices. Fallback data used.`);
+      console.warn(`[${new Date().toISOString()}] ActiveTradesList (user ${userId}): One or more trades had issues fetching live prices. Fallback data used.`);
   }
   return processedTrades;
 }
 
 
-export async function ActiveTradesList() {
-  const activeBotTrades = await fetchAndProcessActiveBotTrades();
+export async function ActiveTradesList({ userId }: ActiveTradesListProps) {
+  const activeBotTrades = await fetchAndProcessActiveBotTrades(userId);
 
   if (activeBotTrades.length === 0) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>Active Bot Trades</CardTitle>
-          <CardDescription>No active bot-managed trades at the moment.</CardDescription>
+          <CardDescription>No active bot-managed trades for this user at the moment.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -72,8 +76,7 @@ export async function ActiveTradesList() {
     );
   }
 
-  // Determine if any trades are using fallback data due to fetch errors
-  const hasAnyFetchError = activeBotTrades.some(at => 
+  const hasAnyFetchError = activeBotTrades.some(at =>
     at.pnl === 0 && at.currentPrice === at.buyPrice && (at.buyPrice !== 0 || at.quantity !==0) && at.status !== 'CLOSED_SOLD' && at.status !== 'CLOSED_ERROR'
   );
 
@@ -88,8 +91,8 @@ export async function ActiveTradesList() {
             Bot-managed open positions. P&L calculated with live prices. Auto-refreshes.
           </span>
           {hasAnyFetchError && (
-            <span className="text-destructive-foreground/80 text-xs block flex items-center">
-              <AlertTriangle className="h-3 w-3 mr-1" />
+            <span className="text-destructive-foreground/80 text-xs block flex items-center bg-destructive/10 p-1 rounded-sm">
+              <AlertTriangle className="h-3 w-3 mr-1 text-destructive" />
               Some P&L data might be outdated or using fallback values due to fetching issues.
             </span>
           )}
@@ -111,8 +114,8 @@ export async function ActiveTradesList() {
               <TableRow key={trade.id}>
                 <TableCell>
                   <div className="flex items-center gap-2">
-                    {trade.baseAsset === 'BTC' ? <Bitcoin className="h-5 w-5 text-primary" /> : 
-                     trade.baseAsset === 'ETH' ? <svg className="h-5 w-5 text-primary" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M15.922 2l-.39 1.12L9.95 17.502l5.972 3.63L21.902 17.5l-5.59-14.38zm.078 21.807l-5.938-3.598 5.938 8.753 5.945-8.753zM22.36 16.97L16 20.178l-6.36-3.208 6.36-6.09z"/></svg> : 
+                    {trade.baseAsset === 'BTC' ? <Bitcoin className="h-5 w-5 text-primary" /> :
+                     trade.baseAsset === 'ETH' ? <svg className="h-5 w-5 text-primary" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M15.922 2l-.39 1.12L9.95 17.502l5.972 3.63L21.902 17.5l-5.59-14.38zm.078 21.807l-5.938-3.598 5.938 8.753 5.945-8.753zM22.36 16.97L16 20.178l-6.36-3.208 6.36-6.09z"/></svg> :
                      trade.baseAsset === 'SOL' ? <svg className="h-5 w-5 text-primary" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M4.75 2.75a.75.75 0 0 0-.75.75v12.04a.75.75 0 0 0 .75.75h14.5a.75.75 0 0 0 .75-.75V7.543a.75.75 0 0 0-.75-.75H9.295a.75.75 0 0 1-.53-.22L7.046 4.854a.75.75 0 0 0-.53-.22H4.75zm4.545 4.545h10.205V15.H9.295V7.295zM2.75 18.54v-1.75h18.5v1.75a.75.75 0 0 1-.75.75H3.5a.75.75 0 0 1-.75-.75z"/></svg> :
                      <Activity className="h-5 w-5 text-primary" />}
                     <span className="font-medium">{trade.baseAsset}/{trade.quoteAsset}</span>
@@ -137,4 +140,3 @@ export async function ActiveTradesList() {
     </Card>
   );
 }
-

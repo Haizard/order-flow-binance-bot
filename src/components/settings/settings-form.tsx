@@ -4,7 +4,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import React, { useState, useEffect } from 'react'; 
+import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -19,18 +19,19 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { AlertCircle, KeyRound, Bot, SlidersHorizontal, Zap, CheckCircle, AlertTriangle, Loader2, Save } from "lucide-react"; 
+import { AlertCircle, KeyRound, Bot, SlidersHorizontal, Zap, CheckCircle, AlertTriangle, Loader2, Save } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { getAccountInformation } from "@/services/binance";
-// import type { AccountInformation } from "@/types/binance"; // Not directly used in this form submission logic
-import { getSettings, saveSettings } from "@/services/settingsService"; 
+// import type { AccountInformation } from "@/types/binance";
+import { getSettings, saveSettings } from "@/services/settingsService";
+import { defaultSettingsValues } from "@/config/settings-defaults"; // Import new defaults
 
 // Placeholder for current user ID - replace with actual auth system integration
-const DEMO_USER_ID = "user123"; 
+const DEMO_USER_ID = "user123";
 
 const settingsFormSchema = z.object({
-  userId: z.string().min(1, "User ID is required."), // Added userId
+  userId: z.string().min(1, "User ID is required."),
   binanceApiKey: z.string().optional(),
   binanceSecretKey: z.string().optional(),
   buyAmountUsd: z.coerce.number().positive("Buy amount must be positive."),
@@ -42,20 +43,18 @@ const settingsFormSchema = z.object({
 
 export type SettingsFormValues = z.infer<typeof settingsFormSchema>;
 
-export const defaultValues: Omit<SettingsFormValues, 'userId'> = { // Default values don't include userId initially
-  binanceApiKey: "",
-  binanceSecretKey: "",
-  buyAmountUsd: 100,
-  dipPercentage: -4,
-  trailActivationProfit: 3,
-  trailDelta: 1,
-  isBotActive: false,
+// Use the imported defaults for initializing the form's default values.
+// The userId is added separately.
+export const formDefaultValues: SettingsFormValues = {
+  ...defaultSettingsValues,
+  userId: DEMO_USER_ID, // This will be overridden by loaded settings or kept for new user
 };
+
 
 export function SettingsForm() {
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
-    defaultValues: { ...defaultValues, userId: DEMO_USER_ID }, // Initialize with DEMO_USER_ID
+    defaultValues: formDefaultValues, // Use the full default structure
     mode: "onChange",
   });
 
@@ -69,14 +68,10 @@ export function SettingsForm() {
       setIsLoadingSettings(true);
       try {
         console.log(`[${new Date().toISOString()}] SettingsForm: Attempting to load settings for user: ${DEMO_USER_ID}...`);
-        const savedSettings = await getSettings(DEMO_USER_ID); // Pass userId
-        if (savedSettings) { // getSettings might return null if no settings found
-            form.reset(savedSettings); 
-            console.log(`[${new Date().toISOString()}] SettingsForm: Settings loaded and form reset for user ${DEMO_USER_ID}.`, savedSettings);
-        } else {
-            console.log(`[${new Date().toISOString()}] SettingsForm: No saved settings found for user ${DEMO_USER_ID}, using defaults.`);
-            form.reset({ ...defaultValues, userId: DEMO_USER_ID });
-        }
+        // getSettings now guarantees returning SettingsFormValues (with defaults if new)
+        const savedSettings = await getSettings(DEMO_USER_ID);
+        form.reset(savedSettings);
+        console.log(`[${new Date().toISOString()}] SettingsForm: Settings loaded and form reset for user ${DEMO_USER_ID}.`, savedSettings);
       } catch (error) {
         console.error(`[${new Date().toISOString()}] SettingsForm: Failed to load settings for user ${DEMO_USER_ID}:`, error);
         toast({
@@ -84,7 +79,8 @@ export function SettingsForm() {
           description: "Could not load your saved settings. Using defaults.",
           variant: "destructive",
         });
-        form.reset({ ...defaultValues, userId: DEMO_USER_ID }); // Reset to defaults with userId on error
+        // Fallback to formDefaultValues if loading fails
+        form.reset({ ...defaultSettingsValues, userId: DEMO_USER_ID });
       } finally {
         setIsLoadingSettings(false);
       }
@@ -128,7 +124,7 @@ export function SettingsForm() {
     setIsSaving(true);
     console.log(`[${new Date().toISOString()}] SettingsForm: Attempting to save settings for user ${data.userId}:`, data);
     try {
-      await saveSettings(data.userId, data); // Pass userId and data
+      await saveSettings(data.userId, data);
       toast({
         title: "Settings Saved!",
         description: "Your bot configurations have been successfully saved.",
@@ -148,7 +144,7 @@ export function SettingsForm() {
       setIsSaving(false);
     }
   }
-  
+
   if (isLoadingSettings) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
@@ -161,9 +157,6 @@ export function SettingsForm() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-        {/* UserId field is present in the form state but not rendered as it's managed internally for now */}
-        {/* <FormField control={form.control} name="userId" render={() => <FormItem><FormControl><Input type="hidden" /></FormControl></FormItem>} /> */}
-        
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-headline">
@@ -301,7 +294,7 @@ export function SettingsForm() {
             </div>
           </CardContent>
         </Card>
-        
+
         <Separator />
 
         <Card className="shadow-lg">
@@ -343,7 +336,7 @@ export function SettingsForm() {
           {isSaving ? (
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
           ) : (
-            <Save className="mr-2 h-5 w-5" /> 
+            <Save className="mr-2 h-5 w-5" />
           )}
           Save My Settings
         </Button>
