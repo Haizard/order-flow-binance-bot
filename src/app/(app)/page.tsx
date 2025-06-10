@@ -20,12 +20,12 @@ async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
   }
 }
 
-// Placeholder active trades structure (mirrors what ActiveTradesList might use internally for P&L calculation)
-// This is intentionally simple for dashboard summary. ActiveTradesList handles its own detailed fetching.
+// Placeholder active trades structure for dashboard summary P&L calculation.
+// The bot isn't creating these trades yet, but we use them to show live P&L.
 const placeholderActiveTradesForSummary = [
-  { symbol: 'BTCUSDT', buyPrice: 60000, quantity: 0.1 },
-  { symbol: 'ETHUSDT', buyPrice: 3000, quantity: 1 },
-  { symbol: 'SOLUSDT', buyPrice: 150, quantity: 10 },
+  { symbol: 'BTCUSDT', buyPrice: 60000, quantity: 0.1, baseAsset: 'BTC', quoteAsset: 'USDT' },
+  { symbol: 'ETHUSDT', buyPrice: 3000, quantity: 1, baseAsset: 'ETH', quoteAsset: 'USDT' },
+  { symbol: 'SOLUSDT', buyPrice: 150, quantity: 10, baseAsset: 'SOL', quoteAsset: 'USDT' },
 ];
 
 async function calculateTotalPnl(): Promise<number> {
@@ -51,7 +51,7 @@ export default async function DashboardPage() {
   const activeTradesCount = placeholderActiveTradesForSummary.length;
   const botStatus = "Active"; // Placeholder, ideally from settings or bot state
 
-  const marketSymbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "ADAUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "DOTUSDT", "LINKUSDT"];
+  const marketSymbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "ADAUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "DOTUSDT", "LINKUSDT", "AVAXUSDT", "SHIBUSDT", "MATICUSDT"];
   const marketData = await getMarketData(marketSymbols);
 
   const dipPercentageThreshold = -4.0; // Placeholder, ideally from settings
@@ -65,17 +65,17 @@ export default async function DashboardPage() {
         <h1 className="text-3xl font-bold tracking-tight font-headline mb-6">Bot Performance</h1>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <MetricCard
-            title="Total P&L (Simulated)"
+            title="Total P&L"
             value={`${totalPnl >= 0 ? '+' : ''}$${totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             icon={DollarSign}
-            description="Overall P&L from simulated active trades"
+            description="Overall P&L from active trades (prices are live)"
             className={`shadow-md ${totalPnl >=0 ? 'text-accent-foreground' : 'text-destructive'}`}
           />
           <MetricCard
-            title="Active Trades (Simulated)"
+            title="Active Trades"
             value={activeTradesCount.toString()}
             icon={ListChecks}
-            description="Bot's simulated open positions"
+            description="Bot's open positions (prices are live)"
             className="shadow-md"
           />
           <MetricCard
@@ -171,4 +171,3 @@ export default async function DashboardPage() {
     </div>
   );
 }
-

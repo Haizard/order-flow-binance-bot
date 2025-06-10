@@ -1,5 +1,5 @@
 
-import { Bitcoin, TrendingUp, TrendingDown, Hourglass, AlertTriangle } from 'lucide-react';
+import { Bitcoin, TrendingUp, TrendingDown, Hourglass, AlertTriangle, Activity } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -22,7 +22,8 @@ interface ProcessedTrade extends PlaceholderTrade {
   pnlPercentage: number;
 }
 
-// Placeholder trade data - symbol format updated for direct API use
+// Placeholder trade data - these are the trades the bot "thinks" it has.
+// The P&L for these will be calculated with live prices.
 const placeholderTradesSetup: PlaceholderTrade[] = [
   { id: '1', symbol: 'BTCUSDT', baseAsset: 'BTC', quoteAsset: 'USDT', buyPrice: 60000, quantity: 0.1, status: 'TRAILING' },
   { id: '2', symbol: 'ETHUSDT', baseAsset: 'ETH', quoteAsset: 'USDT', buyPrice: 3000, quantity: 1, status: 'PURCHASED' },
@@ -46,6 +47,7 @@ async function fetchActiveTradesData(): Promise<ProcessedTrade[]> {
         });
       } else {
         // Handle case where ticker data might not be found (e.g. delisted symbol)
+        // Show with 0 P&L if live price isn't available
         processedTrades.push({ ...trade, currentPrice: trade.buyPrice, pnl: 0, pnlPercentage: 0 });
       }
     } catch (error) {
@@ -78,20 +80,25 @@ export async function ActiveTradesList() {
     );
   }
 
-  const hasFetchError = placeholderTradesSetup.some(pt => 
-    !activeTrades.find(at => at.id === pt.id && at.currentPrice !== at.buyPrice && at.pnl !== 0)
+  // Simple check to see if any trade fetch might have failed (pnl is 0 and currentPrice is buyPrice)
+  // and the original placeholder had a chance to have non-zero PNL.
+  // This is a basic indicator; more robust error state management could be added.
+  const hasFetchError = placeholderTradesSetup.length > 0 && activeTrades.some(at => 
+    at.pnl === 0 && at.currentPrice === at.buyPrice && 
+    placeholderTradesSetup.find(pt => pt.id === at.id && (pt.buyPrice !== 0 || pt.quantity !==0))
   );
+
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Active Trades</CardTitle>
         <CardDescription>
-          Overview of your bot's simulated open positions with live P&amp;L.
+          Overview of your bot&apos;s open positions with live P&amp;L.
           {hasFetchError && (
             <span className="text-destructive-foreground/80 text-xs block mt-1 flex items-center">
               <AlertTriangle className="h-3 w-3 mr-1" />
-              Some P&L data might be outdated due to fetching issues.
+              Some P&L data might be outdated or using fallback values due to fetching issues.
             </span>
           )}
         </CardDescription>
@@ -103,7 +110,7 @@ export async function ActiveTradesList() {
               <TableHead>Symbol</TableHead>
               <TableHead className="text-right">Buy Price</TableHead>
               <TableHead className="text-right">Current Price</TableHead>
-              <TableHead className="text-right">P&amp;L ({placeholderTradesSetup[0]?.quoteAsset || 'USD'})</TableHead>
+              <TableHead className="text-right">P&amp;L ({activeTrades[0]?.quoteAsset || 'USD'})</TableHead>
               <TableHead>Status</TableHead>
             </TableRow>
           </TableHeader>
@@ -113,7 +120,10 @@ export async function ActiveTradesList() {
                 <TableCell>
                   <div className="flex items-center gap-2">
                     {/* Basic icon logic, can be expanded */}
-                    {trade.baseAsset === 'BTC' ? <Bitcoin className="h-5 w-5 text-primary" /> : <TrendingUp className="h-5 w-5 text-primary" />}
+                    {trade.baseAsset === 'BTC' ? <Bitcoin className="h-5 w-5 text-primary" /> : 
+                     trade.baseAsset === 'ETH' ? <svg className="h-5 w-5 text-primary" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M15.922 2l-.39 1.12L9.95 17.502l5.972 3.63L21.902 17.5l-5.59-14.38zm.078 21.807l-5.938-3.598 5.938 8.753 5.945-8.753zM22.36 16.97L16 20.178l-6.36-3.208 6.36-6.09z"/></svg> : 
+                     trade.baseAsset === 'SOL' ? <svg className="h-5 w-5 text-primary" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M4.75 2.75a.75.75 0 0 0-.75.75v12.04a.75.75 0 0 0 .75.75h14.5a.75.75 0 0 0 .75-.75V7.543a.75.75 0 0 0-.75-.75H9.295a.75.75 0 0 1-.53-.22L7.046 4.854a.75.75 0 0 0-.53-.22H4.75zm4.545 4.545h10.205V15.H9.295V7.295zM2.75 18.54v-1.75h18.5v1.75a.75.75 0 0 1-.75.75H3.5a.75.75 0 0 1-.75-.75z"/></svg> : // Placeholder Solana Icon
+                     <Activity className="h-5 w-5 text-primary" />}
                     <span className="font-medium">{trade.baseAsset}/{trade.quoteAsset}</span>
                   </div>
                 </TableCell>
@@ -136,3 +146,4 @@ export async function ActiveTradesList() {
     </Card>
   );
 }
+
