@@ -1,5 +1,5 @@
 
-import { DollarSign, ListChecks, Bot, TrendingUp, SearchX, TrendingDown, Activity } from 'lucide-react';
+import { DollarSign, ListChecks, Bot, TrendingUp, SearchX, TrendingDown, Activity, AlertTriangle } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/metric-card';
 import { ActiveTradesList } from '@/components/dashboard/active-trades-list';
 import { MarketOverviewItem } from '@/components/dashboard/market-overview-item';
@@ -11,26 +11,50 @@ import type { Ticker24hr } from '@/types/binance';
 async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
   try {
     const data = await Promise.all(
-      symbols.map(symbol => get24hrTicker(symbol) as Promise<Ticker24hr>)
+      symbols.map(symbol => get24hrTicker(symbol) as Promise<Ticker24hr | null>) // Allow null for graceful handling
     );
-    return data.filter(item => item !== null) as Ticker24hr[];
+    return data.filter(item => item !== null) as Ticker24hr[]; // Filter out nulls
   } catch (error) {
     console.error("Failed to fetch market data for dashboard:", error);
-    return []; // Return empty array on error to prevent page crash
+    return []; 
   }
 }
 
-export default async function DashboardPage() {
-  // Placeholder data for bot metrics
-  const totalPnl = 1250.75;
-  const activeTradesCount = 3;
-  const botStatus = "Active";
+// Placeholder active trades structure (mirrors what ActiveTradesList might use internally for P&L calculation)
+// This is intentionally simple for dashboard summary. ActiveTradesList handles its own detailed fetching.
+const placeholderActiveTradesForSummary = [
+  { symbol: 'BTCUSDT', buyPrice: 60000, quantity: 0.1 },
+  { symbol: 'ETHUSDT', buyPrice: 3000, quantity: 1 },
+  { symbol: 'SOLUSDT', buyPrice: 150, quantity: 10 },
+];
 
-  const marketSymbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "ADAUSDT", "BNBUSDT"]; // Added a couple more for variety
+async function calculateTotalPnl(): Promise<number> {
+  let totalPnl = 0;
+  for (const trade of placeholderActiveTradesForSummary) {
+    try {
+      const tickerData = await get24hrTicker(trade.symbol) as Ticker24hr | null;
+      if (tickerData) {
+        const currentPrice = parseFloat(tickerData.lastPrice);
+        totalPnl += (currentPrice - trade.buyPrice) * trade.quantity;
+      }
+    } catch (error) {
+      console.error(`Failed to fetch ticker for P&L calculation (${trade.symbol}):`, error);
+      // If a ticker fails, P&L for that trade is not added, effectively 0 for this calculation run
+    }
+  }
+  return totalPnl;
+}
+
+
+export default async function DashboardPage() {
+  const totalPnl = await calculateTotalPnl();
+  const activeTradesCount = placeholderActiveTradesForSummary.length;
+  const botStatus = "Active"; // Placeholder, ideally from settings or bot state
+
+  const marketSymbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "ADAUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "DOTUSDT", "LINKUSDT"];
   const marketData = await getMarketData(marketSymbols);
 
-  // Dip detection logic
-  const dipPercentageThreshold = -4.0; // Use the default from settings form for now
+  const dipPercentageThreshold = -4.0; // Placeholder, ideally from settings
   const potentialDipBuys = marketData.filter(
     (ticker) => parseFloat(ticker.priceChangePercent) <= dipPercentageThreshold
   );
@@ -41,17 +65,17 @@ export default async function DashboardPage() {
         <h1 className="text-3xl font-bold tracking-tight font-headline mb-6">Bot Performance</h1>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <MetricCard
-            title="Total P&L"
-            value={`$${totalPnl.toLocaleString()}`}
+            title="Total P&L (Simulated)"
+            value={`${totalPnl >= 0 ? '+' : ''}$${totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             icon={DollarSign}
-            description="Overall profit and loss from bot"
-            className="shadow-md"
+            description="Overall P&L from simulated active trades"
+            className={`shadow-md ${totalPnl >=0 ? 'text-accent-foreground' : 'text-destructive'}`}
           />
           <MetricCard
-            title="Active Trades"
+            title="Active Trades (Simulated)"
             value={activeTradesCount.toString()}
             icon={ListChecks}
-            description="Bot's currently open positions"
+            description="Bot's simulated open positions"
             className="shadow-md"
           />
           <MetricCard
@@ -75,7 +99,11 @@ export default async function DashboardPage() {
         ) : (
           <Card className="shadow-md">
             <CardContent className="pt-6">
-              <p className="text-muted-foreground text-center">Could not load market data. Please try again later.</p>
+              <div className="flex flex-col items-center justify-center py-10 text-center">
+                <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+                <p className="text-muted-foreground">Could not load live market data.</p>
+                <p className="text-xs text-muted-foreground mt-1">Please check your connection or try again later.</p>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -84,9 +112,9 @@ export default async function DashboardPage() {
       <div>
         <h2 className="text-2xl font-semibold tracking-tight font-headline mb-4 flex items-center">
           <TrendingDown className="mr-2 h-6 w-6 text-primary" />
-          Potential Dip Buys (≤ {dipPercentageThreshold}%)
+          Potential Dip Buys (24hr ≤ {dipPercentageThreshold}%)
         </h2>
-        {potentialDipBuys.length > 0 ? (
+        {marketData.length > 0 ? ( potentialDipBuys.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {potentialDipBuys.map(ticker => (
               <MarketOverviewItem key={`${ticker.symbol}-dip`} ticker={ticker} />
@@ -98,8 +126,15 @@ export default async function DashboardPage() {
               <div className="flex flex-col items-center justify-center py-10 text-center">
                 <SearchX className="h-12 w-12 text-muted-foreground mb-4" />
                 <p className="text-muted-foreground">No coins from the monitored list meet the dip criteria (≤ {dipPercentageThreshold}% in 24hr).</p>
-                <p className="text-xs text-muted-foreground mt-1">Adjust settings or market conditions may change.</p>
+                <p className="text-xs text-muted-foreground mt-1">Market conditions may change or adjust dip settings.</p>
               </div>
+            </CardContent>
+          </Card>
+        )
+        ) : (
+          <Card className="shadow-md">
+            <CardContent className="pt-6">
+              <p className="text-muted-foreground text-center">Market data unavailable to determine dips.</p>
             </CardContent>
           </Card>
         )}
@@ -126,13 +161,14 @@ export default async function DashboardPage() {
                 width={600} 
                 height={338}
                 className="rounded-md object-cover"
-                data-ai-hint="chart graph" 
+                data-ai-hint="chart graph"
               />
             </div>
-            <p className="text-sm text-muted-foreground mt-2 text-center">Bot performance chart coming soon.</p>
+            <p className="text-sm text-muted-foreground mt-2 text-center">Live bot performance chart coming soon.</p>
           </CardContent>
         </Card>
       </div>
     </div>
   );
 }
+
