@@ -22,7 +22,7 @@ export const GLOBAL_TRAIL_DELTA = 0.8;
 export const MONITORED_MARKET_SYMBOLS = [
     // Core USDT Pairs (commonly available on Testnet)
     "BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "SOLUSDT",
-    "LTCUSDT", "LINKUSDT", "DOGEUSDT", 
+    "LTCUSDT", "LINKUSDT", "DOGEUSDT",
     // Common BTC Pairs (less likely to be an issue than obscure alt/USDT pairs)
     "ETHBTC", "BNBBTC", "ADABTC", "XRPBTC", "LTCBTC", "LINKBTC"
     // Removed symbols like MATICUSDT, FTMUSDT, SHIBUSDT, etc., which are often problematic on Testnet.
@@ -39,4 +39,3 @@ export const BOT_GLOBAL_SETTINGS = {
     GLOBAL_TRAIL_DELTA,
     MONITORED_MARKET_SYMBOLS,
 };
-

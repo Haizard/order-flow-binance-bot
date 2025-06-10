@@ -18,7 +18,7 @@ export async function get24hrTicker(symbol?: string): Promise<Ticker24hr | Ticke
   }
 
   try {
-    const response = await fetch(url, { cache: 'no-store' });
+    const response = await fetch(url, { cache: 'no-store' }); // Ensure no caching for this fetch
 
     if (!response.ok) {
       let parsedErrorData: any = {};
@@ -29,21 +29,25 @@ export async function get24hrTicker(symbol?: string): Promise<Ticker24hr | Ticke
             parsedErrorData = JSON.parse(rawErrorBody);
         }
       } catch (e) {
-        // Failed to parse error body, rawErrorBody will be used if available
+        // Failed to parse error body
       }
+
+      const errorDetailsForLogging = {
+        status: response.status,
+        statusText: response.statusText,
+        binanceCode: parsedErrorData?.code,
+        binanceMsg: parsedErrorData?.msg,
+        rawBodySnippet: rawErrorBody ? (rawErrorBody.substring(0, 150) + (rawErrorBody.length > 150 ? '...' : '')) : "No raw body.",
+        requestSymbol: symbol || 'all',
+      };
       
-      let thrownErrorMessage = `Failed to fetch ticker data for ${symbol || 'all'} from Binance API: ${response.status} ${response.statusText}.`;
-      if (parsedErrorData?.msg) {
-        thrownErrorMessage += ` Binance Message: ${parsedErrorData.msg}`;
-        if (parsedErrorData?.code) {
-            thrownErrorMessage += ` (Code: ${parsedErrorData.code})`;
+      // Construct a more detailed error message to be thrown
+      let thrownErrorMessage = `Failed to fetch ticker data for ${errorDetailsForLogging.requestSymbol} from Binance API: ${response.status} ${response.statusText}.`;
+      if (errorDetailsForLogging.binanceMsg) {
+        thrownErrorMessage += ` Binance Message: ${errorDetailsForLogging.binanceMsg}`;
+        if (errorDetailsForLogging.binanceCode) {
+            thrownErrorMessage += ` (Code: ${errorDetailsForLogging.binanceCode})`;
         }
-      } else if (rawErrorBody) {
-        // Avoid logging the entire body if it's huge or not JSON
-        const snippet = rawErrorBody.substring(0, 150) + (rawErrorBody.length > 150 ? '...' : '');
-        thrownErrorMessage += ` Raw Response Snippet: ${snippet}`;
-      } else {
-        thrownErrorMessage += ' No additional error details from response body.';
       }
       throw new Error(thrownErrorMessage.trim());
     }
@@ -51,11 +55,14 @@ export async function get24hrTicker(symbol?: string): Promise<Ticker24hr | Ticke
     const data: Ticker24hr | Ticker24hr[] = await response.json();
     return data;
   } catch (error) {
+    // Log the error at the point it's caught by the caller, not here.
+    // Re-throw the caught error (which might be the one we constructed above, or a network error)
     if (error instanceof Error) {
-      // Re-throw the caught error (which might be the one we constructed above, or a network error)
+      // console.error(`[${new Date().toISOString()}] Error in get24hrTicker (symbol: ${symbol || 'all'}) - Propagating known API error: ${error.message}`);
       throw error; 
     }
     // Fallback for non-Error objects if they somehow reach here.
+    // console.error(`[${new Date().toISOString()}] Error in get24hrTicker (symbol: ${symbol || 'all'}) - Propagating unknown error.`);
     throw new Error(`An unknown error occurred in get24hrTicker (symbol: ${symbol || 'all'}).`);
   }
 }
@@ -95,7 +102,7 @@ export async function getAccountInformation(apiKeyInput?: string, secretKeyInput
       headers: {
         'X-MBX-APIKEY': apiKey,
       },
-      cache: 'no-store', 
+      cache: 'no-store', // Ensure no caching for this fetch
     });
 
     if (!response.ok) {

@@ -10,10 +10,11 @@ import type { Ticker24hr } from '@/types/binance';
 import type { SettingsFormValues } from '@/components/settings/settings-form';
 import { getSettings } from '@/services/settingsService';
 import { runBotCycle } from '@/core/bot';
-import { BOT_GLOBAL_SETTINGS, MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; 
+import { BOT_GLOBAL_SETTINGS, MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy';
 import * as tradeService from '@/services/tradeService';
 
 export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 // Placeholder for current user ID - replace with actual auth system integration
 const DEMO_USER_ID = "user123";
@@ -69,7 +70,7 @@ export default async function DashboardPage() {
 
   let userApiSettings: Pick<SettingsFormValues, 'binanceApiKey' | 'binanceSecretKey'> = {};
   try {
-    const fullUserSettings = await getSettings(DEMO_USER_ID); 
+    const fullUserSettings = await getSettings(DEMO_USER_ID);
     userApiSettings = {
         binanceApiKey: fullUserSettings.binanceApiKey,
         binanceSecretKey: fullUserSettings.binanceSecretKey,
@@ -79,8 +80,8 @@ export default async function DashboardPage() {
     console.error(`[${new Date().toISOString()}] DashboardPage: Failed to load user API key settings for ${DEMO_USER_ID}, bot cycle may not trade:`, error);
   }
 
+  console.log(`[${new Date().toISOString()}] DashboardPage (user ${DEMO_USER_ID}): API keys being passed to runBotCycle: API Key Present: ${!!userApiSettings.binanceApiKey}, Secret Key Present: ${!!userApiSettings.binanceSecretKey}`);
   try {
-    console.log(`[${new Date().toISOString()}] DashboardPage (user ${DEMO_USER_ID}): API keys being passed to runBotCycle: API Key Present: ${!!userApiSettings.binanceApiKey}, Secret Key Present: ${!!userApiSettings.binanceSecretKey}`);
     await runBotCycle(DEMO_USER_ID, userApiSettings, liveMarketData);
   } catch (botError) {
     console.error(`[${new Date().toISOString()}] DashboardPage: Error running bot cycle for user ${DEMO_USER_ID}:`, botError);
@@ -98,12 +99,14 @@ export default async function DashboardPage() {
   );
 
   console.log(`[${new Date().toISOString()}] DashboardPage: Data fetching and bot cycle complete for user ${DEMO_USER_ID}. Global dip threshold: ${dipPercentageToUse}%`);
+  console.log(`[${new Date().toISOString()}] DashboardPage PRE-RENDER: Total P&L: ${totalPnl}, Active Trades: ${activeTradesCount}, Potential Dips: ${potentialDipBuys.length}, BTC Price (example): ${liveMarketData.find(t => t.symbol === 'BTCUSDT')?.lastPrice || 'N/A'}`);
+
 
   return (
     <div className="flex flex-col gap-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight font-headline mb-6">Bot Performance</h1>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2"> 
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
           <MetricCard
             title="Total P&L (Bot)"
             value={`${totalPnl >= 0 ? '+' : ''}$${totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -214,4 +217,3 @@ export default async function DashboardPage() {
     </div>
   );
 }
-
