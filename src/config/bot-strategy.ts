@@ -3,7 +3,7 @@
 // These are centrally managed for the entire bot's operation.
 
 /** Bot considers buying if 24hr change is less than or equal to this percentage (e.g., -5 for -5%). */
-export const GLOBAL_DIP_PERCENTAGE = 100; // Temporarily set to 100 for testing buy logic
+export const GLOBAL_DIP_PERCENTAGE = -4; // Set back to a realistic strategy value
 
 /** Each trade will be for this amount in USD. */
 export const GLOBAL_BUY_AMOUNT_USD = 50;
@@ -23,10 +23,10 @@ export const MONITORED_MARKET_SYMBOLS = [
     // Core USDT Pairs (commonly available on Testnet)
     "BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "SOLUSDT",
     "LTCUSDT", "LINKUSDT", "DOGEUSDT",
-    // Common BTC Pairs (less likely to be an issue than obscure alt/USDT pairs)
+    // Common BTC Pairs
     "ETHBTC", "BNBBTC", "ADABTC", "XRPBTC", "LTCBTC", "LINKBTC"
-    // Removed symbols like MATICUSDT, FTMUSDT, SHIBUSDT, etc., which are often problematic on Testnet.
-    // Add symbols back cautiously and test.
+    // Removed symbols like MATICUSDT, FTMUSDT, SHIBUSDT, etc., based on previous errors.
+    // Add symbols back cautiously and test their availability on Testnet.
 ];
 
 /**
@@ -39,3 +39,4 @@ export const BOT_GLOBAL_SETTINGS = {
     GLOBAL_TRAIL_DELTA,
     MONITORED_MARKET_SYMBOLS,
 };
+
