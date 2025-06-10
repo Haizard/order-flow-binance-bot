@@ -50,11 +50,16 @@ export async function get24hrTicker(symbol?: string): Promise<Ticker24hr | Ticke
   } catch (error) {
     console.error(`Error in get24hrTicker (symbol: ${symbol || 'all'}):`, error instanceof Error ? error.message : error);
     if (error instanceof Error) {
-      if (error.message.startsWith('Failed to fetch ticker data from Binance API:')) {
-          throw error; 
+      // If the error is already a specific Binance API error we constructed,
+      // or an API key configuration error, re-throw it as is.
+      if (error.message.startsWith('Failed to fetch ticker data from Binance API:') || 
+          error.message.startsWith('API Key or Secret Key is missing')) {
+        throw error; 
       }
+      // For other types of errors (e.g., network issues not caught by fetch's !response.ok), wrap them.
       throw new Error(`Operation failed for get24hrTicker (symbol: ${symbol || 'all'}): ${error.message}`);
     }
+    // Fallback for non-Error objects if they somehow reach here.
     throw new Error(`An unknown error occurred in get24hrTicker (symbol: ${symbol || 'all'}).`);
   }
 }
