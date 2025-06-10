@@ -1,5 +1,5 @@
 
-import { Bitcoin, TrendingUp, TrendingDown, Hourglass, AlertTriangle, Activity, Info } from 'lucide-react';
+import { Bitcoin, TrendingUp, TrendingDown, Hourglass, AlertTriangle, Activity, Info, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -9,9 +9,10 @@ import type { Ticker24hr } from '@/types/binance';
 import type { Trade } from '@/types/trade';
 
 interface ProcessedTrade extends Trade {
-  currentPrice: number;
-  pnl: number;
-  pnlPercentage: number;
+  currentPrice: number | null;
+  pnl: number | null;
+  pnlPercentage: number | null;
+  fetchError: boolean;
 }
 
 interface ActiveTradesListProps {
@@ -21,36 +22,40 @@ interface ActiveTradesListProps {
 async function fetchAndProcessActiveBotTrades(userId: string): Promise<ProcessedTrade[]> {
   const botTrades = await tradeService.getActiveTrades(userId); // Use userId
   const processedTrades: ProcessedTrade[] = [];
-  let hasFetchError = false;
 
   for (const trade of botTrades) {
     try {
       const tickerResult = await get24hrTicker(trade.symbol);
-      // Ensure tickerResult is not an array before processing
       const tickerData = Array.isArray(tickerResult) ? tickerResult.find(t => t.symbol === trade.symbol) || null : tickerResult;
 
       if (tickerData) {
         const currentPrice = parseFloat(tickerData.lastPrice);
-        const pnlValue = (currentPrice - trade.buyPrice) * trade.quantity;
-        const pnlPercentageValue = (trade.buyPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.buyPrice * trade.quantity)) * 100;
-        processedTrades.push({
-          ...trade,
-          currentPrice,
-          pnl: pnlValue,
-          pnlPercentage: pnlPercentageValue,
-        });
+        if (isNaN(currentPrice)) { // Additional check for NaN after parseFloat
+            console.warn(`[${new Date().toISOString()}] ActiveTradesList (user ${userId}): Parsed currentPrice is NaN for ${trade.symbol}. Ticker lastPrice: ${tickerData.lastPrice}`);
+            processedTrades.push({ ...trade, currentPrice: null, pnl: null, pnlPercentage: null, fetchError: true });
+        } else {
+            const pnlValue = (currentPrice - trade.buyPrice) * trade.quantity;
+            const pnlPercentageValue = (trade.buyPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.buyPrice * trade.quantity)) * 100;
+            processedTrades.push({
+              ...trade,
+              currentPrice,
+              pnl: pnlValue,
+              pnlPercentage: pnlPercentageValue,
+              fetchError: false,
+            });
+        }
       } else {
-        hasFetchError = true;
-        processedTrades.push({ ...trade, currentPrice: trade.buyPrice, pnl: 0, pnlPercentage: 0 });
+        console.warn(`[${new Date().toISOString()}] ActiveTradesList (user ${userId}): No ticker data found for active trade ${trade.symbol}.`);
+        processedTrades.push({ ...trade, currentPrice: null, pnl: null, pnlPercentage: null, fetchError: true });
       }
     } catch (error) {
-      console.error(`Failed to fetch ticker data for ${trade.symbol} (user ${userId}) in ActiveTradesList:`, error);
-      hasFetchError = true;
-      processedTrades.push({ ...trade, currentPrice: trade.buyPrice, pnl: 0, pnlPercentage: 0 });
+      console.error(`[${new Date().toISOString()}] Failed to fetch ticker data for ${trade.symbol} (user ${userId}) in ActiveTradesList:`, error);
+      processedTrades.push({ ...trade, currentPrice: null, pnl: null, pnlPercentage: null, fetchError: true });
     }
   }
-  if(hasFetchError){
-      console.warn(`[${new Date().toISOString()}] ActiveTradesList (user ${userId}): One or more trades had issues fetching live prices. Fallback data used.`);
+  
+  if(processedTrades.some(pt => pt.fetchError)){
+      console.warn(`[${new Date().toISOString()}] ActiveTradesList (user ${userId}): One or more trades had issues fetching live prices. Fallback data used (null P&L).`);
   }
   return processedTrades;
 }
@@ -76,9 +81,7 @@ export async function ActiveTradesList({ userId }: ActiveTradesListProps) {
     );
   }
 
-  const hasAnyFetchError = activeBotTrades.some(at =>
-    at.pnl === 0 && at.currentPrice === at.buyPrice && (at.buyPrice !== 0 || at.quantity !==0) && at.status !== 'CLOSED_SOLD' && at.status !== 'CLOSED_ERROR'
-  );
+  const hasAnyFetchError = activeBotTrades.some(at => at.fetchError);
 
 
   return (
@@ -93,7 +96,7 @@ export async function ActiveTradesList({ userId }: ActiveTradesListProps) {
           {hasAnyFetchError && (
             <span className="text-destructive-foreground/80 text-xs block flex items-center bg-destructive/10 p-1 rounded-sm">
               <AlertTriangle className="h-3 w-3 mr-1 text-destructive" />
-              Some P&L data might be outdated or using fallback values due to fetching issues.
+              Live P&L data for some trades might be unavailable due to fetching issues (showing "N/A").
             </span>
           )}
         </CardDescription>
@@ -105,7 +108,7 @@ export async function ActiveTradesList({ userId }: ActiveTradesListProps) {
               <TableHead>Symbol</TableHead>
               <TableHead className="text-right">Buy Price</TableHead>
               <TableHead className="text-right">Current Price</TableHead>
-              <TableHead className="text-right">P&amp;L ({activeBotTrades[0]?.quoteAsset || 'USD'})</TableHead>
+              <TableHead className="text-right">P&amp;L ({activeBotTrades.find(t=>t.quoteAsset)?.quoteAsset || 'USD'})</TableHead>
               <TableHead>Status</TableHead>
             </TableRow>
           </TableHeader>
@@ -122,11 +125,23 @@ export async function ActiveTradesList({ userId }: ActiveTradesListProps) {
                   </div>
                 </TableCell>
                 <TableCell className="text-right">${trade.buyPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: trade.buyPrice < 1 ? 8 : 4})}</TableCell>
-                <TableCell className="text-right">${trade.currentPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: trade.currentPrice < 1 ? 8 : 4})}</TableCell>
-                <TableCell className={`text-right font-medium ${trade.pnl >= 0 ? 'text-accent-foreground' : 'text-destructive'}`}>
-                  ${trade.pnl.toFixed(2)} ({trade.pnlPercentage.toFixed(2)}%)
-                  {trade.pnl >= 0 ? <TrendingUp className="inline ml-1 h-4 w-4" /> : <TrendingDown className="inline ml-1 h-4 w-4" />}
+                <TableCell className="text-right">
+                  {trade.currentPrice !== null ? 
+                    `$${trade.currentPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: trade.currentPrice < 1 ? 8 : 4})}` : 
+                    <span className="text-muted-foreground">N/A</span>
+                  }
                 </TableCell>
+                {trade.pnl !== null && trade.pnlPercentage !== null && !trade.fetchError ? (
+                  <TableCell className={`text-right font-medium ${trade.pnl >= 0 ? 'text-accent-foreground' : 'text-destructive'}`}>
+                    ${trade.pnl.toFixed(2)} ({trade.pnlPercentage.toFixed(2)}%)
+                    {trade.pnl >= 0 ? <TrendingUp className="inline ml-1 h-4 w-4" /> : <TrendingDown className="inline ml-1 h-4 w-4" />}
+                  </TableCell>
+                ) : (
+                  <TableCell className="text-right text-muted-foreground">
+                    N/A 
+                    <AlertCircle className="inline ml-1 h-4 w-4 text-orange-400" titleAccess="Live price data unavailable"/>
+                  </TableCell>
+                )}
                 <TableCell>
                   <Badge variant={trade.status === 'ACTIVE_TRAILING' ? 'default' : (trade.status === 'ACTIVE_BOUGHT' ? 'secondary' : 'outline')}>
                     {trade.status.replace('ACTIVE_', '')}
