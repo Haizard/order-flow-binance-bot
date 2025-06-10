@@ -4,7 +4,7 @@ import { MetricCard } from '@/components/dashboard/metric-card';
 import { ActiveTradesList } from '@/components/dashboard/active-trades-list';
 import { MarketOverviewItem } from '@/components/dashboard/market-overview-item';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import Image from 'next/image';
+import { BotPerformanceChart } from '@/components/dashboard/bot-performance-chart'; // Import the new chart
 import { get24hrTicker } from '@/services/binance';
 import type { Ticker24hr } from '@/types/binance';
 import type { SettingsFormValues } from '@/components/settings/settings-form';
@@ -191,28 +191,7 @@ export default async function DashboardPage() {
         <div className="lg:col-span-2">
           <ActiveTradesList userId={DEMO_USER_ID} />
         </div>
-        <Card className="shadow-md">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-primary" />
-              Bot Performance Chart
-            </CardTitle>
-            <CardDescription>Visual representation of your bot's trading performance.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="aspect-[16/9] w-full bg-muted rounded-md flex items-center justify-center">
-              <Image
-                src="https://placehold.co/600x338.png"
-                alt="Performance Chart Placeholder"
-                width={600}
-                height={338}
-                className="rounded-md object-cover"
-                data-ai-hint="chart graph"
-              />
-            </div>
-            <p className="text-sm text-muted-foreground mt-2 text-center">Live bot performance chart coming soon.</p>
-          </CardContent>
-        </Card>
+        <BotPerformanceChart userId={DEMO_USER_ID} />
       </div>
     </div>
   );
