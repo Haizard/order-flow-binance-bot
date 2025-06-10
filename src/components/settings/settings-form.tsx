@@ -4,7 +4,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import React, { useState, useEffect } from 'react'; // Added useEffect
+import React, { useState, useEffect } from 'react'; 
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -19,14 +19,18 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { AlertCircle, KeyRound, Bot, SlidersHorizontal, Zap, CheckCircle, AlertTriangle, Loader2, Save } from "lucide-react"; // Added Save
+import { AlertCircle, KeyRound, Bot, SlidersHorizontal, Zap, CheckCircle, AlertTriangle, Loader2, Save } from "lucide-react"; 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { getAccountInformation } from "@/services/binance";
-import type { AccountInformation } from "@/types/binance";
-import { getSettings, saveSettings } from "@/services/settingsService"; // Added
+// import type { AccountInformation } from "@/types/binance"; // Not directly used in this form submission logic
+import { getSettings, saveSettings } from "@/services/settingsService"; 
+
+// Placeholder for current user ID - replace with actual auth system integration
+const DEMO_USER_ID = "user123"; 
 
 const settingsFormSchema = z.object({
+  userId: z.string().min(1, "User ID is required."), // Added userId
   binanceApiKey: z.string().optional(),
   binanceSecretKey: z.string().optional(),
   buyAmountUsd: z.coerce.number().positive("Buy amount must be positive."),
@@ -38,7 +42,7 @@ const settingsFormSchema = z.object({
 
 export type SettingsFormValues = z.infer<typeof settingsFormSchema>;
 
-export const defaultValues: SettingsFormValues = {
+export const defaultValues: Omit<SettingsFormValues, 'userId'> = { // Default values don't include userId initially
   binanceApiKey: "",
   binanceSecretKey: "",
   buyAmountUsd: 100,
@@ -51,7 +55,7 @@ export const defaultValues: SettingsFormValues = {
 export function SettingsForm() {
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
-    defaultValues,
+    defaultValues: { ...defaultValues, userId: DEMO_USER_ID }, // Initialize with DEMO_USER_ID
     mode: "onChange",
   });
 
@@ -64,18 +68,23 @@ export function SettingsForm() {
     async function loadSettings() {
       setIsLoadingSettings(true);
       try {
-        console.log(`[${new Date().toISOString()}] SettingsForm: Attempting to load settings...`);
-        const savedSettings = await getSettings();
-        form.reset(savedSettings); // Populate form with loaded settings
-        console.log(`[${new Date().toISOString()}] SettingsForm: Settings loaded and form reset.`, savedSettings);
+        console.log(`[${new Date().toISOString()}] SettingsForm: Attempting to load settings for user: ${DEMO_USER_ID}...`);
+        const savedSettings = await getSettings(DEMO_USER_ID); // Pass userId
+        if (savedSettings) { // getSettings might return null if no settings found
+            form.reset(savedSettings); 
+            console.log(`[${new Date().toISOString()}] SettingsForm: Settings loaded and form reset for user ${DEMO_USER_ID}.`, savedSettings);
+        } else {
+            console.log(`[${new Date().toISOString()}] SettingsForm: No saved settings found for user ${DEMO_USER_ID}, using defaults.`);
+            form.reset({ ...defaultValues, userId: DEMO_USER_ID });
+        }
       } catch (error) {
-        console.error(`[${new Date().toISOString()}] SettingsForm: Failed to load settings:`, error);
+        console.error(`[${new Date().toISOString()}] SettingsForm: Failed to load settings for user ${DEMO_USER_ID}:`, error);
         toast({
           title: "Error Loading Settings",
-          description: "Could not load saved settings. Using defaults.",
+          description: "Could not load your saved settings. Using defaults.",
           variant: "destructive",
         });
-        form.reset(defaultValues); // Reset to defaults on error
+        form.reset({ ...defaultValues, userId: DEMO_USER_ID }); // Reset to defaults with userId on error
       } finally {
         setIsLoadingSettings(false);
       }
@@ -86,6 +95,14 @@ export function SettingsForm() {
 
   async function handleTestConnection() {
     const { binanceApiKey, binanceSecretKey } = form.getValues();
+    if (!binanceApiKey || !binanceSecretKey) {
+        toast({
+            title: "API Keys Required",
+            description: "Please enter both API Key and Secret Key to test the connection.",
+            variant: "destructive",
+        });
+        return;
+    }
     setIsTestingConnection(true);
     try {
       const accountInfo = await getAccountInformation(binanceApiKey, binanceSecretKey);
@@ -109,18 +126,18 @@ export function SettingsForm() {
 
   async function onSubmit(data: SettingsFormValues) {
     setIsSaving(true);
-    console.log(`[${new Date().toISOString()}] SettingsForm: Attempting to save settings:`, data);
+    console.log(`[${new Date().toISOString()}] SettingsForm: Attempting to save settings for user ${data.userId}:`, data);
     try {
-      await saveSettings(data);
+      await saveSettings(data.userId, data); // Pass userId and data
       toast({
         title: "Settings Saved!",
         description: "Your bot configurations have been successfully saved.",
         variant: "default",
         className: "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700 text-green-800 dark:text-green-300",
       });
-      console.log(`[${new Date().toISOString()}] SettingsForm: Settings saved successfully.`);
+      console.log(`[${new Date().toISOString()}] SettingsForm: Settings saved successfully for user ${data.userId}.`);
     } catch (error) {
-      console.error(`[${new Date().toISOString()}] SettingsForm: Error saving settings:`, error);
+      console.error(`[${new Date().toISOString()}] SettingsForm: Error saving settings for user ${data.userId}:`, error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred while saving.";
       toast({
         title: "Save Failed",
@@ -144,14 +161,17 @@ export function SettingsForm() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+        {/* UserId field is present in the form state but not rendered as it's managed internally for now */}
+        {/* <FormField control={form.control} name="userId" render={() => <FormItem><FormControl><Input type="hidden" /></FormControl></FormItem>} /> */}
+        
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-headline">
               <KeyRound className="h-6 w-6 text-primary" />
-              Binance API Connection
+              Binance API Connection (For Your Account)
             </CardTitle>
             <CardDescription>
-              Connect your Binance account. Keys can be set in your <code>.env.local</code> file (recommended for API keys) or entered below.
+              Connect your Binance account. These keys will be used for trading on your behalf.
               Ensure API keys have trading permissions but NOT withdrawal permissions.
             </CardDescription>
           </CardHeader>
@@ -160,8 +180,9 @@ export function SettingsForm() {
               <AlertCircle className="h-5 w-5 text-primary" />
               <AlertTitle className="text-primary font-semibold">Important Security Notice</AlertTitle>
               <AlertDescription>
-                For production, store API keys securely (e.g., <code>.env.local</code> or secret manager) and grant minimal permissions: Enable Spot & Margin Trading only. DO NOT enable withdrawals.
-                API keys entered here are saved to your database if you click "Save All Settings".
+                Store API keys securely. For production, consider a dedicated secret manager.
+                Grant minimal permissions: Enable Spot & Margin Trading only. DO NOT enable withdrawals.
+                API keys entered here are saved to your user-specific settings in the database.
               </AlertDescription>
             </Alert>
             <FormField
@@ -169,9 +190,9 @@ export function SettingsForm() {
               name="binanceApiKey"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Binance API Key (Optional if in .env.local and not saving here)</FormLabel>
+                  <FormLabel>Your Binance API Key</FormLabel>
                   <FormControl>
-                    <Input placeholder="Enter your Binance API Key" {...field} />
+                    <Input placeholder="Enter your Binance API Key" {...field} value={field.value ?? ""} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -182,9 +203,9 @@ export function SettingsForm() {
               name="binanceSecretKey"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Binance Secret Key (Optional if in .env.local and not saving here)</FormLabel>
+                  <FormLabel>Your Binance Secret Key</FormLabel>
                   <FormControl>
-                    <Input type="password" placeholder="Enter your Binance Secret Key" {...field} />
+                    <Input type="password" placeholder="Enter your Binance Secret Key" {...field} value={field.value ?? ""} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -202,7 +223,7 @@ export function SettingsForm() {
               ) : (
                 <CheckCircle className="mr-2 h-5 w-5" />
               )}
-              Test Connection
+              Test My Connection
             </Button>
           </CardContent>
         </Card>
@@ -213,10 +234,10 @@ export function SettingsForm() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-headline">
               <SlidersHorizontal className="h-6 w-6 text-primary" />
-              Bot Configuration
+              Your Bot Configuration
             </CardTitle>
             <CardDescription>
-              Define the parameters for your "Dip & Trail" trading strategy.
+              Define the parameters for your "Dip & Trail" trading strategy. These settings are specific to your account.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -230,7 +251,7 @@ export function SettingsForm() {
                     <FormControl>
                       <Input type="number" placeholder="e.g., 100" {...field} />
                     </FormControl>
-                    <FormDescription>Amount in USD for each new trade.</FormDescription>
+                    <FormDescription>Amount in USD for each new trade on your account.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -244,7 +265,7 @@ export function SettingsForm() {
                     <FormControl>
                       <Input type="number" placeholder="e.g., -4" {...field} />
                     </FormControl>
-                    <FormDescription>Buy when 24hr change is ≤ this value (e.g. -4 for -4%).</FormDescription>
+                    <FormDescription>Bot will consider buying for you when 24hr change is ≤ this value.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -258,7 +279,7 @@ export function SettingsForm() {
                     <FormControl>
                       <Input type="number" placeholder="e.g., 3" {...field} />
                     </FormControl>
-                    <FormDescription>Activate trailing stop loss at this profit % (e.g. 3 for +3%).</FormDescription>
+                    <FormDescription>Activate trailing stop loss for your trades at this profit %.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -272,7 +293,7 @@ export function SettingsForm() {
                     <FormControl>
                       <Input type="number" placeholder="e.g., 1" {...field} />
                     </FormControl>
-                    <FormDescription>Trailing stop loss distance from highest price (e.g. 1 for 1%).</FormDescription>
+                    <FormDescription>Trailing stop loss distance for your trades.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -287,10 +308,10 @@ export function SettingsForm() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-headline">
               <Bot className="h-6 w-6 text-primary" />
-              Bot Status
+              Your Bot Status
             </CardTitle>
             <CardDescription>
-              Enable or disable the trading bot. This directly controls the bot's activity.
+              Enable or disable the trading bot for your account.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -300,9 +321,9 @@ export function SettingsForm() {
               render={({ field }) => (
                 <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
                   <div className="space-y-0.5">
-                    <FormLabel className="text-base">Activate Bot</FormLabel>
+                    <FormLabel className="text-base">Activate Bot For My Account</FormLabel>
                     <FormDescription>
-                      Turn the trading bot on or off. Changes apply immediately to the next cycle.
+                      Turn the trading bot on or off for your Binance account.
                     </FormDescription>
                   </div>
                   <FormControl>
@@ -324,7 +345,7 @@ export function SettingsForm() {
           ) : (
             <Save className="mr-2 h-5 w-5" /> 
           )}
-          Save All Settings
+          Save My Settings
         </Button>
       </form>
     </Form>

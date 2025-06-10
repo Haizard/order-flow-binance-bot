@@ -1,6 +1,7 @@
 
 export interface Trade {
   id: string;
+  userId: string; // Added for multi-user support
   symbol: string;
   baseAsset: string;
   quoteAsset: string;
@@ -19,7 +20,7 @@ export interface Trade {
 }
 
 // Input type for creating a new trade
-export type NewTradeInput = Pick<Trade, 'symbol' | 'baseAsset' | 'quoteAsset' | 'buyPrice' | 'quantity'>;
+export type NewTradeInput = Pick<Trade, 'userId' | 'symbol' | 'baseAsset' | 'quoteAsset' | 'buyPrice' | 'quantity'>;
 
 // Input type for updating a trade to a sold status
 export type SellTradeInput = Pick<Trade, 'sellPrice' | 'pnl' | 'pnlPercentage'>;

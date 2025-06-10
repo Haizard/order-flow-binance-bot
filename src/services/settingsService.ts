@@ -1,27 +1,24 @@
 
 'use server';
 /**
- * @fileOverview SettingsService - Manages bot settings data using MongoDB.
+ * @fileOverview SettingsService - Manages bot settings data using MongoDB, now user-specific.
  */
 
 import type { SettingsFormValues } from '@/components/settings/settings-form';
-import { defaultValues as defaultSettings } from '@/components/settings/settings-form';
-import { MongoClient, type Db, type Collection, type WithId } from 'mongodb';
+import { defaultValues as defaultSettingsBase } from '@/components/settings/settings-form'; // Renamed to avoid conflict
+import { MongoClient, type Db, type Collection, type WithId, type UpdateFilter } from 'mongodb';
 
-// MongoDB connection setup (copied from tradeService.ts for consistency)
-// Ensure MONGODB_URI and MONGODB_DB_NAME are set in your .env.local
 console.log(`[${new Date().toISOString()}] [settingsService] Module loading. Attempting to read MONGODB_URI from process.env...`);
 
 let MONGODB_URI = process.env.MONGODB_URI;
-const MONGODB_URI_FALLBACK = "mongodb+srv://haithammisape:hrz123@cluster0.quboghr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"; // Temporary fallback
+const MONGODB_URI_FALLBACK = "mongodb+srv://haithammisape:hrz123@cluster0.quboghr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"; 
 
 if (!MONGODB_URI) {
   const timestamp = new Date().toISOString();
   console.warn(`[${timestamp}] [settingsService] **************************************************************************************`);
   console.warn(`[${timestamp}] [settingsService] WARNING: MONGODB_URI environment variable was not found.`);
-  console.warn(`[${timestamp}] [settingsService] Attempting to use a hardcoded fallback URI. THIS IS A TEMPORARY MEASURE FOR DEVELOPMENT.`);
-  console.warn(`[${timestamp}] [settingsService] PLEASE ENSURE YOUR .env.local FILE IS CORRECTLY CONFIGURED AND YOUR SERVER RESTARTED.`);
-  console.warn(`[${timestamp}] [settingsService] Using hardcoded URI.`);
+  console.warn(`[${timestamp}] [settingsService] Attempting to use a hardcoded fallback URI (THIS IS A TEMPORARY WORKAROUND): ${MONGODB_URI_FALLBACK.substring(0, MONGODB_URI_FALLBACK.indexOf('@') + 1)}...`);
+  console.warn(`[${timestamp}] [settingsService] PLEASE RESOLVE YOUR .env.local CONFIGURATION OR ENVIRONMENT SETUP.`);
   console.warn(`[${timestamp}] [settingsService] **************************************************************************************`);
   MONGODB_URI = MONGODB_URI_FALLBACK;
 } else {
@@ -31,8 +28,7 @@ if (!MONGODB_URI) {
 
 
 const DB_NAME = process.env.MONGODB_DB_NAME || 'binanceTrailblazerDb';
-const COLLECTION_NAME = 'botSettings';
-const SETTINGS_DOCUMENT_ID = 'current_bot_settings'; // Fixed ID for the single settings document
+const COLLECTION_NAME = 'botSettings'; // Each document will be per user
 
 interface CustomGlobal extends NodeJS.Global {
   _mongoSettingsClientPromise?: Promise<MongoClient>;
@@ -72,53 +68,74 @@ async function getSettingsCollection(): Promise<Collection<SettingsFormValues>> 
 }
 
 /**
- * Retrieves the current bot settings from MongoDB.
- * If no settings are found, returns default settings.
- * @returns A promise that resolves to the SettingsFormValues.
+ * Retrieves the bot settings for a specific user from MongoDB.
+ * If no settings are found for the user, returns null (or default settings with userId).
+ * @param userId - The ID of the user whose settings to retrieve.
+ * @returns A promise that resolves to the SettingsFormValues for the user, or null if not found.
  */
-export async function getSettings(): Promise<SettingsFormValues> {
+export async function getSettings(userId: string): Promise<SettingsFormValues | null> {
   const logTimestamp = new Date().toISOString();
-  console.log(`[${logTimestamp}] settingsService.getSettings (MongoDB) called`);
+  if (!userId) {
+    console.warn(`[${logTimestamp}] settingsService.getSettings (MongoDB): Called without userId. Returning null.`);
+    return null;
+  }
+  console.log(`[${logTimestamp}] settingsService.getSettings (MongoDB) called for user: ${userId}`);
   const settingsCollection = await getSettingsCollection();
   
-  const settingsDoc = await settingsCollection.findOne({ id: SETTINGS_DOCUMENT_ID });
+  // Find settings by userId. We assume userId is unique for settings.
+  const settingsDoc = await settingsCollection.findOne({ userId: userId });
 
   if (settingsDoc) {
-    console.log(`[${logTimestamp}] settingsService (MongoDB): Found existing settings.`);
+    console.log(`[${logTimestamp}] settingsService (MongoDB): Found existing settings for user ${userId}.`);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { _id, ...settingsWithoutMongoId } = settingsDoc as WithId<SettingsFormValues & { id: string }>;
+    const { _id, ...settingsWithoutMongoId } = settingsDoc as WithId<SettingsFormValues>;
     return settingsWithoutMongoId as SettingsFormValues;
   } else {
-    console.log(`[${logTimestamp}] settingsService (MongoDB): No settings found, returning default settings.`);
-    // Ensure defaultValues (which is an export from settings-form) has all required fields.
-    // We also add our fixed 'id' field to the default settings before returning,
-    // though it won't be saved until saveSettings is called.
-    return { ...defaultSettings } as SettingsFormValues;
+    console.log(`[${logTimestamp}] settingsService (MongoDB): No settings found for user ${userId}. Returning new default settings object for this user.`);
+    // Return default settings populated with the provided userId, so the form can be initialized
+    return { ...defaultSettingsBase, userId: userId };
   }
 }
 
 /**
- * Saves the bot settings to MongoDB.
- * Uses updateOne with upsert to create or replace the single settings document.
- * @param settings - The settings to save.
+ * Saves the bot settings for a specific user to MongoDB.
+ * Uses updateOne with upsert to create or replace the settings document for the user.
+ * @param userId - The ID of the user whose settings to save.
+ * @param settings - The settings to save (should include the userId).
  * @returns A promise that resolves when settings are saved.
  */
-export async function saveSettings(settings: SettingsFormValues): Promise<void> {
+export async function saveSettings(userId: string, settings: SettingsFormValues): Promise<void> {
   const logTimestamp = new Date().toISOString();
-  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) called with:`, settings);
+   if (!userId) {
+    console.error(`[${logTimestamp}] settingsService.saveSettings (MongoDB): Attempted to save settings without userId.`);
+    throw new Error('userId is required to save settings.');
+  }
+  if (settings.userId !== userId) {
+    console.error(`[${logTimestamp}] settingsService.saveSettings (MongoDB): Mismatch between parameter userId ('${userId}') and settings.userId ('${settings.userId}').`);
+    throw new Error('User ID mismatch in saveSettings.');
+  }
+  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) called for user: ${userId} with:`, settings);
   const settingsCollection = await getSettingsCollection();
 
-  const settingsToSave = { ...settings, id: SETTINGS_DOCUMENT_ID };
+  // Ensure the settings object includes the userId, which it should from the form.
+  // The filter will be on userId, and the $set operator will update all fields.
+  const { userId: settingsUserId, ...settingsDataToSet } = settings; // Separate userId from the rest of the data
+
+  const updateOperation: UpdateFilter<SettingsFormValues> = {
+    $set: settingsDataToSet, // Set all fields from settings object
+    $setOnInsert: { userId: settingsUserId } // Ensure userId is set on insert
+  };
+
 
   const result = await settingsCollection.updateOne(
-    { id: SETTINGS_DOCUMENT_ID }, // Filter by our fixed ID
-    { $set: settingsToSave }, // Set the new settings values
-    { upsert: true } // Create the document if it doesn't exist
+    { userId: userId }, // Filter by userId
+    updateOperation,
+    { upsert: true } // Create the document if it doesn't exist for this user
   );
 
   if (result.modifiedCount > 0 || result.upsertedCount > 0) {
-    console.log(`[${logTimestamp}] settingsService (MongoDB): Settings saved successfully. Modified: ${result.modifiedCount}, Upserted: ${result.upsertedCount}`);
+    console.log(`[${logTimestamp}] settingsService (MongoDB): Settings for user ${userId} saved successfully. Modified: ${result.modifiedCount}, Upserted: ${result.upsertedCount}`);
   } else {
-    console.warn(`[${logTimestamp}] settingsService (MongoDB): Settings save operation did not modify or upsert any document. This might happen if current settings are identical to new settings.`);
+    console.warn(`[${logTimestamp}] settingsService (MongoDB): Settings save operation for user ${userId} did not modify or upsert any document. This might happen if current settings are identical to new settings.`);
   }
 }
