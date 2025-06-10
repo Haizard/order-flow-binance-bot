@@ -3,7 +3,7 @@
 /**
  * @fileOverview Core bot logic for making trading decisions using a global strategy.
  */
-import type { SettingsFormValues } from '@/components/settings/settings-form'; // Assuming this type now only contains API keys and userId
+import type { SettingsFormValues } from '@/components/settings/settings-form'; 
 import { getSettings } from '@/services/settingsService';
 import type { Ticker24hr } from '@/types/binance';
 import type { Trade } from '@/types/trade';
@@ -28,19 +28,17 @@ function getAssetsFromSymbol(symbol: string): { baseAsset: string, quoteAsset: s
             return { baseAsset: symbol.slice(0, -quote.length), quoteAsset: quote };
         }
     }
-    // Fallback for other common quote lengths like BTC, ETH etc.
-    if (symbol.length > 3) { // Check if symbol is long enough
+    if (symbol.length > 3) { 
         const potentialBase3 = symbol.substring(0, symbol.length - 3);
         const potentialQuote3 = symbol.substring(symbol.length - 3);
         if (potentialQuote3.length === 3) return {baseAsset: potentialBase3, quoteAsset: potentialQuote3};
 
-        if (symbol.length > 4) { // Check for 4-char quote assets
+        if (symbol.length > 4) { 
             const potentialBase4 = symbol.substring(0, symbol.length - 4);
             const potentialQuote4 = symbol.substring(symbol.length - 4);
             if (potentialQuote4.length === 4) return {baseAsset: potentialBase4, quoteAsset: potentialQuote4};
         }
     }
-    // Default/Gross fallback - might be inaccurate for some pairs
     return { baseAsset: symbol.length > 3 ? symbol.slice(0, 3) : symbol, quoteAsset: symbol.length > 3 ? symbol.slice(3) : 'UNKNOWN' };
 }
 
@@ -57,13 +55,15 @@ export async function runBotCycle(
   const botRunTimestamp = new Date().toISOString();
   const userId = userIdInput || DEMO_USER_ID_BOT_FALLBACK;
 
-  let apiKeys: UserApiKeys = {}; // Initialize to empty
+  console.log(`[${botRunTimestamp}] Bot (User ${userId}): runBotCycle invoked. API Key in received userApiSettings: ${userApiSettings?.binanceApiKey ? 'Exists (length ' + userApiSettings.binanceApiKey.length + ')' : 'MISSING'}, Secret Key in received userApiSettings: ${userApiSettings?.binanceSecretKey ? 'Exists (length ' + userApiSettings.binanceSecretKey.length + ')' : 'MISSING'}`);
+
+  let apiKeys: UserApiKeys = {}; 
 
   if (userApiSettings && userApiSettings.binanceApiKey && userApiSettings.binanceSecretKey) {
     apiKeys = userApiSettings;
     console.log(`[${botRunTimestamp}] Bot (User ${userId}): Using PASSED-IN API keys. API Key Present: ${!!apiKeys.binanceApiKey}, Secret Key Present: ${!!apiKeys.binanceSecretKey}`);
   } else {
-    console.log(`[${botRunTimestamp}] Bot (User ${userId}): Passed-in API keys not available or incomplete. Attempting to fetch from database.`);
+    console.log(`[${botRunTimestamp}] Bot (User ${userId}): Passed-in API keys not available or incomplete from userApiSettings. Attempting to fetch from database.`);
     try {
       const fullUserSettingsFromDb = await getSettings(userId); 
       if (fullUserSettingsFromDb.binanceApiKey && fullUserSettingsFromDb.binanceSecretKey) {
@@ -71,9 +71,9 @@ export async function runBotCycle(
           binanceApiKey: fullUserSettingsFromDb.binanceApiKey,
           binanceSecretKey: fullUserSettingsFromDb.binanceSecretKey,
         };
-        console.log(`[${botRunTimestamp}] Bot (User ${userId}): Successfully FETCHED API keys from database. API Key Present: ${!!apiKeys.binanceApiKey}, Secret Key Present: ${!!apiKeys.binanceSecretKey}`);
+        console.log(`[${botRunTimestamp}] Bot (User ${userId}): Successfully FETCHED API keys from database. API Key Present: ${!!apiKeys.binanceApiKey} (len: ${apiKeys.binanceApiKey?.length}), Secret Key Present: ${!!apiKeys.binanceSecretKey} (len: ${apiKeys.binanceSecretKey?.length})`);
       } else {
-        console.warn(`[${botRunTimestamp}] Bot (User ${userId}): API keys not found or incomplete in database (after fetch). Will skip trading actions.`);
+        console.warn(`[${botRunTimestamp}] Bot (User ${userId}): API keys not found or incomplete in database (after fetch). Will skip trading actions. DB API Key length: ${fullUserSettingsFromDb.binanceApiKey?.length || 0}`);
         // apiKeys remains {}
       }
     } catch (error) {
@@ -180,7 +180,7 @@ export async function runBotCycle(
         }
       }
     } else if (trade.status === 'ACTIVE_TRAILING') {
-      if (trade.trailingHighPrice === undefined || trade.trailingHighPrice === null) { // Check for undefined or null
+      if (trade.trailingHighPrice === undefined || trade.trailingHighPrice === null) { 
         console.warn(`[${botRunTimestamp}] Bot (User ${userId}): Trade ${trade.symbol} (ID: ${trade.id}) is TRAILING but has no/invalid trailingHighPrice (${trade.trailingHighPrice}). Resetting with current price $${currentPrice.toFixed(2)}.`);
         try {
             await tradeService.updateTrade(userId, trade.id, { trailingHighPrice: currentPrice });
@@ -233,3 +233,4 @@ export async function runBotCycle(
   }
   console.log(`[${botRunTimestamp}] Bot cycle ENDED for user ${userId}.`);
 }
+

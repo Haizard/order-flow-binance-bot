@@ -10,7 +10,7 @@ import type { Ticker24hr } from '@/types/binance';
 import type { SettingsFormValues } from '@/components/settings/settings-form';
 import { getSettings } from '@/services/settingsService';
 import { runBotCycle } from '@/core/bot';
-import { BOT_GLOBAL_SETTINGS, MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; // Updated import
+import { BOT_GLOBAL_SETTINGS, MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; 
 import * as tradeService from '@/services/tradeService';
 
 export const dynamic = 'force-dynamic';
@@ -69,19 +69,18 @@ export default async function DashboardPage() {
 
   let userApiSettings: Pick<SettingsFormValues, 'binanceApiKey' | 'binanceSecretKey'> = {};
   try {
-    const fullUserSettings = await getSettings(DEMO_USER_ID); // Fetches API keys and other potential settings
+    const fullUserSettings = await getSettings(DEMO_USER_ID); 
     userApiSettings = {
         binanceApiKey: fullUserSettings.binanceApiKey,
         binanceSecretKey: fullUserSettings.binanceSecretKey,
     };
-    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded user API key settings for user ${DEMO_USER_ID}.`);
+    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded user API key settings for user ${DEMO_USER_ID}. API Key Loaded: ${!!userApiSettings.binanceApiKey}, Secret Key Loaded: ${!!userApiSettings.binanceSecretKey}`);
   } catch (error) {
     console.error(`[${new Date().toISOString()}] DashboardPage: Failed to load user API key settings for ${DEMO_USER_ID}, bot cycle may not trade:`, error);
-    // Bot will skip trading if API keys are missing, so userApiSettings remains empty or with undefined keys.
   }
 
   try {
-    // Pass userId, the fetched API key settings, and market data to runBotCycle
+    console.log(`[${new Date().toISOString()}] DashboardPage (user ${DEMO_USER_ID}): API keys being passed to runBotCycle: API Key Present: ${!!userApiSettings.binanceApiKey}, Secret Key Present: ${!!userApiSettings.binanceSecretKey}`);
     await runBotCycle(DEMO_USER_ID, userApiSettings, liveMarketData);
   } catch (botError) {
     console.error(`[${new Date().toISOString()}] DashboardPage: Error running bot cycle for user ${DEMO_USER_ID}:`, botError);
@@ -91,7 +90,6 @@ export default async function DashboardPage() {
   const activeTrades = await tradeService.getActiveTrades(DEMO_USER_ID);
   const activeTradesCount = activeTrades.length;
 
-  // For "Potential Dip Buys", use the global dip percentage from BOT_GLOBAL_SETTINGS
   const dipPercentageToUse = BOT_GLOBAL_SETTINGS.GLOBAL_DIP_PERCENTAGE;
 
   const potentialDipBuys = liveMarketData.filter(
@@ -105,7 +103,7 @@ export default async function DashboardPage() {
     <div className="flex flex-col gap-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight font-headline mb-6">Bot Performance</h1>
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2"> {/* Adjusted to 2 columns as Bot Status is removed */}
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2"> 
           <MetricCard
             title="Total P&L (Bot)"
             value={`${totalPnl >= 0 ? '+' : ''}$${totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
@@ -216,3 +214,4 @@ export default async function DashboardPage() {
     </div>
   );
 }
+

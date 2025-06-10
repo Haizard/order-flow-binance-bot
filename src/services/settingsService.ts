@@ -87,12 +87,12 @@ export async function getSettings(userId: string): Promise<SettingsFormValues> {
   if (settingsDoc) {
     const apiKeyPresent = !!settingsDoc.binanceApiKey && settingsDoc.binanceApiKey.length > 0;
     const secretKeyPresent = !!settingsDoc.binanceSecretKey && settingsDoc.binanceSecretKey.length > 0;
-    console.log(`[${logTimestamp}] settingsService (MongoDB): Found existing API key settings for user ${userId}. API Key Present: ${apiKeyPresent}, Secret Key Present: ${secretKeyPresent}`);
+    console.log(`[${logTimestamp}] settingsService.getSettings (MongoDB): Found existing API key settings for user ${userId}. API Key Data Present: ${apiKeyPresent}, Secret Key Data Present: ${secretKeyPresent}. API Key Length: ${settingsDoc.binanceApiKey?.length || 0}`);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { _id, ...settingsWithoutMongoId } = settingsDoc as WithId<SettingsFormValues>;
     return { ...defaultSettingsValues, ...settingsWithoutMongoId, userId: userId };
   } else {
-    console.log(`[${logTimestamp}] settingsService (MongoDB): No API key settings found for user ${userId}. Returning new default settings object for this user.`);
+    console.log(`[${logTimestamp}] settingsService.getSettings (MongoDB): No API key settings found for user ${userId}. Returning new default settings object for this user.`);
     return { ...defaultSettingsValues, userId: userId };
   }
 }
@@ -114,37 +114,49 @@ export async function saveSettings(userId: string, settings: SettingsFormValues)
     throw new Error('User ID mismatch in saveSettings.');
   }
   
-  const apiKeyProvided = !!settings.binanceApiKey && settings.binanceApiKey.length > 0;
-  const secretKeyProvided = !!settings.binanceSecretKey && settings.binanceSecretKey.length > 0;
-  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) called for user: ${userId}. API Key Provided: ${apiKeyProvided}, Secret Key Provided: ${secretKeyProvided}`);
+  const apiKeyProvidedLength = settings.binanceApiKey?.length || 0;
+  const secretKeyProvidedLength = settings.binanceSecretKey?.length || 0;
+  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) ATTEMPTING TO SAVE for user: ${userId}. API Key Provided Length: ${apiKeyProvidedLength}, Secret Key Provided Length: ${secretKeyProvidedLength}`);
+  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) for user: ${userId}. Input settings object:`, JSON.stringify({userId: settings.userId, binanceApiKeyLength: apiKeyProvidedLength, binanceSecretKeyLength: secretKeyProvidedLength}));
   
   const settingsCollection = await getSettingsCollection();
 
   const { userId: settingsUserId, binanceApiKey, binanceSecretKey } = settings;
   const settingsDataToSet = {
-    binanceApiKey: binanceApiKey || "", // Ensure empty string if undefined/null
-    binanceSecretKey: binanceSecretKey || "", // Ensure empty string if undefined/null
+    binanceApiKey: binanceApiKey || "", 
+    binanceSecretKey: binanceSecretKey || "", 
   };
 
+  const filter = { userId: userId };
   const updateOperation: UpdateFilter<SettingsFormValues> = {
     $set: settingsDataToSet, 
     $setOnInsert: { userId: settingsUserId } 
   };
 
-  const result = await settingsCollection.updateOne(
-    { userId: userId },
-    updateOperation,
-    { upsert: true }
-  );
+  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) for user: ${userId}. Filter:`, JSON.stringify(filter));
+  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) for user: ${userId}. Update Operation:`, JSON.stringify(updateOperation));
 
-  if (result.upsertedCount > 0) {
-    console.log(`[${logTimestamp}] settingsService (MongoDB): API Key settings for user ${userId} UPSERTED successfully.`);
-  } else if (result.modifiedCount > 0) {
+  try {
+    const result = await settingsCollection.updateOne(
+      filter,
+      updateOperation,
+      { upsert: true }
+    );
+
+    console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) for user: ${userId}. MongoDB updateOne RAW result:`, JSON.stringify(result));
+
+    if (result.upsertedCount > 0) {
+      console.log(`[${logTimestamp}] settingsService (MongoDB): API Key settings for user ${userId} UPSERTED successfully. Upserted ID: ${result.upsertedId}`);
+    } else if (result.modifiedCount > 0) {
      console.log(`[${logTimestamp}] settingsService (MongoDB): API Key settings for user ${userId} MODIFIED successfully.`);
-  } else if (result.matchedCount > 0 && result.modifiedCount === 0) {
-    console.log(`[${logTimestamp}] settingsService (MongoDB): API Key settings for user ${userId} matched but NOT modified (likely same values).`);
-  }
-   else {
-    console.warn(`[${logTimestamp}] settingsService (MongoDB): API Key settings save operation for user ${userId} did not result in an obvious change. Matched: ${result.matchedCount}, Modified: ${result.modifiedCount}, Upserted: ${result.upsertedCount > 0}`);
+    } else if (result.matchedCount > 0 && result.modifiedCount === 0) {
+      console.log(`[${logTimestamp}] settingsService (MongoDB): API Key settings for user ${userId} matched but NOT modified (likely same values).`);
+    } else {
+      console.warn(`[${logTimestamp}] settingsService (MongoDB): API Key settings save operation for user ${userId} resulted in no change or no match. Matched: ${result.matchedCount}, Modified: ${result.modifiedCount}, Upserted: ${result.upsertedCount > 0 ? 'Yes' : 'No'}`);
+    }
+  } catch (dbError) {
+    console.error(`[${logTimestamp}] settingsService.saveSettings (MongoDB) for user: ${userId}. DATABASE OPERATION FAILED:`, dbError);
+    throw dbError; // Re-throw the error so SettingsForm can catch it
   }
 }
+
