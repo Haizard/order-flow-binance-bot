@@ -27,7 +27,6 @@ export async function get24hrTicker(symbol?: string): Promise<Ticker24hr | Ticke
         parsedErrorData = JSON.parse(rawErrorBody);
       } catch (e) {
         // JSON parsing failed, parsedErrorData remains empty or we can store raw body
-        // For logging purposes, we'll show the raw body if parsing failed.
       }
       
       const logDetails = (parsedErrorData && Object.keys(parsedErrorData).length > 0 && parsedErrorData.constructor === Object && parsedErrorData.msg) 

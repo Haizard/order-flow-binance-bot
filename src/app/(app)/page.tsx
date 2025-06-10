@@ -9,15 +9,26 @@ import { get24hrTicker } from '@/services/binance';
 import type { Ticker24hr } from '@/types/binance';
 
 async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
-  try {
-    const data = await Promise.all(
-      symbols.map(symbol => get24hrTicker(symbol) as Promise<Ticker24hr | null>) // Allow null for graceful handling
-    );
-    return data.filter(item => item !== null) as Ticker24hr[]; // Filter out nulls
-  } catch (error) {
-    console.error("Failed to fetch market data for dashboard:", error);
-    return []; 
-  }
+  const tickerPromises = symbols.map(async (symbol) => {
+    try {
+      const tickerData = await get24hrTicker(symbol.toUpperCase());
+      // get24hrTicker with a symbol is expected to return a single Ticker24hr object
+      if (Array.isArray(tickerData)) {
+        // This case should ideally not happen if a valid symbol is provided and API behaves as expected.
+        console.warn(`get24hrTicker returned an array for a single symbol request: ${symbol}. This is unexpected.`);
+        return null;
+      }
+      return tickerData as Ticker24hr;
+    } catch (error) {
+      // Log the error specific to this symbol, but don't let it stop Promise.all
+      console.error(`Failed to fetch market data for symbol ${symbol}:`, error instanceof Error ? error.message : String(error));
+      return null;
+    }
+  });
+
+  const results = await Promise.all(tickerPromises);
+  // Filter out nulls for symbols that failed to fetch
+  return results.filter(item => item !== null) as Ticker24hr[];
 }
 
 // Placeholder active trades structure for dashboard summary P&L calculation.
@@ -33,7 +44,7 @@ async function calculateTotalPnl(): Promise<number> {
   for (const trade of placeholderActiveTradesForSummary) {
     try {
       const tickerData = await get24hrTicker(trade.symbol) as Ticker24hr | null;
-      if (tickerData) {
+      if (tickerData && !Array.isArray(tickerData)) {
         const currentPrice = parseFloat(tickerData.lastPrice);
         totalPnl += (currentPrice - trade.buyPrice) * trade.quantity;
       }
@@ -51,7 +62,8 @@ export default async function DashboardPage() {
   const activeTradesCount = placeholderActiveTradesForSummary.length;
   const botStatus = "Active"; // Placeholder, ideally from settings or bot state
 
-  const marketSymbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "ADAUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "DOTUSDT", "LINKUSDT", "AVAXUSDT", "SHIBUSDT", "MATICUSDT"];
+  // Reduced list of symbols more likely to be available on Testnet
+  const marketSymbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "LTCUSDT"];
   const marketData = await getMarketData(marketSymbols);
 
   const dipPercentageThreshold = -4.0; // Placeholder, ideally from settings
@@ -91,7 +103,7 @@ export default async function DashboardPage() {
       <div>
         <h2 className="text-2xl font-semibold tracking-tight font-headline mb-4">Market Overview</h2>
         {marketData.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3"> {/* Adjusted xl:grid-cols-5 to 3 for fewer items */}
             {marketData.map(ticker => (
               <MarketOverviewItem key={ticker.symbol} ticker={ticker} />
             ))}
@@ -101,8 +113,8 @@ export default async function DashboardPage() {
             <CardContent className="pt-6">
               <div className="flex flex-col items-center justify-center py-10 text-center">
                 <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
-                <p className="text-muted-foreground">Could not load live market data.</p>
-                <p className="text-xs text-muted-foreground mt-1">Please check your connection or try again later.</p>
+                <p className="text-muted-foreground">Could not load live market data for some symbols.</p>
+                <p className="text-xs text-muted-foreground mt-1">Please check your connection or symbol list. Some symbols might be unavailable.</p>
               </div>
             </CardContent>
           </Card>
@@ -115,7 +127,7 @@ export default async function DashboardPage() {
           Potential Dip Buys (24hr ≤ {dipPercentageThreshold}%)
         </h2>
         {marketData.length > 0 ? ( potentialDipBuys.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3"> {/* Adjusted xl:grid-cols-5 to 3 */}
             {potentialDipBuys.map(ticker => (
               <MarketOverviewItem key={`${ticker.symbol}-dip`} ticker={ticker} />
             ))}
