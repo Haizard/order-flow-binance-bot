@@ -9,17 +9,14 @@ import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
-  // FormDescription, // No longer needed for removed fields
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-// import { Switch } from "@/components/ui/switch"; // No longer needed for isBotActive
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-// import { Separator } from "@/components/ui/separator"; // No longer needed
-import { AlertCircle, KeyRound, CheckCircle, Loader2, Save } from "lucide-react"; // Bot, SlidersHorizontal, Zap removed
+import { AlertCircle, KeyRound, CheckCircle, Loader2, Save } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { getAccountInformation } from "@/services/binance";
@@ -29,23 +26,18 @@ import { defaultSettingsValues } from "@/config/settings-defaults";
 // Placeholder for current user ID - replace with actual auth system integration
 const DEMO_USER_ID = "user123";
 
-// Schema now only includes userId and API keys.
 const settingsFormSchema = z.object({
   userId: z.string().min(1, "User ID is required."),
   binanceApiKey: z.string().optional(),
   binanceSecretKey: z.string().optional(),
-  // Removed: buyAmountUsd, dipPercentage, trailActivationProfit, trailDelta, isBotActive
 });
 
 export type SettingsFormValues = z.infer<typeof settingsFormSchema>;
 
-// Use the imported defaults for initializing the form's default values.
-// The userId is added separately.
 export const formDefaultValues: SettingsFormValues = {
   ...defaultSettingsValues,
-  userId: DEMO_USER_ID, // This will be overridden by loaded settings or kept for new user
+  userId: DEMO_USER_ID,
 };
-
 
 export function SettingsForm() {
   const form = useForm<SettingsFormValues>({
@@ -64,14 +56,14 @@ export function SettingsForm() {
       setIsLoadingSettings(true);
       try {
         console.log(`[${new Date().toISOString()}] SettingsForm: Attempting to load settings for user: ${DEMO_USER_ID}...`);
-        const savedSettings = await getSettings(DEMO_USER_ID); // getSettings now ensures defaults if not found
-        form.reset(savedSettings); // Reset with potentially just API keys or full defaults if new
-        console.log(`[${new Date().toISOString()}] SettingsForm: Settings loaded and form reset for user ${DEMO_USER_ID}.`, savedSettings);
+        const savedSettings = await getSettings(DEMO_USER_ID);
+        form.reset(savedSettings);
+        console.log(`[${new Date().toISOString()}] SettingsForm: Settings loaded and form reset for user ${DEMO_USER_ID}.`, {apiKeyPresent: !!savedSettings.binanceApiKey});
       } catch (error) {
         console.error(`[${new Date().toISOString()}] SettingsForm: Failed to load settings for user ${DEMO_USER_ID}:`, error);
         toast({
-          title: "Error Loading Settings",
-          description: "Could not load your saved settings. Using defaults.",
+          title: "Error Loading API Keys",
+          description: "Could not load your saved API keys. Using defaults.",
           variant: "destructive",
         });
         form.reset({ ...defaultSettingsValues, userId: DEMO_USER_ID });
@@ -81,7 +73,6 @@ export function SettingsForm() {
     }
     loadSettings();
   }, [form, toast]);
-
 
   async function handleTestConnection() {
     const { binanceApiKey, binanceSecretKey } = form.getValues();
@@ -116,10 +107,8 @@ export function SettingsForm() {
 
   async function onSubmit(data: SettingsFormValues) {
     setIsSaving(true);
-    console.log(`[${new Date().toISOString()}] SettingsForm: Attempting to save settings for user ${data.userId}:`, data);
+    console.log(`[${new Date().toISOString()}] SettingsForm: Attempting to save API keys for user ${data.userId}.`);
     try {
-      // Ensure only relevant fields are saved.
-      // The form data 'data' already matches the simplified SettingsFormValues.
       await saveSettings(data.userId, data);
       toast({
         title: "API Keys Saved!",
@@ -127,14 +116,13 @@ export function SettingsForm() {
         variant: "default",
         className: "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700 text-green-800 dark:text-green-300",
       });
-      console.log(`[${new Date().toISOString()}] SettingsForm: Settings saved successfully for user ${data.userId}.`);
-    } catch (error)
-    {
-      console.error(`[${new Date().toISOString()}] SettingsForm: Error saving settings for user ${data.userId}:`, error);
+      console.log(`[${new Date().toISOString()}] SettingsForm: API keys saved successfully for user ${data.userId}.`);
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] SettingsForm: Error saving API keys for user ${data.userId}:`, error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred while saving.";
       toast({
         title: "Save Failed",
-        description: `Could not save settings: ${errorMessage}`,
+        description: `Could not save API keys: ${errorMessage}`,
         variant: "destructive",
       });
     } finally {
@@ -163,7 +151,6 @@ export function SettingsForm() {
             <CardDescription>
               Connect your Binance account by providing your API Key and Secret Key.
               These keys will be used by the bot to trade on your behalf.
-              Ensure API keys have trading permissions but NOT withdrawal permissions.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -204,7 +191,7 @@ export function SettingsForm() {
             <Button
               type="button"
               onClick={handleTestConnection}
-              disabled={isTestingConnection || isSaving}
+              disabled={isTestingConnection || isSaving || isLoadingSettings}
               variant="outline"
               className="w-full md:w-auto"
             >
@@ -218,9 +205,7 @@ export function SettingsForm() {
           </CardContent>
         </Card>
 
-        {/* Removed Bot Configuration Card and Bot Status Card sections */}
-
-        <Button type="submit" size="lg" className="w-full md:w-auto" disabled={isSaving || isTestingConnection}>
+        <Button type="submit" size="lg" className="w-full md:w-auto" disabled={isSaving || isTestingConnection || isLoadingSettings}>
           {isSaving ? (
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
           ) : (
