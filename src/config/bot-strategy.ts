@@ -3,7 +3,7 @@
 // These are centrally managed for the entire bot's operation.
 
 /** Bot considers buying if 24hr change is less than or equal to this percentage (e.g., -5 for -5%). */
-export const GLOBAL_DIP_PERCENTAGE = -4; // Adjusted to 4% as per user's example in prompt
+export const GLOBAL_DIP_PERCENTAGE = -4;
 
 /** Each trade will be for this amount in USD. */
 export const GLOBAL_BUY_AMOUNT_USD = 50;
@@ -16,19 +16,17 @@ export const GLOBAL_TRAIL_DELTA = 0.8;
 
 /**
  * List of market symbols the bot and dashboard will monitor.
- * Expanded to include more major coins against USDT and some BTC pairs.
+ * IMPORTANT: Verify these symbols are active on the Binance Testnet environment you are using.
+ * Invalid symbols will cause API errors. This list is a common starting point.
  */
 export const MONITORED_MARKET_SYMBOLS = [
-    // Core USDT Pairs
+    // Core USDT Pairs (commonly available on Testnet)
     "BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "SOLUSDT",
-    // Additional Major USDT Pairs
-    "DOTUSDT", "DOGEUSDT", "SHIBUSDT", "LTCUSDT", "LINKUSDT",
-    "MATICUSDT", "AVAXUSDT", "ATOMUSDT", "UNIUSDT", "TRXUSDT",
-    "ETCUSDT", "BCHUSDT", "XLMUSDT", "ICPUSDT", "FILUSDT",
-    "NEARUSDT", "ALGOUSDT", "VETUSDT", "FTMUSDT", "HBARUSDT",
-    // Selected BTC Pairs for major coins
-    "ETHBTC", "BNBBTC", "ADABTC", "SOLBTC", "XRPBTC",
-    "DOTBTC", "LTCBTC", "LINKBTC", "MATICBTC", "AVAXBTC"
+    "LTCUSDT", "LINKUSDT", "DOGEUSDT", 
+    // Common BTC Pairs (less likely to be an issue than obscure alt/USDT pairs)
+    "ETHBTC", "BNBBTC", "ADABTC", "XRPBTC", "LTCBTC", "LINKBTC"
+    // Removed symbols like MATICUSDT, FTMUSDT, SHIBUSDT, etc., which are often problematic on Testnet.
+    // Add symbols back cautiously and test.
 ];
 
 /**
@@ -41,4 +39,3 @@ export const BOT_GLOBAL_SETTINGS = {
     GLOBAL_TRAIL_DELTA,
     MONITORED_MARKET_SYMBOLS,
 };
-

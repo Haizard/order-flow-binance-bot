@@ -16,8 +16,6 @@ export async function get24hrTicker(symbol?: string): Promise<Ticker24hr | Ticke
   if (symbol) {
     url += `?symbol=${symbol.toUpperCase()}`;
   }
-  // const fetchTimestamp = new Date().toISOString();
-  // console.log(`[${fetchTimestamp}] Fetching 24hr ticker for ${symbol || 'all'}`);
 
   try {
     const response = await fetch(url, { cache: 'no-store' });
@@ -33,44 +31,31 @@ export async function get24hrTicker(symbol?: string): Promise<Ticker24hr | Ticke
       } catch (e) {
         // Failed to parse error body, rawErrorBody will be used if available
       }
-
-      const errorDetails = {
-        status: response.status,
-        statusText: response.statusText,
-        binanceCode: parsedErrorData?.code,
-        binanceMsg: parsedErrorData?.msg,
-        rawBodySnippet: rawErrorBody ? rawErrorBody.substring(0, 200) + (rawErrorBody.length > 200 ? '...' : '') : "Empty response body",
-        requestSymbol: symbol || 'all'
-      };
       
-      let thrownErrorMessage = `Failed to fetch ticker data for ${errorDetails.requestSymbol} from Binance API: ${response.status} ${response.statusText}.`;
+      let thrownErrorMessage = `Failed to fetch ticker data for ${symbol || 'all'} from Binance API: ${response.status} ${response.statusText}.`;
       if (parsedErrorData?.msg) {
         thrownErrorMessage += ` Binance Message: ${parsedErrorData.msg}`;
         if (parsedErrorData?.code) {
             thrownErrorMessage += ` (Code: ${parsedErrorData.code})`;
         }
       } else if (rawErrorBody) {
-        thrownErrorMessage += ` Raw Response Snippet: ${rawErrorBody.substring(0, 150)}${rawErrorBody.length > 150 ? '...' : ''}`;
+        // Avoid logging the entire body if it's huge or not JSON
+        const snippet = rawErrorBody.substring(0, 150) + (rawErrorBody.length > 150 ? '...' : '');
+        thrownErrorMessage += ` Raw Response Snippet: ${snippet}`;
       } else {
         thrownErrorMessage += ' No additional error details from response body.';
       }
-      // Removed direct console.error from here. Caller will log.
       throw new Error(thrownErrorMessage.trim());
     }
     
-    // const successTimestamp = new Date().toISOString();
-    // console.log(`[${successTimestamp}] Successfully fetched 24hr ticker data for ${symbol || 'all'}`);
     const data: Ticker24hr | Ticker24hr[] = await response.json();
     return data;
   } catch (error) {
-    // const errorTimestamp = new Date().toISOString();
     if (error instanceof Error) {
-      // Re-throw specific Binance API errors or a general one
-      // console.error(`[${errorTimestamp}] Error in get24hrTicker (symbol: ${symbol || 'all'}): ${error.message}`);
-      throw error; // Re-throw the error to be caught by the caller
+      // Re-throw the caught error (which might be the one we constructed above, or a network error)
+      throw error; 
     }
     // Fallback for non-Error objects if they somehow reach here.
-    // console.error(`[${errorTimestamp}] An unknown error occurred in get24hrTicker (symbol: ${symbol || 'all'}).`);
     throw new Error(`An unknown error occurred in get24hrTicker (symbol: ${symbol || 'all'}).`);
   }
 }
@@ -124,14 +109,6 @@ export async function getAccountInformation(apiKeyInput?: string, secretKeyInput
       } catch (e) {
         // Failed to parse error body
       }
-      
-      const errorDetails = {
-        status: response.status,
-        statusText: response.statusText,
-        binanceCode: parsedErrorData?.code,
-        binanceMsg: parsedErrorData?.msg,
-        rawBodySnippet: rawErrorBody ? rawErrorBody.substring(0, 200) + (rawErrorBody.length > 200 ? '...' : '') : "Empty response body",
-      };
             
       let thrownErrorMessage = `Failed to fetch account information from Binance API: ${response.status} ${response.statusText}.`;
       if (parsedErrorData?.msg) {
@@ -140,23 +117,20 @@ export async function getAccountInformation(apiKeyInput?: string, secretKeyInput
             thrownErrorMessage += ` (Code: ${parsedErrorData.code})`;
         }
       } else if (rawErrorBody) {
-        thrownErrorMessage += ` Raw Response Snippet: ${rawErrorBody.substring(0, 150)}${rawErrorBody.length > 150 ? '...' : ''}`;
+        const snippet = rawErrorBody.substring(0, 150) + (rawErrorBody.length > 150 ? '...' : '');
+        thrownErrorMessage += ` Raw Response Snippet: ${snippet}`;
       } else {
         thrownErrorMessage += ' No additional error details from response body.';
       }
-      // Removed direct console.error from here. Caller will log.
       throw new Error(thrownErrorMessage.trim());
     }
 
     const data: AccountInformation = await response.json();
     return data;
   } catch (error) {
-    // const errorTimestamp = new Date().toISOString();
     if (error instanceof Error) {
-        // console.error(`[${errorTimestamp}] Error in getAccountInformation: ${error.message}`);
         throw error;
     }
-    // console.error(`[${errorTimestamp}] Unexpected error in getAccountInformation:`, String(error));
     throw new Error(`Operation failed in getAccountInformation: ${String(error)}`);
   }
 }
