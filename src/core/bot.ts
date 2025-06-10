@@ -3,7 +3,7 @@
 /**
  * @fileOverview Core bot logic for making trading decisions using a global strategy.
  */
-import type { SettingsFormValues } from '@/components/settings/settings-form'; 
+import type { SettingsFormValues } from '@/components/settings/settings-form';
 import { getSettings } from '@/services/settingsService';
 import type { Ticker24hr } from '@/types/binance';
 import type { Trade } from '@/types/trade';
@@ -28,12 +28,12 @@ function getAssetsFromSymbol(symbol: string): { baseAsset: string, quoteAsset: s
             return { baseAsset: symbol.slice(0, -quote.length), quoteAsset: quote };
         }
     }
-    if (symbol.length > 3) { 
+    if (symbol.length > 3) {
         const potentialBase3 = symbol.substring(0, symbol.length - 3);
         const potentialQuote3 = symbol.substring(symbol.length - 3);
         if (potentialQuote3.length === 3) return {baseAsset: potentialBase3, quoteAsset: potentialQuote3};
 
-        if (symbol.length > 4) { 
+        if (symbol.length > 4) {
             const potentialBase4 = symbol.substring(0, symbol.length - 4);
             const potentialQuote4 = symbol.substring(symbol.length - 4);
             if (potentialQuote4.length === 4) return {baseAsset: potentialBase4, quoteAsset: potentialQuote4};
@@ -49,7 +49,7 @@ interface UserApiKeys {
 
 export async function runBotCycle(
   userIdInput: string,
-  userApiSettings?: UserApiKeys, 
+  userApiSettings?: UserApiKeys,
   marketData?: Ticker24hr[]
 ): Promise<void> {
   const botRunTimestamp = new Date().toISOString();
@@ -57,7 +57,7 @@ export async function runBotCycle(
 
   console.log(`[${botRunTimestamp}] Bot (User ${userId}): runBotCycle invoked. API Key in received userApiSettings: ${userApiSettings?.binanceApiKey ? 'Exists (length ' + userApiSettings.binanceApiKey.length + ')' : 'MISSING'}, Secret Key in received userApiSettings: ${userApiSettings?.binanceSecretKey ? 'Exists (length ' + userApiSettings.binanceSecretKey.length + ')' : 'MISSING'}`);
 
-  let apiKeys: UserApiKeys = {}; 
+  let apiKeys: UserApiKeys = {};
 
   if (userApiSettings && userApiSettings.binanceApiKey && userApiSettings.binanceSecretKey) {
     apiKeys = userApiSettings;
@@ -65,7 +65,7 @@ export async function runBotCycle(
   } else {
     console.log(`[${botRunTimestamp}] Bot (User ${userId}): Passed-in API keys not available or incomplete from userApiSettings. Attempting to fetch from database.`);
     try {
-      const fullUserSettingsFromDb = await getSettings(userId); 
+      const fullUserSettingsFromDb = await getSettings(userId);
       if (fullUserSettingsFromDb.binanceApiKey && fullUserSettingsFromDb.binanceSecretKey) {
         apiKeys = {
           binanceApiKey: fullUserSettingsFromDb.binanceApiKey,
@@ -101,7 +101,7 @@ export async function runBotCycle(
       liveMarketData = results.filter(item => item !== null && !Array.isArray(item)) as Ticker24hr[];
     } catch (error) {
       console.error(`[${botRunTimestamp}] Bot (User ${userId}): Failed to fetch live market data for independent cycle:`, error);
-      return; 
+      return;
     }
   }
 
@@ -113,13 +113,13 @@ export async function runBotCycle(
     const priceChangePercent = parseFloat(ticker.priceChangePercent);
     if (priceChangePercent <= GLOBAL_DIP_PERCENTAGE) {
       if (!activeTradeSymbols.includes(ticker.symbol)) {
-        console.log(`[${botRunTimestamp}] Bot (User ${userId}): Potential DIP BUY for ${ticker.symbol} at ${ticker.lastPrice} (24hr change: ${priceChangePercent}%). Global buy amount: $${GLOBAL_BUY_AMOUNT_USD}`);
-
         const currentPrice = parseFloat(ticker.lastPrice);
-        if (currentPrice <= 0) {
-            console.warn(`[${botRunTimestamp}] Bot (User ${userId}): Invalid current price (<=0) for ${ticker.symbol}, skipping buy.`);
+        if (currentPrice <= 0 || isNaN(currentPrice)) {
+            console.warn(`[${botRunTimestamp}] Bot (User ${userId}): Invalid current price (${ticker.lastPrice} -> parsed as ${currentPrice}) for ${ticker.symbol}, skipping buy.`);
             continue;
         }
+
+        console.log(`[${botRunTimestamp}] Bot (User ${userId}): Potential DIP BUY for ${ticker.symbol} at ${ticker.lastPrice} (24hr change: ${priceChangePercent}%). Global buy amount: $${GLOBAL_BUY_AMOUNT_USD}`);
         const quantityToBuy = GLOBAL_BUY_AMOUNT_USD / currentPrice;
         const { baseAsset, quoteAsset } = getAssetsFromSymbol(ticker.symbol);
 
@@ -165,6 +165,10 @@ export async function runBotCycle(
     }
 
     const currentPrice = parseFloat(currentTickerData.lastPrice);
+    if (isNaN(currentPrice)) {
+        console.warn(`[${botRunTimestamp}] Bot (User ${userId}): Invalid current price from ticker data for active trade ${trade.symbol} (value: ${currentTickerData.lastPrice}). Skipping management for this trade.`);
+        continue;
+    }
     const profitPercentage = ((currentPrice - trade.buyPrice) / trade.buyPrice) * 100;
 
     if (trade.status === 'ACTIVE_BOUGHT') {
@@ -180,14 +184,14 @@ export async function runBotCycle(
         }
       }
     } else if (trade.status === 'ACTIVE_TRAILING') {
-      if (trade.trailingHighPrice === undefined || trade.trailingHighPrice === null) { 
+      if (trade.trailingHighPrice === undefined || trade.trailingHighPrice === null) {
         console.warn(`[${botRunTimestamp}] Bot (User ${userId}): Trade ${trade.symbol} (ID: ${trade.id}) is TRAILING but has no/invalid trailingHighPrice (${trade.trailingHighPrice}). Resetting with current price $${currentPrice.toFixed(2)}.`);
         try {
             await tradeService.updateTrade(userId, trade.id, { trailingHighPrice: currentPrice });
         } catch (error) {
             console.error(`[${botRunTimestamp}] Bot (User ${userId}): Error updating/resetting trailingHighPrice for ${trade.id}:`, error);
         }
-        continue; 
+        continue;
       }
 
       let newHighPrice = trade.trailingHighPrice;
@@ -211,7 +215,7 @@ export async function runBotCycle(
           // const sellOrderResult = await placeSellOrder(apiKeys.binanceApiKey, apiKeys.binanceSecretKey, trade.symbol, trade.quantity);
           // console.log(`[${botRunTimestamp}] Bot (User ${userId}): ACTUAL SELL ORDER for ${trade.symbol} would be placed here using user's keys. Result: ${sellOrderResult}`);
           // --- END SIMULATION ---
-          
+
           await tradeService.updateTrade(userId, trade.id, {
             status: 'CLOSED_SOLD',
             sellPrice: sellPrice,

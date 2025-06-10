@@ -48,8 +48,8 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   React.useEffect(() => {
     const intervalId = setInterval(() => {
       router.refresh();
-      console.log(`[${new Date().toISOString()}] AppLayout: Automatic router.refresh() called (every 1 second).`);
-    }, 1000); // Refresh every 1 second
+      console.log(`[${new Date().toISOString()}] AppLayout: Automatic router.refresh() called (every 5 seconds).`);
+    }, 5000); // Refresh every 5 seconds
 
     return () => clearInterval(intervalId); // Clear interval on component unmount
   }, [router]);
@@ -91,3 +91,4 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     </SidebarProvider>
   );
 }
+
