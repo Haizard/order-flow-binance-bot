@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from 'react';
@@ -17,7 +18,7 @@ import { Logo } from '@/components/logo';
 import { MainNav } from '@/components/main-nav';
 import { UserNav } from '@/components/user-nav';
 import { Button } from '@/components/ui/button';
-import { Moon, Sun } from 'lucide-react';
+import { Moon, Sun, RefreshCw } from 'lucide-react'; // Added RefreshCw
 import { Separator } from '@/components/ui/separator';
 
 // A simple theme toggle example - in a real app, this would use context/state management
@@ -44,14 +45,20 @@ function ThemeToggle() {
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
 
-  React.useEffect(() => {
-    const intervalId = setInterval(() => {
-      router.refresh();
-      console.log(`[${new Date().toISOString()}] AppLayout: router.refresh() called for auto-update.`);
-    }, 5000); // Refresh every 5 seconds
+  // Removed setInterval for automatic refresh
+  // React.useEffect(() => {
+  //   const intervalId = setInterval(() => {
+  //     router.refresh();
+  //     console.log(`[${new Date().toISOString()}] AppLayout: router.refresh() called for auto-update.`);
+  //   }, 5000); // Refresh every 5 seconds
 
-    return () => clearInterval(intervalId); // Clear interval on component unmount
-  }, [router]);
+  //   return () => clearInterval(intervalId); // Clear interval on component unmount
+  // }, [router]);
+
+  const handleRefresh = () => {
+    router.refresh();
+    console.log(`[${new Date().toISOString()}] AppLayout: Manual router.refresh() called.`);
+  };
 
   return (
     <SidebarProvider defaultOpen>
@@ -71,6 +78,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <header className="sticky top-0 z-40 flex h-16 items-center justify-between gap-4 border-b bg-background/80 px-4 backdrop-blur-md sm:px-6">
           <SidebarTrigger className="md:hidden" /> {/* Only show on mobile */}
           <div className="flex items-center gap-2 ml-auto">
+            <Button variant="ghost" size="icon" onClick={handleRefresh} aria-label="Refresh data">
+              <RefreshCw className="h-5 w-5" />
+            </Button>
             <ThemeToggle />
             <UserNav />
           </div>
