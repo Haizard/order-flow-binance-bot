@@ -41,7 +41,8 @@ async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
 }
 
 async function calculateTotalPnlFromBotTrades(userId: string): Promise<number> {
-  console.log(`[${new Date().toISOString()}] DashboardPage: calculateTotalPnlFromBotTrades called for user ${userId}`);
+  const logTimestamp = new Date().toISOString();
+  console.log(`[${logTimestamp}] DashboardPage: calculateTotalPnlFromBotTrades called for user ${userId}`);
   let totalPnl = 0;
   const activeTradesFromDb = await tradeService.getActiveTrades(userId);
 
@@ -52,13 +53,13 @@ async function calculateTotalPnlFromBotTrades(userId: string): Promise<number> {
         const currentPrice = parseFloat(tickerData.lastPrice);
         totalPnl += (currentPrice - trade.buyPrice) * trade.quantity;
       } else {
-        console.warn(`[${new Date().toISOString()}] DashboardPage: No ticker data for P&L calculation (bot trade ${trade.symbol}, user ${userId})`);
+        console.warn(`[${logTimestamp}] DashboardPage: No ticker data for P&L calculation (bot trade ${trade.symbol}, user ${userId})`);
       }
     } catch (error) {
-      console.error(`[${new Date().toISOString()}] DashboardPage: Failed to fetch ticker for P&L calculation (bot trade ${trade.symbol}, user ${userId}):`, error instanceof Error ? error.message : String(error));
+      console.error(`[${logTimestamp}] DashboardPage: Failed to fetch ticker for P&L calculation (bot trade ${trade.symbol}, user ${userId}):`, error instanceof Error ? error.message : String(error));
     }
   }
-  console.log(`[${new Date().toISOString()}] DashboardPage: Total P&L from bot trades for user ${userId} calculated: ${totalPnl}`);
+  console.log(`[${logTimestamp}] DashboardPage: Total P&L from bot trades for user ${userId} calculated: ${totalPnl}`);
   return totalPnl;
 }
 
