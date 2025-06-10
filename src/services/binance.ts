@@ -2,7 +2,8 @@
 import crypto from 'crypto'; // For HMAC SHA256 signature
 import type { Ticker24hr, AccountInformation } from '@/types/binance';
 
-const BINANCE_API_BASE_URL = 'https://api.binance.com/api/v3';
+// Updated to use Binance Spot Testnet API
+const BINANCE_API_BASE_URL = 'https://testnet.binance.vision/api/v3';
 
 /**
  * Fetches 24-hour ticker price change statistics.
@@ -37,9 +38,9 @@ export async function get24hrTicker(symbol?: string): Promise<Ticker24hr | Ticke
 
 /**
  * Fetches account information using API key and secret.
- * Requires API key with "Enable Reading" permission.
- * @param apiKey Your Binance API key.
- * @param secretKey Your Binance API secret key.
+ * Requires API key with "Enable Reading" permission on Testnet.
+ * @param apiKey Your Binance Testnet API key.
+ * @param secretKey Your Binance Testnet API secret key.
  * @returns AccountInformation object.
  */
 export async function getAccountInformation(apiKey: string, secretKey: string): Promise<AccountInformation> {
