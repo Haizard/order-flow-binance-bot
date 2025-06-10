@@ -9,10 +9,12 @@ export const GLOBAL_DIP_PERCENTAGE = -4; // Set back to a realistic strategy val
 export const GLOBAL_BUY_AMOUNT_USD = 50;
 
 /** Activate trailing stop when profit reaches this percentage (e.g., 2.5 for 2.5%). */
-export const GLOBAL_TRAIL_ACTIVATION_PROFIT = 2.5;
+// TEMPORARILY SET LOW TO CLOSE TRADES
+export const GLOBAL_TRAIL_ACTIVATION_PROFIT = 0.01;
 
 /** Trailing stop loss distance from the high price, as a percentage (e.g., 0.8 for 0.8%). */
-export const GLOBAL_TRAIL_DELTA = 0.8;
+// TEMPORARILY SET LOW TO CLOSE TRADES
+export const GLOBAL_TRAIL_DELTA = 0.01;
 
 /**
  * List of market symbols the bot and dashboard will monitor.
