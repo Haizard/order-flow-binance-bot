@@ -8,18 +8,22 @@ import Image from 'next/image';
 import { get24hrTicker } from '@/services/binance';
 import type { Ticker24hr } from '@/types/binance';
 
+export const dynamic = 'force-dynamic'; // Ensure the page is always dynamically rendered
+
 async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
+  console.log(`[${new Date().toISOString()}] DashboardPage: getMarketData called for symbols:`, symbols);
   const tickerPromises = symbols.map(async (symbol) => {
     try {
       const tickerData = await get24hrTicker(symbol.toUpperCase());
       if (Array.isArray(tickerData)) {
-        console.warn(`get24hrTicker returned an array for a single symbol request: ${symbol}. This is unexpected.`);
-        return null;
+        console.warn(`[${new Date().toISOString()}] DashboardPage: get24hrTicker returned an array for single symbol request: ${symbol}. This is unexpected.`);
+        return null; // Or handle as an error specific to this context
       }
+      console.log(`[${new Date().toISOString()}] DashboardPage: Successfully fetched market data for ${symbol}`);
       return tickerData as Ticker24hr;
     } catch (error) {
-      console.error(`Failed to fetch market data for symbol ${symbol}:`, error instanceof Error ? error.message : String(error));
-      return null;
+      console.error(`[${new Date().toISOString()}] DashboardPage: Failed to fetch market data for symbol ${symbol}:`, error instanceof Error ? error.message : String(error));
+      return null; // Continue with other symbols
     }
   });
 
@@ -28,7 +32,6 @@ async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
 }
 
 // Placeholder active trades structure for dashboard summary P&L calculation.
-// The bot isn't creating these trades yet, but we use them to show live P&L.
 const placeholderActiveTradesForSummary = [
   { symbol: 'BTCUSDT', buyPrice: 60000, quantity: 0.1, baseAsset: 'BTC', quoteAsset: 'USDT' },
   { symbol: 'ETHUSDT', buyPrice: 3000, quantity: 1, baseAsset: 'ETH', quoteAsset: 'USDT' },
@@ -36,6 +39,7 @@ const placeholderActiveTradesForSummary = [
 ];
 
 async function calculateTotalPnl(): Promise<number> {
+  console.log(`[${new Date().toISOString()}] DashboardPage: calculateTotalPnl called`);
   let totalPnl = 0;
   for (const trade of placeholderActiveTradesForSummary) {
     try {
@@ -43,16 +47,22 @@ async function calculateTotalPnl(): Promise<number> {
       if (tickerData && !Array.isArray(tickerData)) {
         const currentPrice = parseFloat(tickerData.lastPrice);
         totalPnl += (currentPrice - trade.buyPrice) * trade.quantity;
+        console.log(`[${new Date().toISOString()}] DashboardPage: Calculated P&L for ${trade.symbol}, current price: ${currentPrice}`);
+      } else {
+        console.warn(`[${new Date().toISOString()}] DashboardPage: No ticker data for P&L calculation (${trade.symbol})`);
       }
     } catch (error) {
-      console.error(`Failed to fetch ticker for P&L calculation (${trade.symbol}):`, error);
+      console.error(`[${new Date().toISOString()}] DashboardPage: Failed to fetch ticker for P&L calculation (${trade.symbol}):`, error instanceof Error ? error.message : String(error));
     }
   }
+  console.log(`[${new Date().toISOString()}] DashboardPage: Total P&L calculated: ${totalPnl}`);
   return totalPnl;
 }
 
 
 export default async function DashboardPage() {
+  console.log(`[${new Date().toISOString()}] DashboardPage: Component rendering started.`);
+
   const totalPnl = await calculateTotalPnl();
   const activeTradesCount = placeholderActiveTradesForSummary.length;
   const botStatus = "Active"; 
@@ -64,6 +74,8 @@ export default async function DashboardPage() {
   const potentialDipBuys = marketData.filter(
     (ticker) => parseFloat(ticker.priceChangePercent) <= dipPercentageThreshold
   );
+
+  console.log(`[${new Date().toISOString()}] DashboardPage: Data fetching complete. Rendering UI.`);
 
   return (
     <div className="flex flex-col gap-8">
