@@ -17,7 +17,7 @@ async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
       const tickerData = await get24hrTicker(symbol.toUpperCase());
       if (Array.isArray(tickerData)) {
         console.warn(`[${new Date().toISOString()}] DashboardPage: get24hrTicker returned an array for single symbol request: ${symbol}. This is unexpected.`);
-        return null; // Or handle as an error specific to this context
+        return null; 
       }
       console.log(`[${new Date().toISOString()}] DashboardPage: Successfully fetched market data for ${symbol}`);
       return tickerData as Ticker24hr;
@@ -86,14 +86,14 @@ export default async function DashboardPage() {
             title="Total P&L"
             value={`${totalPnl >= 0 ? '+' : ''}$${totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             icon={DollarSign}
-            description="Overall P&L from displayed placeholder active trades (prices and P&L are live, refreshed periodically)."
+            description="P&L from placeholder trades, calculated with live prices. Auto-refreshes."
             className={`shadow-md ${totalPnl >=0 ? 'text-accent-foreground' : 'text-destructive'}`}
           />
           <MetricCard
             title="Active Trades"
             value={activeTradesCount.toString()}
             icon={ListChecks}
-            description="Number of displayed placeholder open positions (prices and P&L are live, refreshed periodically)."
+            description="Number of placeholder open positions. Prices and P&L are live. Auto-refreshes."
             className="shadow-md"
           />
           <MetricCard
@@ -110,7 +110,7 @@ export default async function DashboardPage() {
         <CardHeader className="px-0 pt-0 pb-4">
           <CardTitle className="text-2xl font-semibold tracking-tight font-headline">Market Overview</CardTitle>
           <CardDescription className="flex items-center text-xs text-muted-foreground">
-            <Info className="h-3 w-3 mr-1.5" /> Live market data, refreshed periodically. Some symbols may be unavailable on Testnet.
+            <Info className="h-3 w-3 mr-1.5" /> Live market data. Auto-refreshes periodically. Some symbols may be unavailable on Testnet.
           </CardDescription>
         </CardHeader>
         {marketData.length > 0 ? (
@@ -139,7 +139,7 @@ export default async function DashboardPage() {
                  Potential Dip Buys (24hr ≤ {dipPercentageThreshold}%)
             </CardTitle>
             <CardDescription className="flex items-center text-xs text-muted-foreground">
-                <Info className="h-3 w-3 mr-1.5" /> Based on live market data, refreshed periodically.
+                <Info className="h-3 w-3 mr-1.5" /> Based on live market data. Auto-refreshes periodically.
             </CardDescription>
         </CardHeader>
         {marketData.length > 0 ? ( potentialDipBuys.length > 0 ? (

@@ -2,6 +2,7 @@
 
 import * as React from 'react';
 import type { ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   SidebarProvider,
   Sidebar,
@@ -16,7 +17,7 @@ import { Logo } from '@/components/logo';
 import { MainNav } from '@/components/main-nav';
 import { UserNav } from '@/components/user-nav';
 import { Button } from '@/components/ui/button';
-import { Moon, Sun } from 'lucide-react'; // Assuming you might want a theme toggle
+import { Moon, Sun } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 // A simple theme toggle example - in a real app, this would use context/state management
@@ -41,6 +42,17 @@ function ThemeToggle() {
 
 
 export default function AppLayout({ children }: { children: ReactNode }) {
+  const router = useRouter();
+
+  React.useEffect(() => {
+    const intervalId = setInterval(() => {
+      router.refresh();
+      console.log(`[${new Date().toISOString()}] AppLayout: router.refresh() called for auto-update.`);
+    }, 5000); // Refresh every 5 seconds
+
+    return () => clearInterval(intervalId); // Clear interval on component unmount
+  }, [router]);
+
   return (
     <SidebarProvider defaultOpen>
       <Sidebar variant="sidebar" collapsible="icon" className="border-r">

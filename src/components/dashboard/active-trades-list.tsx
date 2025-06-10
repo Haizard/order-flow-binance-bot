@@ -90,7 +90,7 @@ export async function ActiveTradesList() {
         <CardDescription className="space-y-1">
           <span className="flex items-center text-xs text-muted-foreground">
             <Info className="h-3 w-3 mr-1.5 flex-shrink-0" />
-            Overview of displayed placeholder open positions. P&amp;L is calculated using live market prices, refreshed periodically.
+            Overview of placeholder open positions. P&L is calculated using live market prices. Auto-refreshes.
           </span>
           {hasFetchError && (
             <span className="text-destructive-foreground/80 text-xs block flex items-center">
