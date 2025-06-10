@@ -17,7 +17,7 @@ export async function get24hrTicker(symbol?: string): Promise<Ticker24hr | Ticke
   }
 
   try {
-    const response = await fetch(url, { next: { revalidate: 60 } }); // Revalidate every 60 seconds
+    const response = await fetch(url, { next: { revalidate: 10 } }); // Revalidate every 10 seconds
 
     if (!response.ok) {
       let parsedErrorData: any = {};

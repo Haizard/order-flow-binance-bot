@@ -1,5 +1,5 @@
 
-import { Bitcoin, TrendingUp, TrendingDown, Hourglass, AlertTriangle, Activity } from 'lucide-react';
+import { Bitcoin, TrendingUp, TrendingDown, Hourglass, AlertTriangle, Activity, Info } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -8,12 +8,12 @@ import type { Ticker24hr } from '@/types/binance';
 
 interface PlaceholderTrade {
   id: string;
-  symbol: string; // e.g., BTCUSDT (Binance API format)
-  baseAsset: string; // e.g., BTC
-  quoteAsset: string; // e.g., USDT
+  symbol: string; 
+  baseAsset: string; 
+  quoteAsset: string; 
   buyPrice: number;
   quantity: number;
-  status: 'PURCHASED' | 'TRAILING'; // Status remains placeholder
+  status: 'PURCHASED' | 'TRAILING'; 
 }
 
 interface ProcessedTrade extends PlaceholderTrade {
@@ -22,8 +22,6 @@ interface ProcessedTrade extends PlaceholderTrade {
   pnlPercentage: number;
 }
 
-// Placeholder trade data - these are the trades the bot "thinks" it has.
-// The P&L for these will be calculated with live prices.
 const placeholderTradesSetup: PlaceholderTrade[] = [
   { id: '1', symbol: 'BTCUSDT', baseAsset: 'BTC', quoteAsset: 'USDT', buyPrice: 60000, quantity: 0.1, status: 'TRAILING' },
   { id: '2', symbol: 'ETHUSDT', baseAsset: 'ETH', quoteAsset: 'USDT', buyPrice: 3000, quantity: 1, status: 'PURCHASED' },
@@ -46,13 +44,10 @@ async function fetchActiveTradesData(): Promise<ProcessedTrade[]> {
           pnlPercentage,
         });
       } else {
-        // Handle case where ticker data might not be found (e.g. delisted symbol)
-        // Show with 0 P&L if live price isn't available
         processedTrades.push({ ...trade, currentPrice: trade.buyPrice, pnl: 0, pnlPercentage: 0 });
       }
     } catch (error) {
       console.error(`Failed to fetch ticker data for ${trade.symbol}:`, error);
-      // Add trade with zero P&L if data fetch fails
       processedTrades.push({ ...trade, currentPrice: trade.buyPrice, pnl: 0, pnlPercentage: 0 });
     }
   }
@@ -90,10 +85,12 @@ export async function ActiveTradesList() {
     <Card>
       <CardHeader>
         <CardTitle>Active Trades</CardTitle>
-        <CardDescription>
-          Overview of displayed placeholder open positions. P&amp;L is calculated using live market prices.
+        <CardDescription className="space-y-1">
+          <span>
+            Overview of displayed placeholder open positions. P&amp;L is calculated using live market prices, refreshed periodically.
+          </span>
           {hasFetchError && (
-            <span className="text-destructive-foreground/80 text-xs block mt-1 flex items-center">
+            <span className="text-destructive-foreground/80 text-xs block flex items-center">
               <AlertTriangle className="h-3 w-3 mr-1" />
               Some P&L data might be outdated or using fallback values due to fetching issues.
             </span>
