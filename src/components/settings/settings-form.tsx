@@ -34,15 +34,14 @@ const settingsFormSchema = z.object({
 
 export type SettingsFormValues = z.infer<typeof settingsFormSchema>;
 
-export const formDefaultValues: SettingsFormValues = {
+export const formDefaultValues: Omit<SettingsFormValues, 'userId'> = {
   ...defaultSettingsValues,
-  userId: DEMO_USER_ID,
 };
 
 export function SettingsForm() {
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
-    defaultValues: formDefaultValues,
+    defaultValues: { ...formDefaultValues, userId: DEMO_USER_ID }, // Add DEMO_USER_ID here
     mode: "onChange",
   });
 
@@ -57,8 +56,8 @@ export function SettingsForm() {
       try {
         console.log(`[${new Date().toISOString()}] SettingsForm: Attempting to load settings for user: ${DEMO_USER_ID}...`);
         const savedSettings = await getSettings(DEMO_USER_ID);
-        form.reset(savedSettings);
-        console.log(`[${new Date().toISOString()}] SettingsForm: Settings loaded and form reset for user ${DEMO_USER_ID}.`, {apiKeyPresent: !!savedSettings.binanceApiKey});
+        form.reset(savedSettings); // savedSettings already includes userId
+        console.log(`[${new Date().toISOString()}] SettingsForm: Settings loaded and form reset for user ${DEMO_USER_ID}. API Key present after load: ${!!savedSettings.binanceApiKey}`);
       } catch (error) {
         console.error(`[${new Date().toISOString()}] SettingsForm: Failed to load settings for user ${DEMO_USER_ID}:`, error);
         toast({
@@ -107,6 +106,7 @@ export function SettingsForm() {
 
   async function onSubmit(data: SettingsFormValues) {
     setIsSaving(true);
+    console.log(`[${new Date().toISOString()}] SettingsForm: Submitting data to saveSettings:`, { userId: data.userId, apiKeyLength: data.binanceApiKey?.length || 0, secretKeyLength: data.binanceSecretKey?.length || 0 });
     console.log(`[${new Date().toISOString()}] SettingsForm: Attempting to save API keys for user ${data.userId}.`);
     try {
       await saveSettings(data.userId, data);
@@ -116,7 +116,7 @@ export function SettingsForm() {
         variant: "default",
         className: "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700 text-green-800 dark:text-green-300",
       });
-      console.log(`[${new Date().toISOString()}] SettingsForm: API keys saved successfully for user ${data.userId}.`);
+      console.log(`[${new Date().toISOString()}] SettingsForm: API keys presumed saved successfully for user ${data.userId} (toast shown).`);
     } catch (error) {
       console.error(`[${new Date().toISOString()}] SettingsForm: Error saving API keys for user ${data.userId}:`, error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred while saving.";

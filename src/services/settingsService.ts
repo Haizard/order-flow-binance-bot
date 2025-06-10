@@ -28,7 +28,7 @@ if (!MONGODB_URI) {
 
 
 const DB_NAME = process.env.MONGODB_DB_NAME || 'binanceTrailblazerDb';
-const COLLECTION_NAME = 'userApiSettings'; // Changed collection name to reflect content
+const COLLECTION_NAME = 'userApiSettings'; 
 
 interface CustomGlobal extends NodeJS.Global {
   _mongoSettingsClientPromise?: Promise<MongoClient>;
@@ -85,10 +85,11 @@ export async function getSettings(userId: string): Promise<SettingsFormValues> {
   const settingsDoc = await settingsCollection.findOne({ userId: userId });
 
   if (settingsDoc) {
-    console.log(`[${logTimestamp}] settingsService (MongoDB): Found existing API key settings for user ${userId}.`);
+    const apiKeyPresent = !!settingsDoc.binanceApiKey && settingsDoc.binanceApiKey.length > 0;
+    const secretKeyPresent = !!settingsDoc.binanceSecretKey && settingsDoc.binanceSecretKey.length > 0;
+    console.log(`[${logTimestamp}] settingsService (MongoDB): Found existing API key settings for user ${userId}. API Key Present: ${apiKeyPresent}, Secret Key Present: ${secretKeyPresent}`);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { _id, ...settingsWithoutMongoId } = settingsDoc as WithId<SettingsFormValues>;
-    // Ensure defaults for any potentially missing API key fields if schema changed
     return { ...defaultSettingsValues, ...settingsWithoutMongoId, userId: userId };
   } else {
     console.log(`[${logTimestamp}] settingsService (MongoDB): No API key settings found for user ${userId}. Returning new default settings object for this user.`);
@@ -112,19 +113,22 @@ export async function saveSettings(userId: string, settings: SettingsFormValues)
     console.error(`[${logTimestamp}] settingsService.saveSettings (MongoDB): Mismatch between parameter userId ('${userId}') and settings.userId ('${settings.userId}').`);
     throw new Error('User ID mismatch in saveSettings.');
   }
-  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) called for user: ${userId} with API key settings:`, { binanceApiKeyProvided: !!settings.binanceApiKey }); // Avoid logging keys
+  
+  const apiKeyProvided = !!settings.binanceApiKey && settings.binanceApiKey.length > 0;
+  const secretKeyProvided = !!settings.binanceSecretKey && settings.binanceSecretKey.length > 0;
+  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) called for user: ${userId}. API Key Provided: ${apiKeyProvided}, Secret Key Provided: ${secretKeyProvided}`);
+  
   const settingsCollection = await getSettingsCollection();
 
-  // Destructure to ensure only fields present in SettingsFormValues are set
   const { userId: settingsUserId, binanceApiKey, binanceSecretKey } = settings;
   const settingsDataToSet = {
-    binanceApiKey,
-    binanceSecretKey,
+    binanceApiKey: binanceApiKey || "", // Ensure empty string if undefined/null
+    binanceSecretKey: binanceSecretKey || "", // Ensure empty string if undefined/null
   };
 
   const updateOperation: UpdateFilter<SettingsFormValues> = {
-    $set: settingsDataToSet, // Only set API keys
-    $setOnInsert: { userId: settingsUserId } // Set userId only on insert
+    $set: settingsDataToSet, 
+    $setOnInsert: { userId: settingsUserId } 
   };
 
   const result = await settingsCollection.updateOne(
@@ -133,9 +137,14 @@ export async function saveSettings(userId: string, settings: SettingsFormValues)
     { upsert: true }
   );
 
-  if (result.modifiedCount > 0 || result.upsertedCount > 0) {
-    console.log(`[${logTimestamp}] settingsService (MongoDB): API Key settings for user ${userId} saved successfully. Modified: ${result.modifiedCount}, Upserted: ${result.upsertedCount}`);
-  } else {
-    console.warn(`[${logTimestamp}] settingsService (MongoDB): API Key settings save operation for user ${userId} did not modify or upsert any document.`);
+  if (result.upsertedCount > 0) {
+    console.log(`[${logTimestamp}] settingsService (MongoDB): API Key settings for user ${userId} UPSERTED successfully.`);
+  } else if (result.modifiedCount > 0) {
+     console.log(`[${logTimestamp}] settingsService (MongoDB): API Key settings for user ${userId} MODIFIED successfully.`);
+  } else if (result.matchedCount > 0 && result.modifiedCount === 0) {
+    console.log(`[${logTimestamp}] settingsService (MongoDB): API Key settings for user ${userId} matched but NOT modified (likely same values).`);
+  }
+   else {
+    console.warn(`[${logTimestamp}] settingsService (MongoDB): API Key settings save operation for user ${userId} did not result in an obvious change. Matched: ${result.matchedCount}, Modified: ${result.modifiedCount}, Upserted: ${result.upsertedCount > 0}`);
   }
 }

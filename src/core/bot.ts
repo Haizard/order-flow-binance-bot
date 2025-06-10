@@ -3,7 +3,7 @@
 /**
  * @fileOverview Core bot logic for making trading decisions using a global strategy.
  */
-import type { SettingsFormValues } from '@/components/settings/settings-form';
+import type { SettingsFormValues } from '@/components/settings/settings-form'; // Assuming this type now only contains API keys and userId
 import { getSettings } from '@/services/settingsService';
 import type { Ticker24hr } from '@/types/binance';
 import type { Trade } from '@/types/trade';
@@ -14,7 +14,7 @@ import {
     GLOBAL_BUY_AMOUNT_USD,
     GLOBAL_TRAIL_ACTIVATION_PROFIT,
     GLOBAL_TRAIL_DELTA,
-    MONITORED_MARKET_SYMBOLS // Import the new symbols list
+    MONITORED_MARKET_SYMBOLS
 } from '@/config/bot-strategy';
 
 // Placeholder for current user ID - replace with actual auth system integration if not passed in
@@ -28,15 +28,19 @@ function getAssetsFromSymbol(symbol: string): { baseAsset: string, quoteAsset: s
             return { baseAsset: symbol.slice(0, -quote.length), quoteAsset: quote };
         }
     }
-    if (symbol.length > 3) {
-        const potentialBase = symbol.substring(0, symbol.length - 3);
-        const potentialQuote = symbol.substring(symbol.length - 3);
-        if (potentialQuote.length === 3) return {baseAsset: potentialBase, quoteAsset: potentialQuote};
+    // Fallback for other common quote lengths like BTC, ETH etc.
+    if (symbol.length > 3) { // Check if symbol is long enough
+        const potentialBase3 = symbol.substring(0, symbol.length - 3);
+        const potentialQuote3 = symbol.substring(symbol.length - 3);
+        if (potentialQuote3.length === 3) return {baseAsset: potentialBase3, quoteAsset: potentialQuote3};
 
-        const potentialBase2 = symbol.substring(0, symbol.length - 4);
-        const potentialQuote2 = symbol.substring(symbol.length - 4);
-         if (potentialQuote2.length === 4) return {baseAsset: potentialBase2, quoteAsset: potentialQuote2};
+        if (symbol.length > 4) { // Check for 4-char quote assets
+            const potentialBase4 = symbol.substring(0, symbol.length - 4);
+            const potentialQuote4 = symbol.substring(symbol.length - 4);
+            if (potentialQuote4.length === 4) return {baseAsset: potentialBase4, quoteAsset: potentialQuote4};
+        }
     }
+    // Default/Gross fallback - might be inaccurate for some pairs
     return { baseAsset: symbol.length > 3 ? symbol.slice(0, 3) : symbol, quoteAsset: symbol.length > 3 ? symbol.slice(3) : 'UNKNOWN' };
 }
 
@@ -47,65 +51,64 @@ interface UserApiKeys {
 
 export async function runBotCycle(
   userIdInput: string,
-  userApiSettings?: UserApiKeys, // Only API keys are needed from user settings now
+  userApiSettings?: UserApiKeys, 
   marketData?: Ticker24hr[]
 ): Promise<void> {
   const botRunTimestamp = new Date().toISOString();
   const userId = userIdInput || DEMO_USER_ID_BOT_FALLBACK;
 
-  let apiKeys: UserApiKeys;
+  let apiKeys: UserApiKeys = {}; // Initialize to empty
 
   if (userApiSettings && userApiSettings.binanceApiKey && userApiSettings.binanceSecretKey) {
     apiKeys = userApiSettings;
-    console.log(`[${botRunTimestamp}] Bot cycle using PASSED-IN API keys for user ${userId}.`);
+    console.log(`[${botRunTimestamp}] Bot (User ${userId}): Using PASSED-IN API keys. API Key Present: ${!!apiKeys.binanceApiKey}, Secret Key Present: ${!!apiKeys.binanceSecretKey}`);
   } else {
+    console.log(`[${botRunTimestamp}] Bot (User ${userId}): Passed-in API keys not available or incomplete. Attempting to fetch from database.`);
     try {
-      const fullUserSettings = await getSettings(userId); // Fetches user's API keys
-      apiKeys = {
-        binanceApiKey: fullUserSettings.binanceApiKey,
-        binanceSecretKey: fullUserSettings.binanceSecretKey,
-      };
-      if (apiKeys.binanceApiKey && apiKeys.binanceSecretKey) {
-        console.log(`[${botRunTimestamp}] Bot cycle using FETCHED API keys from database for user ${userId}.`);
+      const fullUserSettingsFromDb = await getSettings(userId); 
+      if (fullUserSettingsFromDb.binanceApiKey && fullUserSettingsFromDb.binanceSecretKey) {
+        apiKeys = {
+          binanceApiKey: fullUserSettingsFromDb.binanceApiKey,
+          binanceSecretKey: fullUserSettingsFromDb.binanceSecretKey,
+        };
+        console.log(`[${botRunTimestamp}] Bot (User ${userId}): Successfully FETCHED API keys from database. API Key Present: ${!!apiKeys.binanceApiKey}, Secret Key Present: ${!!apiKeys.binanceSecretKey}`);
       } else {
-        console.warn(`[${botRunTimestamp}] Bot: User ${userId} API keys not found in database or incomplete. Will skip trading actions.`);
-        apiKeys = {}; // Ensure apiKeys is an empty object if keys are missing/incomplete
+        console.warn(`[${botRunTimestamp}] Bot (User ${userId}): API keys not found or incomplete in database (after fetch). Will skip trading actions.`);
+        // apiKeys remains {}
       }
     } catch (error) {
-      console.error(`[${botRunTimestamp}] Bot: CRITICAL - Failed to load API key settings from database for user ${userId}. Error:`, error instanceof Error ? error.message : String(error));
-      apiKeys = {}; // No API keys, bot won't trade for this user
+      console.error(`[${botRunTimestamp}] Bot (User ${userId}): CRITICAL - Error loading API key settings from database. Error:`, error instanceof Error ? error.message : String(error));
+      // apiKeys remains {}
     }
   }
 
-  // Centralized logging of global strategy parameters being used for this cycle
   console.log(`[${botRunTimestamp}] Bot cycle STARTED for user ${userId}. Global Strategy: Dip: ${GLOBAL_DIP_PERCENTAGE}%, Buy Amount: ${GLOBAL_BUY_AMOUNT_USD}, Trail Profit: ${GLOBAL_TRAIL_ACTIVATION_PROFIT}%, Trail Delta: ${GLOBAL_TRAIL_DELTA}%`);
 
   if (!apiKeys.binanceApiKey || !apiKeys.binanceSecretKey) {
-    console.warn(`[${botRunTimestamp}] Bot: User ${userId} is missing API keys or they were not loaded. Skipping trading actions for this user.`);
+    console.warn(`[${botRunTimestamp}] Bot (User ${userId}): FINAL CHECK - Missing API keys. Skipping trading actions for this user.`);
     return;
   }
+  console.log(`[${botRunTimestamp}] Bot (User ${userId}): API keys are PRESENT. Proceeding with trading actions.`);
 
-  // Fetch market data if not provided
+
   let liveMarketData: Ticker24hr[];
   if (marketData) {
     liveMarketData = marketData;
   } else {
-    // const marketSymbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "SOLUSDT"]; // This line is removed
     try {
-      const tickerPromises = MONITORED_MARKET_SYMBOLS.map(symbol => get24hrTicker(symbol) as Promise<Ticker24hr | null>); // Admin/System API key could be used here
+      const tickerPromises = MONITORED_MARKET_SYMBOLS.map(symbol => get24hrTicker(symbol) as Promise<Ticker24hr | null>);
       const results = await Promise.all(tickerPromises);
       liveMarketData = results.filter(item => item !== null && !Array.isArray(item)) as Ticker24hr[];
     } catch (error) {
-      console.error(`[${botRunTimestamp}] Bot: Failed to fetch live market data for independent cycle (user ${userId}):`, error);
-      return; // Cannot proceed without market data
+      console.error(`[${botRunTimestamp}] Bot (User ${userId}): Failed to fetch live market data for independent cycle:`, error);
+      return; 
     }
   }
-
 
   const activeTrades = await tradeService.getActiveTrades(userId);
   const activeTradeSymbols = activeTrades.map(t => t.symbol);
 
-  console.log(`[${botRunTimestamp}] Bot (User ${userId}): Checking for potential buys using GLOBAL_DIP_PERCENTAGE: ${GLOBAL_DIP_PERCENTAGE}%...`);
+  console.log(`[${botRunTimestamp}] Bot (User ${userId}): Checking for potential buys (Dip ≤ ${GLOBAL_DIP_PERCENTAGE}%)...`);
   for (const ticker of liveMarketData) {
     const priceChangePercent = parseFloat(ticker.priceChangePercent);
     if (priceChangePercent <= GLOBAL_DIP_PERCENTAGE) {
@@ -124,6 +127,11 @@ export async function runBotCycle(
           // IMPORTANT: Actual buy order placement would use the USER'S API keys (apiKeys.binanceApiKey, apiKeys.binanceSecretKey).
           // This needs to be integrated into an actual Binance order placement function.
           // For simulation, we just create a trade record.
+          // --- SIMULATED BINANCE BUY ORDER ---
+          // const buyOrderResult = await placeBuyOrder(apiKeys.binanceApiKey, apiKeys.binanceSecretKey, ticker.symbol, quantityToBuy);
+          // console.log(`[${botRunTimestamp}] Bot (User ${userId}): ACTUAL BUY ORDER for ${ticker.symbol} would be placed here using user's keys. Result: ${buyOrderResult}`);
+          // --- END SIMULATION ---
+
           await tradeService.createTrade({
             userId: userId,
             symbol: ticker.symbol,
@@ -132,9 +140,9 @@ export async function runBotCycle(
             buyPrice: currentPrice,
             quantity: quantityToBuy,
           });
-          console.log(`[${botRunTimestamp}] Bot (User ${userId}): SIMULATED BUY of ${quantityToBuy.toFixed(6)} ${baseAsset} (${ticker.symbol}) at $${currentPrice.toFixed(2)} for $${GLOBAL_BUY_AMOUNT_USD}. (Using user's API keys)`);
+          console.log(`[${botRunTimestamp}] Bot (User ${userId}): DB TRADE RECORD CREATED for BUY of ${quantityToBuy.toFixed(6)} ${baseAsset} (${ticker.symbol}) at $${currentPrice.toFixed(2)} for $${GLOBAL_BUY_AMOUNT_USD}.`);
         } catch (error) {
-          console.error(`[${botRunTimestamp}] Bot (User ${userId}): Error creating trade for ${ticker.symbol}:`, error);
+          console.error(`[${botRunTimestamp}] Bot (User ${userId}): Error creating trade record for ${ticker.symbol}:`, error);
         }
       }
     }
@@ -144,7 +152,6 @@ export async function runBotCycle(
   for (const trade of activeTrades) {
     let currentTickerData: Ticker24hr | null = null;
     try {
-      // Price checks typically don't need user API keys if public ticker endpoint is used (admin key could be used here)
       const tickerResult = await get24hrTicker(trade.symbol);
       currentTickerData = Array.isArray(tickerResult) ? tickerResult.find(t => t.symbol === trade.symbol) || null : tickerResult;
 
@@ -173,14 +180,14 @@ export async function runBotCycle(
         }
       }
     } else if (trade.status === 'ACTIVE_TRAILING') {
-      if (!trade.trailingHighPrice) {
-        console.warn(`[${botRunTimestamp}] Bot (User ${userId}): Trade ${trade.symbol} (ID: ${trade.id}) is TRAILING but has no trailingHighPrice. Resetting with current price.`);
+      if (trade.trailingHighPrice === undefined || trade.trailingHighPrice === null) { // Check for undefined or null
+        console.warn(`[${botRunTimestamp}] Bot (User ${userId}): Trade ${trade.symbol} (ID: ${trade.id}) is TRAILING but has no/invalid trailingHighPrice (${trade.trailingHighPrice}). Resetting with current price $${currentPrice.toFixed(2)}.`);
         try {
             await tradeService.updateTrade(userId, trade.id, { trailingHighPrice: currentPrice });
         } catch (error) {
-            console.error(`[${botRunTimestamp}] Bot (User ${userId}): Error updating trailingHighPrice for ${trade.id}:`, error);
+            console.error(`[${botRunTimestamp}] Bot (User ${userId}): Error updating/resetting trailingHighPrice for ${trade.id}:`, error);
         }
-        continue;
+        continue; 
       }
 
       let newHighPrice = trade.trailingHighPrice;
@@ -200,7 +207,11 @@ export async function runBotCycle(
         const pnl = (sellPrice - trade.buyPrice) * trade.quantity;
         const pnlPercentageValue = (trade.buyPrice * trade.quantity === 0) ? 0 : (pnl / (trade.buyPrice * trade.quantity)) * 100;
         try {
-          // IMPORTANT: Actual sell order placement would use USER'S API keys.
+          // --- SIMULATED BINANCE SELL ORDER ---
+          // const sellOrderResult = await placeSellOrder(apiKeys.binanceApiKey, apiKeys.binanceSecretKey, trade.symbol, trade.quantity);
+          // console.log(`[${botRunTimestamp}] Bot (User ${userId}): ACTUAL SELL ORDER for ${trade.symbol} would be placed here using user's keys. Result: ${sellOrderResult}`);
+          // --- END SIMULATION ---
+          
           await tradeService.updateTrade(userId, trade.id, {
             status: 'CLOSED_SOLD',
             sellPrice: sellPrice,
@@ -208,7 +219,7 @@ export async function runBotCycle(
             pnl: pnl,
             pnlPercentage: pnlPercentageValue,
           });
-          console.log(`[${botRunTimestamp}] Bot (User ${userId}): SIMULATED SELL (Trailing Stop) of ${trade.quantity.toFixed(6)} ${trade.baseAsset} (${trade.symbol}) ID: ${trade.id} at $${sellPrice.toFixed(2)}. P&L: $${pnl.toFixed(2)} (${pnlPercentageValue.toFixed(2)}%). Stop: $${trailStopPrice.toFixed(2)} (High: $${newHighPrice.toFixed(2)}) (Using user's API keys)`);
+          console.log(`[${botRunTimestamp}] Bot (User ${userId}): DB TRADE RECORD UPDATED for SELL (Trailing Stop) of ${trade.quantity.toFixed(6)} ${trade.baseAsset} (${trade.symbol}) ID: ${trade.id} at $${sellPrice.toFixed(2)}. P&L: $${pnl.toFixed(2)} (${pnlPercentageValue.toFixed(2)}%). Stop: $${trailStopPrice.toFixed(2)} (High: $${newHighPrice.toFixed(2)})`);
         } catch (error) {
           console.error(`[${botRunTimestamp}] Bot (User ${userId}): Error closing trade ${trade.id} via trailing stop:`, error);
            try {
