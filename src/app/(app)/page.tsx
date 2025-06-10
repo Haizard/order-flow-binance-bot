@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import Image from 'next/image';
 import { get24hrTicker } from '@/services/binance';
 import type { Ticker24hr } from '@/types/binance';
+import { defaultValues as defaultSettings } from '@/components/settings/settings-form'; // Import default settings
 
 export const dynamic = 'force-dynamic'; // Ensure the page is always dynamically rendered
 
@@ -17,7 +18,7 @@ async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
       const tickerData = await get24hrTicker(symbol.toUpperCase());
       if (Array.isArray(tickerData)) {
         console.warn(`[${new Date().toISOString()}] DashboardPage: get24hrTicker returned an array for single symbol request: ${symbol}. This is unexpected.`);
-        return null; 
+        return null;
       }
       console.log(`[${new Date().toISOString()}] DashboardPage: Successfully fetched market data for ${symbol}`);
       return tickerData as Ticker24hr;
@@ -65,17 +66,19 @@ export default async function DashboardPage() {
 
   const totalPnl = await calculateTotalPnl();
   const activeTradesCount = placeholderActiveTradesForSummary.length;
-  const botStatus = "Active"; 
+  const botStatus = "Active";
 
   const marketSymbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "LTCUSDT"];
   const marketData = await getMarketData(marketSymbols);
 
-  const dipPercentageThreshold = -4.0; 
+  // Use dipPercentage from default settings
+  const dipPercentageToUse = typeof defaultSettings.dipPercentage === 'number' ? defaultSettings.dipPercentage : -4.0;
+  
   const potentialDipBuys = marketData.filter(
-    (ticker) => parseFloat(ticker.priceChangePercent) <= dipPercentageThreshold
+    (ticker) => parseFloat(ticker.priceChangePercent) <= dipPercentageToUse
   );
 
-  console.log(`[${new Date().toISOString()}] DashboardPage: Data fetching complete. Rendering UI.`);
+  console.log(`[${new Date().toISOString()}] DashboardPage: Data fetching complete. Rendering UI. Dip threshold: ${dipPercentageToUse}%`);
 
   return (
     <div className="flex flex-col gap-8">
@@ -136,10 +139,10 @@ export default async function DashboardPage() {
          <CardHeader className="px-0 pt-0 pb-4">
             <CardTitle className="text-2xl font-semibold tracking-tight font-headline flex items-center">
                  <TrendingDown className="mr-2 h-6 w-6 text-primary" />
-                 Potential Dip Buys (24hr ≤ {dipPercentageThreshold}%)
+                 Potential Dip Buys (24hr ≤ {dipPercentageToUse}%)
             </CardTitle>
             <CardDescription className="flex items-center text-xs text-muted-foreground">
-                <Info className="h-3 w-3 mr-1.5" /> Based on live market data. Auto-refreshes periodically.
+                <Info className="h-3 w-3 mr-1.5" /> Based on live market data (using default settings). Auto-refreshes periodically.
             </CardDescription>
         </CardHeader>
         {marketData.length > 0 ? ( potentialDipBuys.length > 0 ? (
@@ -153,8 +156,8 @@ export default async function DashboardPage() {
             <CardContent className="pt-6">
               <div className="flex flex-col items-center justify-center py-10 text-center">
                 <SearchX className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No coins from the monitored list meet the dip criteria (≤ {dipPercentageThreshold}% in 24hr).</p>
-                <p className="text-xs text-muted-foreground mt-1">Market conditions may change or adjust dip settings.</p>
+                <p className="text-muted-foreground">No coins from the monitored list meet the dip criteria (≤ {dipPercentageToUse}% in 24hr) based on default settings.</p>
+                <p className="text-xs text-muted-foreground mt-1">Market conditions may change or adjust dip settings (currently using defaults).</p>
               </div>
             </CardContent>
           </Card>

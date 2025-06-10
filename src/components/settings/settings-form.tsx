@@ -37,7 +37,8 @@ const settingsFormSchema = z.object({
 
 type SettingsFormValues = z.infer<typeof settingsFormSchema>;
 
-const defaultValues: Partial<SettingsFormValues> = {
+// Export defaultValues so it can be imported by other components (e.g., DashboardPage)
+export const defaultValues: Partial<SettingsFormValues> = {
   binanceApiKey: "",
   binanceSecretKey: "",
   buyAmountUsd: 100,
@@ -85,11 +86,11 @@ export function SettingsForm() {
 
   function onSubmit(data: SettingsFormValues) {
     console.log("Saving settings:", data);
-    // Here you would typically save data.binanceApiKey and data.binanceSecretKey 
+    // Here you would typically save data.binanceApiKey and data.binanceSecretKey
     // to a secure backend if the user intends to persist them via the form,
     // separate from .env configurations.
     // For now, we just log and toast.
-    toast({ title: "Settings Action", description: "Settings form submitted. API keys from form (if any) are logged." });
+    toast({ title: "Settings Action", description: "Settings form submitted. API keys from form (if any) are logged. Settings are not yet persisted." });
   }
 
   return (
@@ -140,9 +141,9 @@ export function SettingsForm() {
                 </FormItem>
               )}
             />
-            <Button 
-              type="button" 
-              onClick={handleTestConnection} 
+            <Button
+              type="button"
+              onClick={handleTestConnection}
               disabled={isTestingConnection}
               variant="outline"
               className="w-full md:w-auto"
@@ -166,7 +167,7 @@ export function SettingsForm() {
               Bot Configuration
             </CardTitle>
             <CardDescription>
-              Define the parameters for your "Dip & Trail" trading strategy.
+              Define the parameters for your "Dip & Trail" trading strategy. These are currently default values.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -240,7 +241,7 @@ export function SettingsForm() {
               Bot Status
             </CardTitle>
             <CardDescription>
-              Enable or disable the trading bot.
+              Enable or disable the trading bot. This setting is not yet connected to live bot actions.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -268,7 +269,7 @@ export function SettingsForm() {
         </Card>
 
         <Button type="submit" size="lg" className="w-full md:w-auto">
-          <Zap className="mr-2 h-5 w-5" /> Save All Settings
+          <Zap className="mr-2 h-5 w-5" /> Save All Settings (Currently Logs to Console)
         </Button>
       </form>
     </Form>
