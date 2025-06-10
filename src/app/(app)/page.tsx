@@ -7,7 +7,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import Image from 'next/image';
 import { get24hrTicker } from '@/services/binance';
 import type { Ticker24hr } from '@/types/binance';
-import { defaultValues as defaultSettings } from '@/components/settings/settings-form'; // Import default settings
+import { defaultValues as defaultSettingsConfig } from '@/components/settings/settings-form';
+import type { SettingsFormValues } from '@/components/settings/settings-form';
+import { runBotCycle } from '@/core/bot';
+import * as tradeService from '@/services/tradeService';
+import type { Trade } from '@/types/trade';
 
 export const dynamic = 'force-dynamic'; // Ensure the page is always dynamically rendered
 
@@ -24,7 +28,7 @@ async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
       return tickerData as Ticker24hr;
     } catch (error) {
       console.error(`[${new Date().toISOString()}] DashboardPage: Failed to fetch market data for symbol ${symbol}:`, error instanceof Error ? error.message : String(error));
-      return null; // Continue with other symbols
+      return null;
     }
   });
 
@@ -32,31 +36,26 @@ async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
   return results.filter(item => item !== null) as Ticker24hr[];
 }
 
-// Placeholder active trades structure for dashboard summary P&L calculation.
-const placeholderActiveTradesForSummary = [
-  { symbol: 'BTCUSDT', buyPrice: 60000, quantity: 0.1, baseAsset: 'BTC', quoteAsset: 'USDT' },
-  { symbol: 'ETHUSDT', buyPrice: 3000, quantity: 1, baseAsset: 'ETH', quoteAsset: 'USDT' },
-  { symbol: 'SOLUSDT', buyPrice: 150, quantity: 10, baseAsset: 'SOL', quoteAsset: 'USDT' },
-];
-
-async function calculateTotalPnl(): Promise<number> {
-  console.log(`[${new Date().toISOString()}] DashboardPage: calculateTotalPnl called`);
+async function calculateTotalPnlFromBotTrades(): Promise<number> {
+  console.log(`[${new Date().toISOString()}] DashboardPage: calculateTotalPnlFromBotTrades called`);
   let totalPnl = 0;
-  for (const trade of placeholderActiveTradesForSummary) {
+  const activeTradesFromDb = await tradeService.getActiveTrades();
+
+  for (const trade of activeTradesFromDb) {
     try {
       const tickerData = await get24hrTicker(trade.symbol) as Ticker24hr | null;
       if (tickerData && !Array.isArray(tickerData)) {
         const currentPrice = parseFloat(tickerData.lastPrice);
         totalPnl += (currentPrice - trade.buyPrice) * trade.quantity;
-        console.log(`[${new Date().toISOString()}] DashboardPage: Calculated P&L for ${trade.symbol}, current price: ${currentPrice}`);
+        console.log(`[${new Date().toISOString()}] DashboardPage: Calculated P&L for bot trade ${trade.symbol}, current price: ${currentPrice}`);
       } else {
-        console.warn(`[${new Date().toISOString()}] DashboardPage: No ticker data for P&L calculation (${trade.symbol})`);
+        console.warn(`[${new Date().toISOString()}] DashboardPage: No ticker data for P&L calculation (bot trade ${trade.symbol})`);
       }
     } catch (error) {
-      console.error(`[${new Date().toISOString()}] DashboardPage: Failed to fetch ticker for P&L calculation (${trade.symbol}):`, error instanceof Error ? error.message : String(error));
+      console.error(`[${new Date().toISOString()}] DashboardPage: Failed to fetch ticker for P&L calculation (bot trade ${trade.symbol}):`, error instanceof Error ? error.message : String(error));
     }
   }
-  console.log(`[${new Date().toISOString()}] DashboardPage: Total P&L calculated: ${totalPnl}`);
+  console.log(`[${new Date().toISOString()}] DashboardPage: Total P&L from bot trades calculated: ${totalPnl}`);
   return totalPnl;
 }
 
@@ -64,21 +63,45 @@ async function calculateTotalPnl(): Promise<number> {
 export default async function DashboardPage() {
   console.log(`[${new Date().toISOString()}] DashboardPage: Component rendering started.`);
 
-  const totalPnl = await calculateTotalPnl();
-  const activeTradesCount = placeholderActiveTradesForSummary.length;
-  const botStatus = "Active";
-
-  const marketSymbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "LTCUSDT"];
+  const marketSymbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "SOLUSDT"]; // Added SOLUSDT for more variety
   const marketData = await getMarketData(marketSymbols);
 
-  // Use dipPercentage from default settings
-  const dipPercentageToUse = typeof defaultSettings.dipPercentage === 'number' ? defaultSettings.dipPercentage : -4.0;
+  // Use default settings and ensure bot is active for this cycle run
+  const botSettingsForCycle: SettingsFormValues = {
+    ...defaultSettingsConfig,
+    buyAmountUsd: defaultSettingsConfig.buyAmountUsd || 100,
+    dipPercentage: defaultSettingsConfig.dipPercentage || -4,
+    trailActivationProfit: defaultSettingsConfig.trailActivationProfit || 3,
+    trailDelta: defaultSettingsConfig.trailDelta || 1,
+    isBotActive: true, // Force bot to be active for demonstration of runBotCycle
+    binanceApiKey: defaultSettingsConfig.binanceApiKey || "",
+    binanceSecretKey: defaultSettingsConfig.binanceSecretKey || "",
+  };
+
+  // Run the bot cycle - this will potentially create/update trades in the DB
+  try {
+    await runBotCycle(botSettingsForCycle, marketData);
+  } catch (botError) {
+    console.error(`[${new Date().toISOString()}] DashboardPage: Error running bot cycle:`, botError);
+  }
+  
+  const totalPnl = await calculateTotalPnlFromBotTrades();
+  const activeTrades = await tradeService.getActiveTrades();
+  const activeTradesCount = activeTrades.length;
+  
+  // Bot status from settings (the actual setting, not forced one)
+  const botStatus = defaultSettingsConfig.isBotActive ? "Active" : "Inactive";
+
+
+  // Use dipPercentage from bot settings for display
+  const dipPercentageToUse = botSettingsForCycle.dipPercentage;
   
   const potentialDipBuys = marketData.filter(
-    (ticker) => parseFloat(ticker.priceChangePercent) <= dipPercentageToUse
+    (ticker) => parseFloat(ticker.priceChangePercent) <= dipPercentageToUse &&
+                 !activeTrades.some(at => at.symbol === ticker.symbol) // Only show if not already an active trade
   );
 
-  console.log(`[${new Date().toISOString()}] DashboardPage: Data fetching complete. Rendering UI. Dip threshold: ${dipPercentageToUse}%`);
+  console.log(`[${new Date().toISOString()}] DashboardPage: Data fetching and bot cycle complete. Rendering UI. Dip threshold: ${dipPercentageToUse}%`);
 
   return (
     <div className="flex flex-col gap-8">
@@ -86,24 +109,24 @@ export default async function DashboardPage() {
         <h1 className="text-3xl font-bold tracking-tight font-headline mb-6">Bot Performance</h1>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           <MetricCard
-            title="Total P&L"
+            title="Total P&L (Bot)"
             value={`${totalPnl >= 0 ? '+' : ''}$${totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             icon={DollarSign}
-            description="P&L from placeholder trades, calculated with live prices. Auto-refreshes."
+            description="P&L from bot-managed trades, live prices. Auto-refreshes."
             className={`shadow-md ${totalPnl >=0 ? 'text-accent-foreground' : 'text-destructive'}`}
           />
           <MetricCard
-            title="Active Trades"
+            title="Active Bot Trades"
             value={activeTradesCount.toString()}
             icon={ListChecks}
-            description="Number of placeholder open positions. Prices and P&L are live. Auto-refreshes."
+            description="Number of bot's open positions. Prices and P&L are live. Auto-refreshes."
             className="shadow-md"
           />
           <MetricCard
-            title="Bot Status"
+            title="Bot Status (Setting)"
             value={botStatus}
             icon={Bot}
-            description="Trading bot operational status (currently static)."
+            description="Bot's configured status from settings (not necessarily current cycle)."
             className={`shadow-md ${botStatus === "Active" ? "text-accent-foreground" : "text-destructive"}`}
           />
         </div>
@@ -142,7 +165,7 @@ export default async function DashboardPage() {
                  Potential Dip Buys (24hr ≤ {dipPercentageToUse}%)
             </CardTitle>
             <CardDescription className="flex items-center text-xs text-muted-foreground">
-                <Info className="h-3 w-3 mr-1.5" /> Based on live market data (using default settings). Auto-refreshes periodically.
+                <Info className="h-3 w-3 mr-1.5" /> Based on live market data & bot settings. Auto-refreshes periodically. Excludes already active bot trades.
             </CardDescription>
         </CardHeader>
         {marketData.length > 0 ? ( potentialDipBuys.length > 0 ? (
@@ -156,8 +179,8 @@ export default async function DashboardPage() {
             <CardContent className="pt-6">
               <div className="flex flex-col items-center justify-center py-10 text-center">
                 <SearchX className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No coins from the monitored list meet the dip criteria (≤ {dipPercentageToUse}% in 24hr) based on default settings.</p>
-                <p className="text-xs text-muted-foreground mt-1">Market conditions may change or adjust dip settings (currently using defaults).</p>
+                <p className="text-muted-foreground">No new coins from the monitored list meet the dip criteria (≤ {dipPercentageToUse}%) based on current bot settings and active trades.</p>
+                <p className="text-xs text-muted-foreground mt-1">Market conditions may change or adjust dip settings.</p>
               </div>
             </CardContent>
           </Card>

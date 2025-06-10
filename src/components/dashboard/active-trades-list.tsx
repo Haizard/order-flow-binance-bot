@@ -4,95 +4,90 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { get24hrTicker } from '@/services/binance';
+import * as tradeService from '@/services/tradeService';
 import type { Ticker24hr } from '@/types/binance';
+import type { Trade } from '@/types/trade';
 
-interface PlaceholderTrade {
-  id: string;
-  symbol: string; 
-  baseAsset: string; 
-  quoteAsset: string; 
-  buyPrice: number;
-  quantity: number;
-  status: 'PURCHASED' | 'TRAILING'; 
-}
-
-interface ProcessedTrade extends PlaceholderTrade {
+interface ProcessedTrade extends Trade {
   currentPrice: number;
-  pnl: number;
-  pnlPercentage: number;
+  pnl: number; // Overriding Trade's optional pnl to be required here after calculation
+  pnlPercentage: number; // Overriding Trade's optional pnlPercentage
 }
 
-const placeholderTradesSetup: PlaceholderTrade[] = [
-  { id: '1', symbol: 'BTCUSDT', baseAsset: 'BTC', quoteAsset: 'USDT', buyPrice: 60000, quantity: 0.1, status: 'TRAILING' },
-  { id: '2', symbol: 'ETHUSDT', baseAsset: 'ETH', quoteAsset: 'USDT', buyPrice: 3000, quantity: 1, status: 'PURCHASED' },
-  { id: '3', symbol: 'SOLUSDT', baseAsset: 'SOL', quoteAsset: 'USDT', buyPrice: 150, quantity: 10, status: 'TRAILING' },
-];
 
-async function fetchActiveTradesData(): Promise<ProcessedTrade[]> {
+async function fetchAndProcessActiveBotTrades(): Promise<ProcessedTrade[]> {
+  const botTrades = await tradeService.getActiveTrades();
   const processedTrades: ProcessedTrade[] = [];
-  for (const trade of placeholderTradesSetup) {
+  let hasFetchError = false;
+
+  for (const trade of botTrades) {
     try {
       const tickerData = await get24hrTicker(trade.symbol) as Ticker24hr | null;
       if (tickerData && !Array.isArray(tickerData)) {
         const currentPrice = parseFloat(tickerData.lastPrice);
-        const pnl = (currentPrice - trade.buyPrice) * trade.quantity;
-        const pnlPercentage = (pnl / (trade.buyPrice * trade.quantity)) * 100;
+        const pnlValue = (currentPrice - trade.buyPrice) * trade.quantity;
+        const pnlPercentageValue = (trade.buyPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.buyPrice * trade.quantity)) * 100;
         processedTrades.push({
           ...trade,
           currentPrice,
-          pnl,
-          pnlPercentage,
+          pnl: pnlValue,
+          pnlPercentage: pnlPercentageValue,
         });
       } else {
         // Fallback if ticker data is not available or in unexpected format
+        hasFetchError = true;
         processedTrades.push({ ...trade, currentPrice: trade.buyPrice, pnl: 0, pnlPercentage: 0 });
       }
     } catch (error) {
       console.error(`Failed to fetch ticker data for ${trade.symbol} in ActiveTradesList:`, error);
+      hasFetchError = true;
       // Fallback on error
       processedTrades.push({ ...trade, currentPrice: trade.buyPrice, pnl: 0, pnlPercentage: 0 });
     }
+  }
+  if(hasFetchError){
+      console.warn(`[${new Date().toISOString()}] ActiveTradesList: One or more trades had issues fetching live prices. Fallback data used.`);
   }
   return processedTrades;
 }
 
 
 export async function ActiveTradesList() {
-  const activeTrades = await fetchActiveTradesData();
+  const activeBotTrades = await fetchAndProcessActiveBotTrades();
 
-  if (activeTrades.length === 0) {
+  if (activeBotTrades.length === 0) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Active Trades</CardTitle>
-          <CardDescription>No active trades at the moment.</CardDescription>
+          <CardTitle>Active Bot Trades</CardTitle>
+          <CardDescription>No active bot-managed trades at the moment.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <Hourglass className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">Your active trades will appear here.</p>
+            <p className="text-muted-foreground">Your bot's active trades will appear here.</p>
           </div>
         </CardContent>
       </Card>
     );
   }
 
-  const hasFetchError = placeholderTradesSetup.length > 0 && activeTrades.some(at => 
-    at.pnl === 0 && at.currentPrice === at.buyPrice && 
-    placeholderTradesSetup.find(pt => pt.id === at.id && (pt.buyPrice !== 0 || pt.quantity !==0))
+  // Determine if any trades are using fallback data due to fetch errors
+  const hasAnyFetchError = activeBotTrades.some(at => 
+    at.pnl === 0 && at.currentPrice === at.buyPrice && (at.buyPrice !== 0 || at.quantity !==0) && at.status !== 'CLOSED_SOLD' && at.status !== 'CLOSED_ERROR'
   );
 
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Active Trades</CardTitle>
+        <CardTitle>Active Bot Trades</CardTitle>
         <CardDescription className="space-y-1">
           <span className="flex items-center text-xs text-muted-foreground">
             <Info className="h-3 w-3 mr-1.5 flex-shrink-0" />
-            Overview of placeholder open positions. P&L is calculated using live market prices. Auto-refreshes.
+            Bot-managed open positions. P&L calculated with live prices. Auto-refreshes.
           </span>
-          {hasFetchError && (
+          {hasAnyFetchError && (
             <span className="text-destructive-foreground/80 text-xs block flex items-center">
               <AlertTriangle className="h-3 w-3 mr-1" />
               Some P&L data might be outdated or using fallback values due to fetching issues.
@@ -107,12 +102,12 @@ export async function ActiveTradesList() {
               <TableHead>Symbol</TableHead>
               <TableHead className="text-right">Buy Price</TableHead>
               <TableHead className="text-right">Current Price</TableHead>
-              <TableHead className="text-right">P&amp;L ({activeTrades[0]?.quoteAsset || 'USD'})</TableHead>
+              <TableHead className="text-right">P&amp;L ({activeBotTrades[0]?.quoteAsset || 'USD'})</TableHead>
               <TableHead>Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {activeTrades.map((trade) => (
+            {activeBotTrades.map((trade) => (
               <TableRow key={trade.id}>
                 <TableCell>
                   <div className="flex items-center gap-2">
@@ -123,15 +118,15 @@ export async function ActiveTradesList() {
                     <span className="font-medium">{trade.baseAsset}/{trade.quoteAsset}</span>
                   </div>
                 </TableCell>
-                <TableCell className="text-right">${trade.buyPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 4})}</TableCell>
-                <TableCell className="text-right">${trade.currentPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 4})}</TableCell>
+                <TableCell className="text-right">${trade.buyPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: trade.buyPrice < 1 ? 8 : 4})}</TableCell>
+                <TableCell className="text-right">${trade.currentPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: trade.currentPrice < 1 ? 8 : 4})}</TableCell>
                 <TableCell className={`text-right font-medium ${trade.pnl >= 0 ? 'text-accent-foreground' : 'text-destructive'}`}>
                   ${trade.pnl.toFixed(2)} ({trade.pnlPercentage.toFixed(2)}%)
                   {trade.pnl >= 0 ? <TrendingUp className="inline ml-1 h-4 w-4" /> : <TrendingDown className="inline ml-1 h-4 w-4" />}
                 </TableCell>
                 <TableCell>
-                  <Badge variant={trade.status === 'TRAILING' ? 'default' : 'secondary'}>
-                    {trade.status}
+                  <Badge variant={trade.status === 'ACTIVE_TRAILING' ? 'default' : (trade.status === 'ACTIVE_BOUGHT' ? 'secondary' : 'outline')}>
+                    {trade.status.replace('ACTIVE_', '')}
                   </Badge>
                 </TableCell>
               </TableRow>
@@ -142,3 +137,4 @@ export async function ActiveTradesList() {
     </Card>
   );
 }
+
