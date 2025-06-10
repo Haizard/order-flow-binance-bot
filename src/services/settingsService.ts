@@ -1,11 +1,11 @@
 
 'use server';
 /**
- * @fileOverview SettingsService - Manages bot settings data using MongoDB, now user-specific.
+ * @fileOverview SettingsService - Manages user-specific settings (now primarily API keys) using MongoDB.
  */
 
 import type { SettingsFormValues } from '@/components/settings/settings-form';
-import { defaultSettingsValues } from "@/config/settings-defaults"; // Import new defaults
+import { defaultSettingsValues } from "@/config/settings-defaults";
 import { MongoClient, type Db, type Collection, type WithId, type UpdateFilter } from 'mongodb';
 
 console.log(`[${new Date().toISOString()}] [settingsService] Module loading. Attempting to read MONGODB_URI from process.env...`);
@@ -28,7 +28,7 @@ if (!MONGODB_URI) {
 
 
 const DB_NAME = process.env.MONGODB_DB_NAME || 'binanceTrailblazerDb';
-const COLLECTION_NAME = 'botSettings';
+const COLLECTION_NAME = 'userApiSettings'; // Changed collection name to reflect content
 
 interface CustomGlobal extends NodeJS.Global {
   _mongoSettingsClientPromise?: Promise<MongoClient>;
@@ -68,18 +68,15 @@ async function getSettingsCollection(): Promise<Collection<SettingsFormValues>> 
 }
 
 /**
- * Retrieves the bot settings for a specific user from MongoDB.
+ * Retrieves the API key settings for a specific user from MongoDB.
  * If no settings are found for the user, returns default settings populated with the userId.
  * @param userId - The ID of the user whose settings to retrieve.
- * @returns A promise that resolves to the SettingsFormValues for the user.
+ * @returns A promise that resolves to the SettingsFormValues (API keys) for the user.
  */
-export async function getSettings(userId: string): Promise<SettingsFormValues> { // Changed return type
+export async function getSettings(userId: string): Promise<SettingsFormValues> {
   const logTimestamp = new Date().toISOString();
   if (!userId) {
     console.warn(`[${logTimestamp}] settingsService.getSettings (MongoDB): Called without userId. Returning default settings with a placeholder userId.`);
-    // This case should ideally be prevented by callers providing a valid userId.
-    // For robustness, return default settings with a temporary or generic userId if absolutely necessary,
-    // but this indicates a potential issue in the calling code.
     return { ...defaultSettingsValues, userId: "UNKNOWN_USER_ID_IN_GETSETTINGS" };
   }
   console.log(`[${logTimestamp}] settingsService.getSettings (MongoDB) called for user: ${userId}`);
@@ -88,20 +85,21 @@ export async function getSettings(userId: string): Promise<SettingsFormValues> {
   const settingsDoc = await settingsCollection.findOne({ userId: userId });
 
   if (settingsDoc) {
-    console.log(`[${logTimestamp}] settingsService (MongoDB): Found existing settings for user ${userId}.`);
+    console.log(`[${logTimestamp}] settingsService (MongoDB): Found existing API key settings for user ${userId}.`);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { _id, ...settingsWithoutMongoId } = settingsDoc as WithId<SettingsFormValues>;
-    return settingsWithoutMongoId as SettingsFormValues;
+    // Ensure defaults for any potentially missing API key fields if schema changed
+    return { ...defaultSettingsValues, ...settingsWithoutMongoId, userId: userId };
   } else {
-    console.log(`[${logTimestamp}] settingsService (MongoDB): No settings found for user ${userId}. Returning new default settings object for this user.`);
+    console.log(`[${logTimestamp}] settingsService (MongoDB): No API key settings found for user ${userId}. Returning new default settings object for this user.`);
     return { ...defaultSettingsValues, userId: userId };
   }
 }
 
 /**
- * Saves the bot settings for a specific user to MongoDB.
+ * Saves the API key settings for a specific user to MongoDB.
  * @param userId - The ID of the user whose settings to save.
- * @param settings - The settings to save (should include the userId).
+ * @param settings - The settings (API keys and userId) to save.
  * @returns A promise that resolves when settings are saved.
  */
 export async function saveSettings(userId: string, settings: SettingsFormValues): Promise<void> {
@@ -114,14 +112,19 @@ export async function saveSettings(userId: string, settings: SettingsFormValues)
     console.error(`[${logTimestamp}] settingsService.saveSettings (MongoDB): Mismatch between parameter userId ('${userId}') and settings.userId ('${settings.userId}').`);
     throw new Error('User ID mismatch in saveSettings.');
   }
-  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) called for user: ${userId} with:`, settings);
+  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) called for user: ${userId} with API key settings:`, { binanceApiKeyProvided: !!settings.binanceApiKey }); // Avoid logging keys
   const settingsCollection = await getSettingsCollection();
 
-  const { userId: settingsUserId, ...settingsDataToSet } = settings;
+  // Destructure to ensure only fields present in SettingsFormValues are set
+  const { userId: settingsUserId, binanceApiKey, binanceSecretKey } = settings;
+  const settingsDataToSet = {
+    binanceApiKey,
+    binanceSecretKey,
+  };
 
   const updateOperation: UpdateFilter<SettingsFormValues> = {
-    $set: settingsDataToSet,
-    $setOnInsert: { userId: settingsUserId }
+    $set: settingsDataToSet, // Only set API keys
+    $setOnInsert: { userId: settingsUserId } // Set userId only on insert
   };
 
   const result = await settingsCollection.updateOne(
@@ -131,8 +134,8 @@ export async function saveSettings(userId: string, settings: SettingsFormValues)
   );
 
   if (result.modifiedCount > 0 || result.upsertedCount > 0) {
-    console.log(`[${logTimestamp}] settingsService (MongoDB): Settings for user ${userId} saved successfully. Modified: ${result.modifiedCount}, Upserted: ${result.upsertedCount}`);
+    console.log(`[${logTimestamp}] settingsService (MongoDB): API Key settings for user ${userId} saved successfully. Modified: ${result.modifiedCount}, Upserted: ${result.upsertedCount}`);
   } else {
-    console.warn(`[${logTimestamp}] settingsService (MongoDB): Settings save operation for user ${userId} did not modify or upsert any document. This might happen if current settings are identical to new settings.`);
+    console.warn(`[${logTimestamp}] settingsService (MongoDB): API Key settings save operation for user ${userId} did not modify or upsert any document.`);
   }
 }

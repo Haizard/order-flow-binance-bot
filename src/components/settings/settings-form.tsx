@@ -9,36 +9,32 @@ import { Button } from "@/components/ui/button";
 import {
   Form,
   FormControl,
-  FormDescription,
+  // FormDescription, // No longer needed for removed fields
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+// import { Switch } from "@/components/ui/switch"; // No longer needed for isBotActive
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { AlertCircle, KeyRound, Bot, SlidersHorizontal, Zap, CheckCircle, AlertTriangle, Loader2, Save } from "lucide-react";
+// import { Separator } from "@/components/ui/separator"; // No longer needed
+import { AlertCircle, KeyRound, CheckCircle, Loader2, Save } from "lucide-react"; // Bot, SlidersHorizontal, Zap removed
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { getAccountInformation } from "@/services/binance";
-// import type { AccountInformation } from "@/types/binance";
 import { getSettings, saveSettings } from "@/services/settingsService";
-import { defaultSettingsValues } from "@/config/settings-defaults"; // Import new defaults
+import { defaultSettingsValues } from "@/config/settings-defaults";
 
 // Placeholder for current user ID - replace with actual auth system integration
 const DEMO_USER_ID = "user123";
 
+// Schema now only includes userId and API keys.
 const settingsFormSchema = z.object({
   userId: z.string().min(1, "User ID is required."),
   binanceApiKey: z.string().optional(),
   binanceSecretKey: z.string().optional(),
-  buyAmountUsd: z.coerce.number().positive("Buy amount must be positive."),
-  dipPercentage: z.coerce.number().min(-100, "Dip % too low").max(0, "Dip % must be negative or zero."),
-  trailActivationProfit: z.coerce.number().positive("Trail activation profit must be positive."),
-  trailDelta: z.coerce.number().positive("Trail delta must be positive.").max(50, "Trail delta too high (max 50%)."),
-  isBotActive: z.boolean().default(false),
+  // Removed: buyAmountUsd, dipPercentage, trailActivationProfit, trailDelta, isBotActive
 });
 
 export type SettingsFormValues = z.infer<typeof settingsFormSchema>;
@@ -54,7 +50,7 @@ export const formDefaultValues: SettingsFormValues = {
 export function SettingsForm() {
   const form = useForm<SettingsFormValues>({
     resolver: zodResolver(settingsFormSchema),
-    defaultValues: formDefaultValues, // Use the full default structure
+    defaultValues: formDefaultValues,
     mode: "onChange",
   });
 
@@ -68,9 +64,8 @@ export function SettingsForm() {
       setIsLoadingSettings(true);
       try {
         console.log(`[${new Date().toISOString()}] SettingsForm: Attempting to load settings for user: ${DEMO_USER_ID}...`);
-        // getSettings now guarantees returning SettingsFormValues (with defaults if new)
-        const savedSettings = await getSettings(DEMO_USER_ID);
-        form.reset(savedSettings);
+        const savedSettings = await getSettings(DEMO_USER_ID); // getSettings now ensures defaults if not found
+        form.reset(savedSettings); // Reset with potentially just API keys or full defaults if new
         console.log(`[${new Date().toISOString()}] SettingsForm: Settings loaded and form reset for user ${DEMO_USER_ID}.`, savedSettings);
       } catch (error) {
         console.error(`[${new Date().toISOString()}] SettingsForm: Failed to load settings for user ${DEMO_USER_ID}:`, error);
@@ -79,7 +74,6 @@ export function SettingsForm() {
           description: "Could not load your saved settings. Using defaults.",
           variant: "destructive",
         });
-        // Fallback to formDefaultValues if loading fails
         form.reset({ ...defaultSettingsValues, userId: DEMO_USER_ID });
       } finally {
         setIsLoadingSettings(false);
@@ -124,15 +118,18 @@ export function SettingsForm() {
     setIsSaving(true);
     console.log(`[${new Date().toISOString()}] SettingsForm: Attempting to save settings for user ${data.userId}:`, data);
     try {
+      // Ensure only relevant fields are saved.
+      // The form data 'data' already matches the simplified SettingsFormValues.
       await saveSettings(data.userId, data);
       toast({
-        title: "Settings Saved!",
-        description: "Your bot configurations have been successfully saved.",
+        title: "API Keys Saved!",
+        description: "Your Binance API Keys have been successfully saved.",
         variant: "default",
         className: "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700 text-green-800 dark:text-green-300",
       });
       console.log(`[${new Date().toISOString()}] SettingsForm: Settings saved successfully for user ${data.userId}.`);
-    } catch (error) {
+    } catch (error)
+    {
       console.error(`[${new Date().toISOString()}] SettingsForm: Error saving settings for user ${data.userId}:`, error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred while saving.";
       toast({
@@ -149,7 +146,7 @@ export function SettingsForm() {
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
-        <p className="text-muted-foreground">Loading settings...</p>
+        <p className="text-muted-foreground">Loading API Key settings...</p>
       </div>
     );
   }
@@ -161,10 +158,11 @@ export function SettingsForm() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-headline">
               <KeyRound className="h-6 w-6 text-primary" />
-              Binance API Connection (For Your Account)
+              Binance API Connection
             </CardTitle>
             <CardDescription>
-              Connect your Binance account. These keys will be used for trading on your behalf.
+              Connect your Binance account by providing your API Key and Secret Key.
+              These keys will be used by the bot to trade on your behalf.
               Ensure API keys have trading permissions but NOT withdrawal permissions.
             </CardDescription>
           </CardHeader>
@@ -173,8 +171,7 @@ export function SettingsForm() {
               <AlertCircle className="h-5 w-5 text-primary" />
               <AlertTitle className="text-primary font-semibold">Important Security Notice</AlertTitle>
               <AlertDescription>
-                Store API keys securely. For production, consider a dedicated secret manager.
-                Grant minimal permissions: Enable Spot & Margin Trading only. DO NOT enable withdrawals.
+                Store API keys securely. Grant minimal permissions: Enable Spot & Margin Trading only. DO NOT enable withdrawals.
                 API keys entered here are saved to your user-specific settings in the database.
               </AlertDescription>
             </Alert>
@@ -221,116 +218,7 @@ export function SettingsForm() {
           </CardContent>
         </Card>
 
-        <Separator />
-
-        <Card className="shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-headline">
-              <SlidersHorizontal className="h-6 w-6 text-primary" />
-              Your Bot Configuration
-            </CardTitle>
-            <CardDescription>
-              Define the parameters for your "Dip & Trail" trading strategy. These settings are specific to your account.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="buyAmountUsd"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Buy Amount (USD)</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="e.g., 100" {...field} />
-                    </FormControl>
-                    <FormDescription>Amount in USD for each new trade on your account.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="dipPercentage"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Dip Percentage (%)</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="e.g., -4" {...field} />
-                    </FormControl>
-                    <FormDescription>Bot will consider buying for you when 24hr change is ≤ this value.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="trailActivationProfit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Trail Activation Profit (%)</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="e.g., 3" {...field} />
-                    </FormControl>
-                    <FormDescription>Activate trailing stop loss for your trades at this profit %.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="trailDelta"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Trail Delta (%)</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="e.g., 1" {...field} />
-                    </FormControl>
-                    <FormDescription>Trailing stop loss distance for your trades.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Separator />
-
-        <Card className="shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-headline">
-              <Bot className="h-6 w-6 text-primary" />
-              Your Bot Status
-            </CardTitle>
-            <CardDescription>
-              Enable or disable the trading bot for your account.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <FormField
-              control={form.control}
-              name="isBotActive"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-                  <div className="space-y-0.5">
-                    <FormLabel className="text-base">Activate Bot For My Account</FormLabel>
-                    <FormDescription>
-                      Turn the trading bot on or off for your Binance account.
-                    </FormDescription>
-                  </div>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      disabled={isSaving}
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
-          </CardContent>
-        </Card>
+        {/* Removed Bot Configuration Card and Bot Status Card sections */}
 
         <Button type="submit" size="lg" className="w-full md:w-auto" disabled={isSaving || isTestingConnection}>
           {isSaving ? (
@@ -338,7 +226,7 @@ export function SettingsForm() {
           ) : (
             <Save className="mr-2 h-5 w-5" />
           )}
-          Save My Settings
+          Save My API Keys
         </Button>
       </form>
     </Form>
