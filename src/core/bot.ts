@@ -13,7 +13,8 @@ import {
     GLOBAL_DIP_PERCENTAGE,
     GLOBAL_BUY_AMOUNT_USD,
     GLOBAL_TRAIL_ACTIVATION_PROFIT,
-    GLOBAL_TRAIL_DELTA
+    GLOBAL_TRAIL_DELTA,
+    MONITORED_MARKET_SYMBOLS // Import the new symbols list
 } from '@/config/bot-strategy';
 
 // Placeholder for current user ID - replace with actual auth system integration if not passed in
@@ -89,9 +90,9 @@ export async function runBotCycle(
   if (marketData) {
     liveMarketData = marketData;
   } else {
-    const marketSymbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "SOLUSDT"]; // Consider making this part of global config
+    // const marketSymbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "SOLUSDT"]; // This line is removed
     try {
-      const tickerPromises = marketSymbols.map(symbol => get24hrTicker(symbol) as Promise<Ticker24hr | null>); // Admin/System API key could be used here
+      const tickerPromises = MONITORED_MARKET_SYMBOLS.map(symbol => get24hrTicker(symbol) as Promise<Ticker24hr | null>); // Admin/System API key could be used here
       const results = await Promise.all(tickerPromises);
       liveMarketData = results.filter(item => item !== null && !Array.isArray(item)) as Ticker24hr[];
     } catch (error) {
@@ -221,5 +222,3 @@ export async function runBotCycle(
   }
   console.log(`[${botRunTimestamp}] Bot cycle ENDED for user ${userId}.`);
 }
-
-// BOT_GLOBAL_SETTINGS is no longer exported from here; it's in src/config/bot-strategy.ts

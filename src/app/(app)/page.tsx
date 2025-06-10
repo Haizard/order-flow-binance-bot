@@ -10,7 +10,7 @@ import type { Ticker24hr } from '@/types/binance';
 import type { SettingsFormValues } from '@/components/settings/settings-form';
 import { getSettings } from '@/services/settingsService';
 import { runBotCycle } from '@/core/bot';
-import { BOT_GLOBAL_SETTINGS } from '@/config/bot-strategy'; // Updated import
+import { BOT_GLOBAL_SETTINGS, MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; // Updated import
 import * as tradeService from '@/services/tradeService';
 
 export const dynamic = 'force-dynamic';
@@ -65,8 +65,7 @@ async function calculateTotalPnlFromBotTrades(userId: string): Promise<number> {
 export default async function DashboardPage() {
   console.log(`[${new Date().toISOString()}] DashboardPage: Component rendering started for user ${DEMO_USER_ID}.`);
 
-  const marketSymbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "SOLUSDT"];
-  const liveMarketData = await getMarketData(marketSymbols);
+  const liveMarketData = await getMarketData(MONITORED_MARKET_SYMBOLS);
 
   let userApiSettings: Pick<SettingsFormValues, 'binanceApiKey' | 'binanceSecretKey'> = {};
   try {

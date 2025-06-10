@@ -1,5 +1,6 @@
+
 // --- GLOBAL BOT STRATEGY PARAMETERS ---
-// These would ideally be managed by an admin or through environment variables in a production system.
+// These are centrally managed for the entire bot's operation.
 
 /** Bot considers buying if 24hr change is less than or equal to this percentage (e.g., -5 for -5%). */
 export const GLOBAL_DIP_PERCENTAGE = -5;
@@ -14,6 +15,11 @@ export const GLOBAL_TRAIL_ACTIVATION_PROFIT = 2.5;
 export const GLOBAL_TRAIL_DELTA = 0.8;
 
 /**
+ * List of market symbols the bot and dashboard will monitor.
+ */
+export const MONITORED_MARKET_SYMBOLS = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "SOLUSDT"];
+
+/**
  * Object exporting all global bot settings for easy import.
  */
 export const BOT_GLOBAL_SETTINGS = {
@@ -21,4 +27,5 @@ export const BOT_GLOBAL_SETTINGS = {
     GLOBAL_BUY_AMOUNT_USD,
     GLOBAL_TRAIL_ACTIVATION_PROFIT,
     GLOBAL_TRAIL_DELTA,
+    MONITORED_MARKET_SYMBOLS, // Added here for convenience if needed elsewhere as a single object
 };
