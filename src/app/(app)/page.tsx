@@ -1,4 +1,5 @@
-import { DollarSign, ListChecks, Bot, TrendingUp, Bitcoin, Activity } from 'lucide-react';
+
+import { DollarSign, ListChecks, Bot, TrendingUp, SearchX, TrendingDown, Activity } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/metric-card';
 import { ActiveTradesList } from '@/components/dashboard/active-trades-list';
 import { MarketOverviewItem } from '@/components/dashboard/market-overview-item';
@@ -25,11 +26,17 @@ export default async function DashboardPage() {
   const activeTradesCount = 3;
   const botStatus = "Active";
 
-  const marketSymbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"];
+  const marketSymbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "ADAUSDT", "BNBUSDT"]; // Added a couple more for variety
   const marketData = await getMarketData(marketSymbols);
 
+  // Dip detection logic
+  const dipPercentageThreshold = -4.0; // Use the default from settings form for now
+  const potentialDipBuys = marketData.filter(
+    (ticker) => parseFloat(ticker.priceChangePercent) <= dipPercentageThreshold
+  );
+
   return (
-    <div className="flex flex-col gap-8"> {/* Increased gap for overall layout */}
+    <div className="flex flex-col gap-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight font-headline mb-6">Bot Performance</h1>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -60,7 +67,7 @@ export default async function DashboardPage() {
       <div>
         <h2 className="text-2xl font-semibold tracking-tight font-headline mb-4">Market Overview</h2>
         {marketData.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             {marketData.map(ticker => (
               <MarketOverviewItem key={ticker.symbol} ticker={ticker} />
             ))}
@@ -69,6 +76,30 @@ export default async function DashboardPage() {
           <Card className="shadow-md">
             <CardContent className="pt-6">
               <p className="text-muted-foreground text-center">Could not load market data. Please try again later.</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      <div>
+        <h2 className="text-2xl font-semibold tracking-tight font-headline mb-4 flex items-center">
+          <TrendingDown className="mr-2 h-6 w-6 text-primary" />
+          Potential Dip Buys (≤ {dipPercentageThreshold}%)
+        </h2>
+        {potentialDipBuys.length > 0 ? (
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            {potentialDipBuys.map(ticker => (
+              <MarketOverviewItem key={`${ticker.symbol}-dip`} ticker={ticker} />
+            ))}
+          </div>
+        ) : (
+          <Card className="shadow-md">
+            <CardContent className="pt-6">
+              <div className="flex flex-col items-center justify-center py-10 text-center">
+                <SearchX className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No coins from the monitored list meet the dip criteria (≤ {dipPercentageThreshold}% in 24hr).</p>
+                <p className="text-xs text-muted-foreground mt-1">Adjust settings or market conditions may change.</p>
+              </div>
             </CardContent>
           </Card>
         )}
@@ -102,11 +133,6 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Placeholder for subtle animation signal for trade execution */}
-      {/* <div className="fixed bottom-5 right-5 animate-pulse bg-accent text-accent-foreground p-3 rounded-lg shadow-lg">
-        New trade executed: BTC/USDT bought!
-      </div> */}
     </div>
   );
 }
