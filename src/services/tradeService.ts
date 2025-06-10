@@ -139,12 +139,14 @@ export async function getClosedTrades(userId: string): Promise<Trade[]> {
   console.log(`[${logTimestamp}] tradeService.getClosedTrades (MongoDB) called for user: ${userId}`);
   const tradesCollection = await getTradesCollection();
 
-  const closedTrades = await tradesCollection.find({
+  const closedTradeDocs = await tradesCollection.find({
     userId: userId,
     status: { $in: ['CLOSED_SOLD', 'CLOSED_ERROR'] }
   }).toArray();
   
-  return closedTrades.map(tradeDoc => {
+  console.log(`[${logTimestamp}] tradeService.getClosedTrades (MongoDB): Found ${closedTradeDocs.length} closed trade documents for user ${userId} from DB.`);
+
+  return closedTradeDocs.map(tradeDoc => {
     const { _id, ...tradeWithoutMongoId } = tradeDoc as WithId<Trade>;
     return tradeWithoutMongoId as Trade;
   });

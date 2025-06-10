@@ -26,7 +26,11 @@ function formatCurrency(value: number | undefined, quoteAsset: string = 'USD') {
   return `${value >= 0 ? '' : '-'}$${Math.abs(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits })}`;
 }
 
-export function TradeHistoryTable() {
+interface TradeHistoryTableProps {
+  userId: string;
+}
+
+export function TradeHistoryTable({ userId }: TradeHistoryTableProps) {
   const [currentPage, setCurrentPage] = React.useState(1);
   const [closedTrades, setClosedTrades] = React.useState<Trade[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -34,20 +38,29 @@ export function TradeHistoryTable() {
 
   React.useEffect(() => {
     async function fetchClosedTrades() {
+      if (!userId) {
+        console.warn("TradeHistoryTable: userId is missing, cannot fetch trades.");
+        setIsLoading(false);
+        setError("User ID is missing.");
+        return;
+      }
+      console.log(`[${new Date().toISOString()}] TradeHistoryTable: Fetching closed trades for user: ${userId}`);
       setIsLoading(true);
       setError(null);
       try {
-        const trades = await tradeService.getClosedTrades();
+        const trades = await tradeService.getClosedTrades(userId);
+        console.log(`[${new Date().toISOString()}] TradeHistoryTable: Fetched ${trades.length} closed trades for user ${userId}.`);
         setClosedTrades(trades.sort((a, b) => (b.sellTimestamp || 0) - (a.sellTimestamp || 0))); // Sort by most recent
       } catch (err) {
-        console.error("Failed to fetch closed trades:", err);
-        setError(err instanceof Error ? err.message : "An unknown error occurred while fetching trade history.");
+        const errorMessage = err instanceof Error ? err.message : "An unknown error occurred while fetching trade history.";
+        console.error(`[${new Date().toISOString()}] TradeHistoryTable: Failed to fetch closed trades for user ${userId}:`, errorMessage);
+        setError(errorMessage);
       } finally {
         setIsLoading(false);
       }
     }
     fetchClosedTrades();
-  }, []);
+  }, [userId]);
 
   const totalPages = Math.ceil(closedTrades.length / TRADES_PER_PAGE);
   const startIndex = (currentPage - 1) * TRADES_PER_PAGE;
