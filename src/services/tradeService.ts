@@ -8,37 +8,62 @@ import type { Trade, NewTradeInput } from '@/types/trade';
 import { v4 as uuidv4 } from 'uuid'; // For generating unique IDs
 import { MongoClient, type Db, type Collection, type WithId } from 'mongodb';
 
+console.log(`[${new Date().toISOString()}] [tradeService] Module loading. Attempting to read MONGODB_URI from process.env...`);
+
 const MONGODB_URI = process.env.MONGODB_URI;
 const DB_NAME = process.env.MONGODB_DB_NAME || 'tradingBotDb'; // You can set a default or use an env var
 const COLLECTION_NAME = 'trades';
 
+// Enhanced check with logging
 if (!MONGODB_URI) {
+  const timestamp = new Date().toISOString();
+  console.error(`[${timestamp}] [tradeService] MONGODB_URI is NOT DEFINED or EMPTY.`);
+  console.error(`[${timestamp}] [tradeService] Value read from process.env.MONGODB_URI: "${MONGODB_URI}"`);
+  console.error(`[${timestamp}] [tradeService] PLEASE CHECK THE FOLLOWING:`);
+  console.error(`[${timestamp}] [tradeService] 1. Ensure a file named '.env.local' exists in the ROOT of your project (same level as package.json).`);
+  console.error(`[${timestamp}] [tradeService] 2. Ensure '.env.local' contains a line like: MONGODB_URI=your_actual_mongodb_connection_string_here`);
+  console.error(`[${timestamp}] [tradeService] 3. Ensure you have RESTARTED your Next.js development server (e.g., 'npm run dev') after creating or modifying '.env.local'.`);
   throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
+} else {
+  const timestamp = new Date().toISOString();
+  console.log(`[${timestamp}] [tradeService] MONGODB_URI successfully loaded.`);
 }
 
+
 // Cached connection promise
-let client: MongoClient | null = null;
-let clientPromise: Promise<MongoClient> | null = null;
+// For Next.js, it's recommended to cache the client and the connection promise,
+// especially in development due to HMR (Hot Module Replacement).
+// https://www.mongodb.com/docs/drivers/node/current/fundamentals/connection/connect/#how-to-implement-a-connection-handler-in-next-js
+
+// Extend the NodeJS.Global interface to include _mongoClientPromise
+interface CustomGlobal extends NodeJS.Global {
+  _mongoClientPromise?: Promise<MongoClient>;
+}
+
+// Use the extended CustomGlobal type
+declare const global: CustomGlobal;
+
+
+let client: MongoClient;
+let clientPromise: Promise<MongoClient>;
+
+if (process.env.NODE_ENV === 'development') {
+  // In development mode, use a global variable so that the value
+  // is preserved across module reloads caused by HMR (Hot Module Replacement).
+  if (!global._mongoClientPromise) {
+    client = new MongoClient(MONGODB_URI);
+    global._mongoClientPromise = client.connect();
+    console.log(`[${new Date().toISOString()}] [MongoDB] New connection promise created (development).`);
+  }
+  clientPromise = global._mongoClientPromise;
+} else {
+  // In production mode, it's best to not use a global variable.
+  client = new MongoClient(MONGODB_URI);
+  clientPromise = client.connect();
+  console.log(`[${new Date().toISOString()}] [MongoDB] New connection promise created (production).`);
+}
 
 async function getDb(): Promise<Db> {
-  if (process.env.NODE_ENV === 'development') {
-    // In development mode, use a global variable so that the value
-    // is preserved across module reloads caused by HMR (Hot Module Replacement).
-    // @ts-ignore
-    if (!global._mongoClientPromise) {
-      client = new MongoClient(MONGODB_URI!);
-      // @ts-ignore
-      global._mongoClientPromise = client.connect();
-    }
-    // @ts-ignore
-    clientPromise = global._mongoClientPromise;
-  } else {
-    // In production mode, it's best to not use a global variable.
-    if (!clientPromise) {
-      client = new MongoClient(MONGODB_URI!);
-      clientPromise = client.connect();
-    }
-  }
   const connectedClient = await clientPromise;
   return connectedClient.db(DB_NAME);
 }
@@ -47,13 +72,6 @@ async function getTradesCollection(): Promise<Collection<Trade>> {
   const db = await getDb();
   return db.collection<Trade>(COLLECTION_NAME);
 }
-
-// Helper to convert MongoDB's _id to id if needed, and vice-versa,
-// though we are storing our string 'id' directly.
-// MongoDB documents will have an _id field automatically.
-// Our Trade type has an 'id' field (string uuid). We store this directly.
-// When fetching, we might want to map _id to id if we were using _id as the primary identifier.
-// For now, we'll rely on querying by our custom 'id' field.
 
 /**
  * Creates a new trade and saves it to MongoDB.
@@ -67,7 +85,7 @@ export async function createTrade(tradeInput: NewTradeInput): Promise<Trade> {
   
   const newTrade: Trade = {
     ...tradeInput,
-    id: uuidv4(), // Our application-level unique ID
+    id: uuidv4(), 
     buyTimestamp: Date.now(),
     status: 'ACTIVE_BOUGHT',
   };
@@ -79,7 +97,11 @@ export async function createTrade(tradeInput: NewTradeInput): Promise<Trade> {
   }
   
   console.log(`[${logTimestamp}] tradeService (MongoDB): Trade created with ID ${newTrade.id} and MongoDB _id ${result.insertedId}`);
-  return newTrade; // Return the object with our application 'id'
+  // Convert the MongoDB document to a plain Trade object before returning
+  // This involves handling the _id field if you don't want it in your Trade type.
+  // However, our current Trade type doesn't include _id, and we map it out in retrieval functions.
+  // For create, newTrade already matches the Trade type.
+  return newTrade; 
 }
 
 /**
@@ -95,10 +117,7 @@ export async function getActiveTrades(): Promise<Trade[]> {
     status: { $in: ['ACTIVE_BOUGHT', 'ACTIVE_TRAILING'] }
   }).toArray();
 
-  // MongoDB returns documents with _id. Our Trade type expects 'id'.
-  // Since we store 'id' directly, we don't need a transformation here if we are careful
-  // to use 'id' in our application logic and the Trade type definition reflects that.
-  // The documents fetched will contain the 'id' field we inserted.
+  // Map MongoDB documents to Trade objects, excluding the _id field
   return activeTrades.map(tradeDoc => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { _id, ...tradeWithoutMongoId } = tradeDoc as WithId<Trade>;
@@ -119,6 +138,7 @@ export async function getClosedTrades(): Promise<Trade[]> {
     status: { $in: ['CLOSED_SOLD', 'CLOSED_ERROR'] }
   }).toArray();
   
+  // Map MongoDB documents to Trade objects, excluding the _id field
   return closedTrades.map(tradeDoc => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { _id, ...tradeWithoutMongoId } = tradeDoc as WithId<Trade>;
@@ -135,7 +155,7 @@ export async function getClosedTrades(): Promise<Trade[]> {
  */
 export async function updateTrade(tradeId: string, updates: Partial<Omit<Trade, 'id' | 'symbol' | 'buyPrice' | 'quantity' | 'buyTimestamp' | 'baseAsset' | 'quoteAsset'>>): Promise<Trade> {
   const logTimestamp = new Date().toISOString();
-  console.log(`[${logTimestamp}] tradeService.updateTrade (MongoDB) called for ID: ${tradeId} with updates:`, updates);
+  console.log(`[${logTimestamp}] tradeService.updateTrade (MongoDB) called for ID: ${tradeId} with updates:`, JSON.stringify(updates));
   const tradesCollection = await getTradesCollection();
 
   const finalUpdates = { ...updates };
@@ -146,9 +166,9 @@ export async function updateTrade(tradeId: string, updates: Partial<Omit<Trade, 
   }
 
   const result = await tradesCollection.findOneAndUpdate(
-    { id: tradeId }, // Query by our application 'id'
+    { id: tradeId }, // Filter by our application-specific 'id'
     { $set: finalUpdates },
-    { returnDocument: 'after' } // Return the updated document
+    { returnDocument: 'after' } // Ensures the updated document is returned
   );
 
   if (!result) {
@@ -156,7 +176,7 @@ export async function updateTrade(tradeId: string, updates: Partial<Omit<Trade, 
     throw new Error(`Trade with ID ${tradeId} not found or update failed.`);
   }
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { _id, ...updatedTrade } = result as WithId<Trade>;
+  const { _id, ...updatedTrade } = result as WithId<Trade>; // Cast and exclude _id
   return updatedTrade as Trade;
 }
 
@@ -170,12 +190,12 @@ export async function getTradeById(tradeId: string): Promise<Trade | null> {
   console.log(`[${logTimestamp}] tradeService.getTradeById (MongoDB) called for ID: ${tradeId}`);
   const tradesCollection = await getTradesCollection();
   
-  const tradeDoc = await tradesCollection.findOne({ id: tradeId }); // Query by our application 'id'
+  const tradeDoc = await tradesCollection.findOne({ id: tradeId }); // Filter by our application-specific 'id'
   if (!tradeDoc) {
     return null;
   }
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { _id, ...tradeWithoutMongoId } = tradeDoc as WithId<Trade>;
+  const { _id, ...tradeWithoutMongoId } = tradeDoc as WithId<Trade>; // Cast and exclude _id
   return tradeWithoutMongoId as Trade;
 }
 
