@@ -20,19 +20,43 @@ export async function get24hrTicker(symbol?: string): Promise<Ticker24hr | Ticke
     const response = await fetch(url, { next: { revalidate: 60 } }); // Revalidate every 60 seconds
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({})); // Try to parse error, default to empty object
-      console.error('Binance API Error (get24hrTicker):', errorData);
-      throw new Error(`Failed to fetch ticker data from Binance API: ${response.status} ${response.statusText}. ${errorData.msg || ''}`.trim());
+      let parsedErrorData: any = {};
+      let rawErrorBody: string | null = null;
+      try {
+        rawErrorBody = await response.text();
+        parsedErrorData = JSON.parse(rawErrorBody);
+      } catch (e) {
+        // JSON parsing failed, parsedErrorData remains empty or we can store raw body
+        // For logging purposes, we'll show the raw body if parsing failed.
+      }
+      
+      const logDetails = (parsedErrorData && Object.keys(parsedErrorData).length > 0 && parsedErrorData.constructor === Object && parsedErrorData.msg) 
+        ? parsedErrorData 
+        : { rawBody: rawErrorBody || "Could not read error response body." };
+
+      console.error('Binance API Error (get24hrTicker):', { 
+        status: response.status, 
+        statusText: response.statusText, 
+        details: logDetails
+      });
+
+      const binanceSpecificMessage = parsedErrorData.msg || '';
+      const fallbackMessage = rawErrorBody ? `Response snippet: ${rawErrorBody.substring(0,150)}` : 'No additional error details from response body.';
+      
+      throw new Error(`Failed to fetch ticker data from Binance API: ${response.status} ${response.statusText}. ${binanceSpecificMessage || fallbackMessage}`.trim());
     }
 
     const data: Ticker24hr | Ticker24hr[] = await response.json();
     return data;
   } catch (error) {
-    console.error('Error fetching 24hr ticker:', error);
+    console.error(`Error in get24hrTicker (symbol: ${symbol || 'all'}):`, error instanceof Error ? error.message : error);
     if (error instanceof Error) {
-      throw new Error(`Network error or issue fetching data: ${error.message}`);
+      if (error.message.startsWith('Failed to fetch ticker data from Binance API:')) {
+          throw error; 
+      }
+      throw new Error(`Operation failed for get24hrTicker (symbol: ${symbol || 'all'}): ${error.message}`);
     }
-    throw new Error('An unknown error occurred while fetching ticker data.');
+    throw new Error(`An unknown error occurred in get24hrTicker (symbol: ${symbol || 'all'}).`);
   }
 }
 
@@ -70,25 +94,44 @@ export async function getAccountInformation(apiKeyInput?: string, secretKeyInput
       headers: {
         'X-MBX-APIKEY': apiKey,
       },
-      cache: 'no-store', // Ensure fresh data for account info
+      cache: 'no-store', 
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ message: 'Failed to parse error response from Binance API' }));
-      console.error('Binance API Error (getAccountInformation):', errorData);
-      const binanceErrorMessage = errorData.msg || errorData.message || `HTTP error ${response.status}`;
-      throw new Error(`Failed to fetch account information: ${binanceErrorMessage}`);
+      let parsedErrorData: any = {};
+      let rawErrorBody: string | null = null;
+      try {
+        rawErrorBody = await response.text();
+        parsedErrorData = JSON.parse(rawErrorBody);
+      } catch (e) {
+        // JSON parsing failed
+      }
+
+      const logDetails = (parsedErrorData && Object.keys(parsedErrorData).length > 0 && parsedErrorData.constructor === Object && parsedErrorData.msg)
+        ? parsedErrorData
+        : { rawBody: rawErrorBody || "Could not read error response body." };
+      
+      console.error('Binance API Error (getAccountInformation):', {
+        status: response.status,
+        statusText: response.statusText,
+        details: logDetails
+      });
+      
+      const binanceSpecificMessage = parsedErrorData.msg || '';
+      const fallbackMessage = rawErrorBody ? `Response snippet: ${rawErrorBody.substring(0,150)}` : 'No additional error details from response body.';
+
+      throw new Error(`Failed to fetch account information: ${response.status} ${response.statusText}. ${binanceSpecificMessage || fallbackMessage}`.trim());
     }
 
     const data: AccountInformation = await response.json();
     return data;
   } catch (error) {
-    console.error('Error fetching account information:', error);
+    console.error('Error in getAccountInformation:', error instanceof Error ? error.message : error);
     if (error instanceof Error) {
-      if(error.message.startsWith("Failed to fetch account information:") || error.message.startsWith("API Key or Secret Key is missing")) {
+       if(error.message.startsWith("Failed to fetch account information:") || error.message.startsWith("API Key or Secret Key is missing")) {
         throw error;
       }
-      throw new Error(`Network error or issue fetching account data: ${error.message}`);
+      throw new Error(`Operation failed for getAccountInformation: ${error.message}`);
     }
     throw new Error('An unknown error occurred while fetching account data.');
   }
