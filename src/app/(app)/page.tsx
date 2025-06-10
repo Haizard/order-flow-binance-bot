@@ -80,21 +80,21 @@ export default async function DashboardPage() {
             title="Total P&L"
             value={`${totalPnl >= 0 ? '+' : ''}$${totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             icon={DollarSign}
-            description="Overall P&L from active trades (prices are live)"
+            description="Overall P&L from displayed placeholder active trades (prices and P&L are live)."
             className={`shadow-md ${totalPnl >=0 ? 'text-accent-foreground' : 'text-destructive'}`}
           />
           <MetricCard
             title="Active Trades"
             value={activeTradesCount.toString()}
             icon={ListChecks}
-            description="Bot's open positions (prices are live)"
+            description="Number of displayed placeholder open positions (prices and P&L are live)."
             className="shadow-md"
           />
           <MetricCard
             title="Bot Status"
             value={botStatus}
             icon={Bot}
-            description="Trading bot operational status"
+            description="Trading bot operational status (currently static)."
             className={`shadow-md ${botStatus === "Active" ? "text-accent-foreground" : "text-destructive"}`}
           />
         </div>
@@ -103,7 +103,7 @@ export default async function DashboardPage() {
       <div>
         <h2 className="text-2xl font-semibold tracking-tight font-headline mb-4">Market Overview</h2>
         {marketData.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3"> {/* Adjusted xl:grid-cols-5 to 3 for fewer items */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
             {marketData.map(ticker => (
               <MarketOverviewItem key={ticker.symbol} ticker={ticker} />
             ))}
@@ -127,7 +127,7 @@ export default async function DashboardPage() {
           Potential Dip Buys (24hr ≤ {dipPercentageThreshold}%)
         </h2>
         {marketData.length > 0 ? ( potentialDipBuys.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3"> {/* Adjusted xl:grid-cols-5 to 3 */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
             {potentialDipBuys.map(ticker => (
               <MarketOverviewItem key={`${ticker.symbol}-dip`} ticker={ticker} />
             ))}
