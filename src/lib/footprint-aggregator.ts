@@ -3,7 +3,6 @@
  * @fileOverview Handles WebSocket connection to Binance for trade streams
  * and aggregates data into FootprintBar structures.
  */
-// 'use server'; REMOVED THIS LINE
 
 import WebSocket from 'ws';
 import type { FootprintTrade, FootprintBar, PriceLevelData, BinanceTradeData, BinanceStreamData } from '@/types/footprint';
@@ -12,20 +11,15 @@ import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; // Or a dynami
 const BINANCE_FUTURES_WEBSOCKET_URL = 'wss://fstream.binance.com/stream';
 const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute
 
-// In-memory store for footprint bars. Key is symbol.
-// Each symbol will have an array of FootprintBar, though for now we might focus on the current one.
 const footprintDataStore = new Map<string, FootprintBar[]>();
-// Store current incomplete bar data
 const currentBarData = new Map<string, Partial<FootprintBar> & { trades: FootprintTrade[] }>();
 
-// Keep track of WebSocket connections per symbol or combined stream
 let wsInstance: WebSocket | null = null;
 let activeSymbols: string[] = [];
 let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_DELAY_BASE = 1000; // 1 second
 
-// For notifying clients (e.g., SSE connections)
 type ListenerCallback = (data: FootprintBar) => void;
 const listeners = new Set<ListenerCallback>();
 
@@ -74,57 +68,54 @@ function processTrade(symbol: string, tradeData: BinanceTradeData) {
     time: tradeTime,
     price: parsedPrice,
     volume: parsedQuantity,
-    // If 'm' is true, the buyer is the market maker. This means the trade was initiated by a seller hitting the bid.
-    // So, it's a "sell" side from the taker's perspective.
-    // If 'm' is false, the buyer is the taker. This means the trade was initiated by a buyer hitting the ask.
-    // So, it's a "buy" side from the taker's perspective.
     side: tradeData.m ? 'sell' : 'buy',
   };
 
   let bar = currentBarData.get(symbol);
 
   if (!bar || bar.timestamp !== barTimestamp) {
-    // Finalize previous bar if it exists
     if (bar && bar.timestamp) {
-      const completedBar = finalizeBar(bar as FootprintBar); // Cast as FootprintBar for finalization
-      if(completedBar.totalVolume > 0) { // Only store/notify if there was activity
+      const completedBar = finalizeBar(bar as FootprintBar); 
+      if(completedBar.totalVolume > 0) { 
         const symbolBars = footprintDataStore.get(symbol) || [];
         symbolBars.push(completedBar);
-        footprintDataStore.set(symbol, symbolBars.slice(-100)); // Keep last 100 bars
+        footprintDataStore.set(symbol, symbolBars.slice(-100)); 
         notifyListeners(completedBar);
-        console.log(`[${new Date().toISOString()}] FootprintAggregator: Completed bar for ${symbol} at ${new Date(bar.timestamp).toISOString()}. Price Levels: ${bar.priceLevels?.size}, Delta: ${completedBar.delta.toFixed(2)}`);
       }
     }
-    // Start a new bar
     bar = initializeNewBar(symbol, barTimestamp, currentTrade);
     currentBarData.set(symbol, bar);
   }
 
-  // Update bar with current trade
   bar.trades.push(currentTrade);
   bar.high = Math.max(bar.high ?? currentTrade.price, currentTrade.price);
   bar.low = Math.min(bar.low ?? currentTrade.price, currentTrade.price);
   bar.close = currentTrade.price;
   bar.totalVolume = (bar.totalVolume ?? 0) + currentTrade.volume;
 
-  const priceLevelStr = currentTrade.price.toFixed(2); // Adjust precision as needed
+  const priceLevelStr = currentTrade.price.toFixed(2); 
   const priceLevelData = bar.priceLevels?.get(priceLevelStr) || { buyVolume: 0, sellVolume: 0 };
 
   if (currentTrade.side === 'buy') {
     bar.askVolume = (bar.askVolume ?? 0) + currentTrade.volume;
     priceLevelData.buyVolume += currentTrade.volume;
-  } else { // 'sell'
+  } else { 
     bar.bidVolume = (bar.bidVolume ?? 0) + currentTrade.volume;
     priceLevelData.sellVolume += currentTrade.volume;
   }
   bar.priceLevels?.set(priceLevelStr, priceLevelData);
+  if (bar.priceLevels) {
+    // console.log(`[${new Date().toISOString()}] FootprintAggregator [${symbol}]: processTrade updated priceLevels. Size: ${bar.priceLevels.size}, Current Price Level: ${priceLevelStr}, Side: ${currentTrade.side}, Vol: ${currentTrade.volume}`);
+  }
   bar.delta = (bar.askVolume ?? 0) - (bar.bidVolume ?? 0);
 }
 
 function finalizeBar(bar: FootprintBar): FootprintBar {
-  // Most calculations are done incrementally, but this is a good place for any final adjustments
-  // or if we decide to move calculations here.
-  // For now, just ensure all essential fields from FootprintBar are present.
+  if (bar.priceLevels) {
+    console.log(`[${new Date().toISOString()}] FootprintAggregator [${bar.symbol}]: Finalizing bar for ${new Date(bar.timestamp).toISOString()}. priceLevels size: ${bar.priceLevels.size}. Keys: ${Array.from(bar.priceLevels.keys()).join(', ')}`);
+  } else {
+    console.log(`[${new Date().toISOString()}] FootprintAggregator [${bar.symbol}]: Finalizing bar for ${new Date(bar.timestamp).toISOString()}. priceLevels is undefined or null.`);
+  }
   return {
     symbol: bar.symbol,
     timestamp: bar.timestamp,
@@ -136,8 +127,8 @@ function finalizeBar(bar: FootprintBar): FootprintBar {
     delta: bar.delta,
     bidVolume: bar.bidVolume,
     askVolume: bar.askVolume,
-    priceLevels: bar.priceLevels,
-    tradesInBar: bar.tradesInBar || (bar as any).trades || [], // if trades are stored in currentBarData.trades
+    priceLevels: bar.priceLevels || new Map(), // Ensure it's always a map, even if empty
+    tradesInBar: (bar as any).trades || [], 
   };
 }
 
@@ -160,21 +151,19 @@ function connect() {
 
   wsInstance.on('open', () => {
     console.log(`[${new Date().toISOString()}] FootprintAggregator: WebSocket connection established for symbols: ${activeSymbols.join(', ')}.`);
-    reconnectAttempts = 0; // Reset on successful connection
+    reconnectAttempts = 0; 
   });
 
   wsInstance.on('message', (data: WebSocket.Data) => {
     try {
       const message: BinanceStreamData = JSON.parse(data.toString());
-      if (message.data && message.data.s) { // Check if 's' (symbol) exists
+      if (message.data && message.data.s) { 
         processTrade(message.data.s, message.data);
-      } else if (message.stream) { // Fallback for messages that might not have data.s but have stream
+      } else if (message.stream) { 
          const symbolFromStream = message.stream.split('@')[0].toUpperCase();
          if(message.data) {
             processTrade(symbolFromStream, message.data);
          }
-      } else {
-        // console.log('FootprintAggregator: Received non-trade message or malformed data:', message);
       }
     } catch (error) {
       console.error(`[${new Date().toISOString()}] FootprintAggregator: Error processing message:`, error, data.toString());
@@ -183,7 +172,6 @@ function connect() {
 
   wsInstance.on('error', (error: Error) => {
     console.error(`[${new Date().toISOString()}] FootprintAggregator: WebSocket error:`, error.message);
-    // The 'close' event will also be triggered, handling reconnection there.
   });
 
   wsInstance.on('close', (code: number, reason: Buffer) => {
@@ -200,19 +188,19 @@ function connect() {
 function attemptReconnect() {
   if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
     reconnectAttempts++;
-    const delay = Math.pow(2, reconnectAttempts -1 ) * RECONNECT_DELAY_BASE; // Exponential backoff
+    const delay = Math.pow(2, reconnectAttempts -1 ) * RECONNECT_DELAY_BASE; 
     console.log(`[${new Date().toISOString()}] FootprintAggregator: Reconnect attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${delay / 1000}s.`);
     setTimeout(() => {
-      if (activeSymbols.length > 0) { // Only reconnect if there are still active symbols
+      if (activeSymbols.length > 0) { 
         connect();
       } else {
         console.log(`[${new Date().toISOString()}] FootprintAggregator: No active symbols, stopping reconnection attempts.`);
-        reconnectAttempts = 0; // Reset if we stop trying
+        reconnectAttempts = 0; 
       }
     }, delay);
   } else {
     console.error(`[${new Date().toISOString()}] FootprintAggregator: Maximum reconnect attempts reached. Please check the connection or symbol list.`);
-    reconnectAttempts = 0; // Reset for future manual start
+    reconnectAttempts = 0; 
   }
 }
 
@@ -221,12 +209,11 @@ export function startFootprintStream(symbols: string[] = MONITORED_MARKET_SYMBOL
   const newSymbols = symbols.filter(s => !activeSymbols.includes(s));
   const symbolsToRemove = activeSymbols.filter(s => !symbols.includes(s));
 
-  activeSymbols = [...symbols]; // Update the active symbols list
+  activeSymbols = [...symbols]; 
 
   if (wsInstance && (newSymbols.length > 0 || symbolsToRemove.length > 0)) {
-    // If symbols change, easier to close and reconnect with the new set
     console.log(`[${new Date().toISOString()}] FootprintAggregator: Symbol list changed. Reconnecting WebSocket.`);
-    wsInstance.close(); // This will trigger attemptReconnect which will use the updated activeSymbols
+    wsInstance.close(); 
   } else if (!wsInstance && activeSymbols.length > 0) {
     connect();
   } else if (activeSymbols.length === 0 && wsInstance) {
@@ -234,7 +221,7 @@ export function startFootprintStream(symbols: string[] = MONITORED_MARKET_SYMBOL
     wsInstance.close();
     wsInstance = null;
   } else {
-    console.log(`[${new Date().toISOString()}] FootprintAggregator: Stream already running or no symbols to start.`);
+    console.log(`[${new Date().toISOString()}] FootprintAggregator: Stream already running or no symbols to start for: ${symbols.join(', ')}`);
   }
 }
 
@@ -242,13 +229,12 @@ export function stopFootprintStream() {
   console.log(`[${new Date().toISOString()}] FootprintAggregator: stopFootprintStream called.`);
   if (wsInstance) {
     console.log(`[${new Date().toISOString()}] FootprintAggregator: Closing WebSocket connection explicitly.`);
-    activeSymbols = []; // Clear active symbols before closing
+    activeSymbols = []; 
     wsInstance.close();
     wsInstance = null;
   }
   currentBarData.clear();
-  // footprintDataStore.clear(); // Optionally clear historical data on stop
-  reconnectAttempts = 0; // Reset reconnect attempts
+  reconnectAttempts = 0; 
 }
 
 export function getLatestFootprintBars(symbol: string, count: number = 1): FootprintBar[] {
@@ -260,10 +246,4 @@ export function getCurrentAggregatingBar(symbol: string): (Partial<FootprintBar>
     return currentBarData.get(symbol);
 }
 
-// Automatically start the stream with default symbols when the module loads (for server environment)
-// This might need to be managed differently depending on deployment (e.g., only start on first API request)
-// For now, let's make it explicit call from API.
-// startFootprintStream();
-
 console.log(`[${new Date().toISOString()}] FootprintAggregator: Module loaded. Call startFootprintStream() to begin.`);
-

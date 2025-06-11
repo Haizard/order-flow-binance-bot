@@ -10,19 +10,18 @@ import { Loader2, PlayCircle, StopCircle, BarChartHorizontalBig } from 'lucide-r
 import type { FootprintBar, PriceLevelData } from '@/types/footprint';
 import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; // Default symbols
 
-// A very basic component to display one footprint bar's price levels
-// This is NOT the complex visual chart, just a textual/simple bar representation for now.
 const SimpleFootprintBarDisplay: React.FC<{ bar: FootprintBar }> = ({ bar }) => {
   if (!bar || !bar.priceLevels) {
+    console.log("SimpleFootprintBarDisplay: No bar or bar.priceLevels. Bar:", bar);
     return <p className="text-muted-foreground">No bar data or price levels available.</p>;
   }
 
-  // Ensure bar.priceLevels is a Map before calling .entries()
   const priceLevelsMap = bar.priceLevels instanceof Map ? bar.priceLevels : new Map(Object.entries(bar.priceLevels || {}));
+  // console.log(`SimpleFootprintBarDisplay for ${bar.symbol} @ ${new Date(bar.timestamp).toLocaleTimeString()}: priceLevelsMap size: ${priceLevelsMap.size}`, priceLevelsMap.size > 0 ? Array.from(priceLevelsMap.entries()) : "Map is empty");
 
   const sortedPriceLevels = Array.from(priceLevelsMap.entries())
     .map(([price, data]) => ({ price: parseFloat(price), ...data }))
-    .sort((a, b) => b.price - a.price); // Highest price on top
+    .sort((a, b) => b.price - a.price); 
 
   const maxVolumeAtLevel = Math.max(...sortedPriceLevels.map(pl => Math.max(pl.buyVolume, pl.sellVolume)), 0);
 
@@ -61,7 +60,7 @@ const SimpleFootprintBarDisplay: React.FC<{ bar: FootprintBar }> = ({ bar }) => 
 
 
 export default function FootprintChartsPage() {
-  const [symbolsInput, setSymbolsInput] = useState(MONITORED_MARKET_SYMBOLS.slice(0,3).join(',')); // Default to first 3
+  const [symbolsInput, setSymbolsInput] = useState(MONITORED_MARKET_SYMBOLS.slice(0,3).join(',')); 
   const [activeSymbols, setActiveSymbols] = useState<string[]>([]);
   const [footprintBars, setFootprintBars] = useState<Record<string, FootprintBar[]>>({});
   const [currentPartialBars, setCurrentPartialBars] = useState<Record<string, Partial<FootprintBar>>>({});
@@ -86,7 +85,7 @@ export default function FootprintChartsPage() {
     setActiveSymbols(symbolsToConnect);
     setIsLoading(true);
     setIsConnected(false);
-    setFootprintBars({}); // Clear old data
+    setFootprintBars({}); 
     setCurrentPartialBars({});
 
     const url = `/api/footprint-stream?symbols=${symbolsToConnect.join(',')}`;
@@ -109,6 +108,8 @@ export default function FootprintChartsPage() {
     es.addEventListener('footprintUpdate', (event) => {
       const rawData = JSON.parse(event.data);
       const reconstructedPriceLevels = new Map<string, PriceLevelData>(Object.entries(rawData.priceLevels || {}));
+      // console.log(`[Client] footprintUpdate for ${rawData.symbol}: Reconstructed priceLevels size: ${reconstructedPriceLevels.size}`, reconstructedPriceLevels.size > 0 ? Array.from(reconstructedPriceLevels.keys()) : "Map is empty");
+      
       const barData: FootprintBar = {
         ...rawData,
         priceLevels: reconstructedPriceLevels,
@@ -116,14 +117,12 @@ export default function FootprintChartsPage() {
 
       setFootprintBars(prev => {
         const existingBars = prev[barData.symbol] || [];
-        // Add new bar, ensuring no duplicates by timestamp, keeping it sorted by time, and limiting length
         const updatedBars = [
             ...existingBars.filter(b => b.timestamp !== barData.timestamp),
             barData
-        ].sort((a,b) => b.timestamp - a.timestamp).slice(0, 10); // Keep last 10 bars, newest first
+        ].sort((a,b) => b.timestamp - a.timestamp).slice(0, 10); 
         return { ...prev, [barData.symbol]: updatedBars };
       });
-      // Clear partial bar for this symbol when a full new bar arrives
       setCurrentPartialBars(prev => ({...prev, [barData.symbol]: {}}));
     });
     
@@ -133,6 +132,7 @@ export default function FootprintChartsPage() {
 
         if (rawPartialData.priceLevels) {
             partialBarDataWithMap.priceLevels = new Map<string, PriceLevelData>(Object.entries(rawPartialData.priceLevels));
+            // console.log(`[Client] footprintUpdatePartial for ${rawPartialData.symbol}: Reconstructed partial priceLevels size: ${partialBarDataWithMap.priceLevels.size}`);
         }
         
         if(partialBarDataWithMap.symbol) {
@@ -153,7 +153,6 @@ export default function FootprintChartsPage() {
   };
   
   useEffect(() => {
-    // Cleanup on component unmount
     return () => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
@@ -220,7 +219,6 @@ export default function FootprintChartsPage() {
                 </div>
               ) : (
                 <>
-                  {/* Display current partial bar if available */}
                   {currentPartialBars[symbol] && Object.keys(currentPartialBars[symbol]).length > 0 && currentPartialBars[symbol].priceLevels && (
                     <div className="mb-4 p-3 border border-dashed rounded-md bg-primary/5">
                       <p className="text-sm font-semibold text-primary mb-1">Current Aggregating Bar (Partial):</p>
@@ -234,7 +232,7 @@ export default function FootprintChartsPage() {
                      footprintBars[symbol].map(bar => (
                        <div key={bar.timestamp} className="mb-3 last:mb-0">
                          <h4 className="font-medium text-sm mb-1">
-                           Bar: {new Date(bar.timestamp).toLocaleTimeString()} - {new Date(bar.timestamp + 60000 -1).toLocaleTimeString()}
+                           Bar: {new Date(bar.timestamp).toLocaleTimeString()} - {new Date(bar.timestamp + AGGREGATION_INTERVAL_MS -1).toLocaleTimeString()}
                          </h4>
                          <p className="text-xs text-muted-foreground">
                             O:{bar.open.toFixed(2)} H:{bar.high.toFixed(2)} L:{bar.low.toFixed(2)} C:{bar.close.toFixed(2)} Vol:{bar.totalVolume.toFixed(2)} Delta:{bar.delta.toFixed(2)}
