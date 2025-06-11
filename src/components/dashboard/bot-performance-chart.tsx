@@ -103,7 +103,8 @@ export function BotPerformanceChart({ userId }: BotPerformanceChartProps) {
             <TrendingUp className="h-5 w-5 text-primary" />
             Bot Performance Chart
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="flex items-center text-xs text-muted-foreground">
+            <Info className="h-3 w-3 mr-1.5 flex-shrink-0" />
             Cumulative Profit & Loss (P&L) from closed trades over time. Auto-refreshes.
           </CardDescription>
         </CardHeader>
@@ -125,7 +126,8 @@ export function BotPerformanceChart({ userId }: BotPerformanceChartProps) {
             <TrendingUp className="h-5 w-5 text-primary" />
             Bot Performance Chart
           </CardTitle>
-           <CardDescription>
+           <CardDescription className="flex items-center text-xs text-muted-foreground">
+            <Info className="h-3 w-3 mr-1.5 flex-shrink-0" />
             Cumulative Profit & Loss (P&L) from closed trades over time. Auto-refreshes.
           </CardDescription>
         </CardHeader>
@@ -148,7 +150,8 @@ export function BotPerformanceChart({ userId }: BotPerformanceChartProps) {
             <TrendingUp className="h-5 w-5 text-primary" />
             Bot Performance Chart
           </CardTitle>
-           <CardDescription>
+           <CardDescription className="flex items-center text-xs text-muted-foreground">
+            <Info className="h-3 w-3 mr-1.5 flex-shrink-0" />
             Cumulative Profit & Loss (P&L) from closed trades over time. Auto-refreshes.
           </CardDescription>
         </CardHeader>
@@ -175,7 +178,8 @@ export function BotPerformanceChart({ userId }: BotPerformanceChartProps) {
           <TrendingUp className="h-5 w-5 text-primary" />
           Bot Performance Chart
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="flex items-center text-xs text-muted-foreground">
+         <Info className="h-3 w-3 mr-1.5 flex-shrink-0" />
          Cumulative Profit & Loss (P&L) from <code className="bg-muted-foreground/10 px-1 py-0.5 rounded text-xs">CLOSED_SOLD</code> trades over time. Auto-refreshes.
         </CardDescription>
       </CardHeader>
