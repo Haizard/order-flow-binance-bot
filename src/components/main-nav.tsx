@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { CreditCard, History, LayoutDashboard, Settings as SettingsIcon } from 'lucide-react';
+import { CreditCard, History, LayoutDashboard, Settings as SettingsIcon, BarChartHorizontalBig } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   SidebarMenu,
@@ -17,6 +17,7 @@ import {
 
 const menuItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/footprint-charts', label: 'Footprint Charts', icon: BarChartHorizontalBig },
   { href: '/settings', label: 'Settings', icon: SettingsIcon },
   { href: '/trades', label: 'Trade History', icon: History },
   { href: '/subscription', label: 'Subscription', icon: CreditCard },
