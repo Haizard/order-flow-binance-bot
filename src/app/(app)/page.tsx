@@ -5,14 +5,15 @@ import { ActiveTradesList } from '@/components/dashboard/active-trades-list';
 import { MarketOverviewItem } from '@/components/dashboard/market-overview-item';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BotPerformanceChart } from '@/components/dashboard/bot-performance-chart';
+import { AccountBalances } from '@/components/dashboard/account-balances'; // Import the new component
 import { get24hrTicker } from '@/services/binance';
 import type { Ticker24hr } from '@/types/binance';
-import type { SettingsFormValues } from '@/components/settings/settings-form'; // For type
+import type { SettingsFormValues } from '@/components/settings/settings-form';
 import { getSettings } from '@/services/settingsService';
 import { runBotCycle } from '@/core/bot';
-import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; // MONITORED_MARKET_SYMBOLS can remain global
+import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy';
 import * as tradeService from '@/services/tradeService';
-import { defaultSettingsValues } from '@/config/settings-defaults'; // For fallback strategy values
+import { defaultSettingsValues } from '@/config/settings-defaults';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -111,7 +112,6 @@ export default async function DashboardPage() {
 
   console.log(`[${new Date().toISOString()}] DashboardPage (user ${DEMO_USER_ID}): API keys being passed to runBotCycle: API Key Present: ${!!userApiSettingsForBot.binanceApiKey}, Secret Key Present: ${!!userApiSettingsForBot.binanceSecretKey}`);
   try {
-    // Pass only API keys to runBotCycle; it will fetch full settings internally if needed
     await runBotCycle(DEMO_USER_ID, userApiSettingsForBot, liveMarketData);
   } catch (botError) {
     console.error(`[${new Date().toISOString()}] DashboardPage: Error running bot cycle for user ${DEMO_USER_ID}:`, botError);
@@ -122,7 +122,6 @@ export default async function DashboardPage() {
   const activeTradesCount = activeTrades.length;
   const overallPerformancePercent = await calculateOverallPerformance(DEMO_USER_ID);
 
-  // Use the user's configured dip percentage, or fallback to default if not set
   const dipPercentageToUse = typeof userSettings.dipPercentage === 'number' 
     ? userSettings.dipPercentage 
     : defaultSettingsValues.dipPercentage;
@@ -225,11 +224,14 @@ export default async function DashboardPage() {
         )}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+        <div className="xl:col-span-2">
           <ActiveTradesList userId={DEMO_USER_ID} />
         </div>
-        <BotPerformanceChart userId={DEMO_USER_ID} />
+        <div className="space-y-6">
+          <AccountBalances userId={DEMO_USER_ID} />
+          <BotPerformanceChart userId={DEMO_USER_ID} />
+        </div>
       </div>
     </div>
   );
