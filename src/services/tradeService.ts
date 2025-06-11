@@ -215,8 +215,10 @@ export async function getTradeById(userId: string, tradeId: string): Promise<Tra
 
 /**
  * Clears all trades for a specific user from the MongoDB collection.
- * USE WITH CAUTION.
+ * USE WITH CAUTION. This function is protected and will only run in development
+ * or if process.env.ALLOW_DB_CLEAR is explicitly set to 'true'.
  * @param userId - The ID of the user whose trades to clear.
+ * @throws Error if the operation is not allowed in the current environment.
  */
 export async function clearUserTradesFromDb(userId: string): Promise<void> {
   const logTimestamp = new Date().toISOString();
@@ -224,11 +226,18 @@ export async function clearUserTradesFromDb(userId: string): Promise<void> {
     console.warn(`[${logTimestamp}] tradeService.clearUserTradesFromDb (MongoDB) - Called without userId. No action taken.`);
     return;
   }
-  if (process.env.NODE_ENV !== 'development' && process.env.ALLOW_DB_CLEAR !== 'true') {
-      console.warn(`[${logTimestamp}] tradeService.clearUserTradesFromDb (MongoDB) - Blocked: Not in development or ALLOW_DB_CLEAR not true.`);
+
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  const allowDbClear = process.env.ALLOW_DB_CLEAR === 'true';
+
+  if (!isDevelopment && !allowDbClear) {
+      console.warn(`[${logTimestamp}] tradeService.clearUserTradesFromDb (MongoDB) - Blocked: Not in development or ALLOW_DB_CLEAR is not 'true'.`);
       throw new Error("Clearing user trades from database is not allowed in this environment.");
   }
-  console.warn(`[${logTimestamp}] tradeService.clearUserTradesFromDb (MongoDB) called for user ${userId} - CLEARING ALL TRADES FOR THIS USER FROM DATABASE: ${DB_NAME}, COLLECTION: ${COLLECTION_NAME}`);
+  
+  console.warn(`[${logTimestamp}] tradeService.clearUserTradesFromDb (MongoDB) EXECUTING for user ${userId} - Environment check passed (Dev: ${isDevelopment}, AllowClear: ${allowDbClear}). CLEARING ALL TRADES FOR THIS USER FROM DATABASE: ${DB_NAME}, COLLECTION: ${COLLECTION_NAME}`);
   const tradesCollection = await getTradesCollection();
-  await tradesCollection.deleteMany({ userId: userId });
+  const deleteResult = await tradesCollection.deleteMany({ userId: userId });
+  console.log(`[${logTimestamp}] tradeService.clearUserTradesFromDb (MongoDB) - Successfully deleted ${deleteResult.deletedCount} trades for user ${userId}.`);
 }
+

@@ -17,13 +17,25 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, KeyRound, CheckCircle, Loader2, Save, TrendingDown, DollarSign, Zap, ShieldAlert } from "lucide-react";
+import { AlertCircle, KeyRound, CheckCircle, Loader2, Save, TrendingDown, DollarSign, Zap, ShieldAlert, Trash2, TriangleAlert } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { getAccountInformation } from "@/services/binance";
 import { getSettings, saveSettings } from "@/services/settingsService";
 import { defaultSettingsValues } from "@/config/settings-defaults";
-import { Separator } from "@/components/ui/separator";
+import { handleClearUserTrades } from "@/app/(app)/settings/actions";
+
 
 // Placeholder for current user ID - replace with actual auth system integration
 const DEMO_USER_ID = "user123";
@@ -67,8 +79,14 @@ export function SettingsForm() {
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isClearingTrades, setIsClearingTrades] = useState(false);
+  const [isDevelopmentEnv, setIsDevelopmentEnv] = useState(false);
 
   useEffect(() => {
+    // This check needs to be client-side as process.env.NODE_ENV is build-time for server,
+    // but runtime accessible on client in Next.js.
+    setIsDevelopmentEnv(process.env.NODE_ENV === 'development');
+
     async function loadSettings() {
       setIsLoadingSettings(true);
       try {
@@ -166,6 +184,27 @@ export function SettingsForm() {
       setIsSaving(false);
     }
   }
+
+  async function onClearTradesConfirm() {
+    setIsClearingTrades(true);
+    const result = await handleClearUserTrades(DEMO_USER_ID);
+    if (result.success) {
+      toast({
+        title: "Trades Cleared",
+        description: result.message,
+        variant: "default",
+        className: "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700 text-green-800 dark:text-green-300",
+      });
+    } else {
+      toast({
+        title: "Clearing Failed",
+        description: result.message + (result.error ? ` Error: ${result.error}` : ''),
+        variant: "destructive",
+      });
+    }
+    setIsClearingTrades(false);
+  }
+
 
   if (isLoadingSettings) {
     return (
@@ -327,8 +366,7 @@ export function SettingsForm() {
           </CardContent>
         </Card>
 
-
-        <Button type="submit" size="lg" className="w-full md:w-auto" disabled={isSaving || isTestingConnection || isLoadingSettings}>
+        <Button type="submit" size="lg" className="w-full md:w-auto" disabled={isSaving || isTestingConnection || isLoadingSettings || isClearingTrades}>
           {isSaving ? (
             <Loader2 className="mr-2 h-5 w-5 animate-spin" />
           ) : (
@@ -336,6 +374,58 @@ export function SettingsForm() {
           )}
           Save All Settings
         </Button>
+
+        {isDevelopmentEnv && (
+          <Card className="shadow-lg border-destructive/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 font-headline text-destructive">
+                <TriangleAlert className="h-6 w-6" />
+                Developer Options
+              </CardTitle>
+              <CardDescription>
+                These tools are for development and testing purposes only. Use with caution.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" className="w-full md:w-auto" disabled={isClearingTrades || isSaving}>
+                    {isClearingTrades ? (
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    ) : (
+                      <Trash2 className="mr-2 h-5 w-5" />
+                    )}
+                    Clear My Trades Data
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This action will permanently delete all trade history and active trades for your user ({DEMO_USER_ID}). This cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel disabled={isClearingTrades}>Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={onClearTradesConfirm}
+                      disabled={isClearingTrades}
+                      className="bg-destructive hover:bg-destructive/90"
+                    >
+                      {isClearingTrades ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : null}
+                      Yes, Clear Data
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              <FormDescription className="mt-2 text-xs">
+                This button is only visible in development mode. It calls a server action to clear trades for '{DEMO_USER_ID}'.
+              </FormDescription>
+            </CardContent>
+          </Card>
+        )}
       </form>
     </Form>
   );
