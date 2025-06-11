@@ -156,7 +156,7 @@ export default async function DashboardPage() {
             title="Overall Win Rate"
             value={`${overallPerformancePercent}%`}
             icon={Percent}
-            description="Percentage of profitable closed trades."
+            description="Percentage of profitable closed trades. Auto-refreshes."
             className="shadow-md"
           />
         </div>
