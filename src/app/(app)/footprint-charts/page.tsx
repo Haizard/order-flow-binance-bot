@@ -17,7 +17,10 @@ const SimpleFootprintBarDisplay: React.FC<{ bar: FootprintBar }> = ({ bar }) => 
     return <p className="text-muted-foreground">No bar data or price levels available.</p>;
   }
 
-  const sortedPriceLevels = Array.from(bar.priceLevels.entries())
+  // Ensure bar.priceLevels is a Map before calling .entries()
+  const priceLevelsMap = bar.priceLevels instanceof Map ? bar.priceLevels : new Map(Object.entries(bar.priceLevels || {}));
+
+  const sortedPriceLevels = Array.from(priceLevelsMap.entries())
     .map(([price, data]) => ({ price: parseFloat(price), ...data }))
     .sort((a, b) => b.price - a.price); // Highest price on top
 
@@ -104,7 +107,13 @@ export default function FootprintChartsPage() {
     };
 
     es.addEventListener('footprintUpdate', (event) => {
-      const barData = JSON.parse(event.data) as FootprintBar;
+      const rawData = JSON.parse(event.data);
+      const reconstructedPriceLevels = new Map<string, PriceLevelData>(Object.entries(rawData.priceLevels || {}));
+      const barData: FootprintBar = {
+        ...rawData,
+        priceLevels: reconstructedPriceLevels,
+      };
+
       setFootprintBars(prev => {
         const existingBars = prev[barData.symbol] || [];
         // Add new bar, ensuring no duplicates by timestamp, keeping it sorted by time, and limiting length
@@ -119,9 +128,15 @@ export default function FootprintChartsPage() {
     });
     
     es.addEventListener('footprintUpdatePartial', (event) => {
-        const partialBarData = JSON.parse(event.data) as Partial<FootprintBar>;
-        if(partialBarData.symbol) {
-            setCurrentPartialBars(prev => ({...prev, [partialBarData.symbol!]: partialBarData }));
+        const rawPartialData = JSON.parse(event.data);
+        const partialBarDataWithMap: Partial<FootprintBar> = { ...rawPartialData };
+
+        if (rawPartialData.priceLevels) {
+            partialBarDataWithMap.priceLevels = new Map<string, PriceLevelData>(Object.entries(rawPartialData.priceLevels));
+        }
+        
+        if(partialBarDataWithMap.symbol) {
+            setCurrentPartialBars(prev => ({...prev, [partialBarDataWithMap.symbol!]: partialBarDataWithMap }));
         }
     });
 
@@ -175,7 +190,7 @@ export default function FootprintChartsPage() {
 
        {isConnected && activeSymbols.length > 0 && (
          <div className="text-sm text-green-600 dark:text-green-400">
-            Connected to stream for: {activeSymbols.join(', ')}. Displaying latest completed bar data. Partial current bar updates in console.
+            Connected to stream for: {activeSymbols.join(', ')}. Displaying latest completed bar data.
          </div>
         )}
        {!isConnected && !isLoading && activeSymbols.length > 0 && (
@@ -206,13 +221,13 @@ export default function FootprintChartsPage() {
               ) : (
                 <>
                   {/* Display current partial bar if available */}
-                  {currentPartialBars[symbol] && Object.keys(currentPartialBars[symbol]).length > 0 && (
+                  {currentPartialBars[symbol] && Object.keys(currentPartialBars[symbol]).length > 0 && currentPartialBars[symbol].priceLevels && (
                     <div className="mb-4 p-3 border border-dashed rounded-md bg-primary/5">
                       <p className="text-sm font-semibold text-primary mb-1">Current Aggregating Bar (Partial):</p>
                       <p className="text-xs">Timestamp: {currentPartialBars[symbol].timestamp ? new Date(currentPartialBars[symbol].timestamp!).toISOString() : 'N/A'}</p>
                       <p className="text-xs">O: {currentPartialBars[symbol].open?.toFixed(2)} H: {currentPartialBars[symbol].high?.toFixed(2)} L: {currentPartialBars[symbol].low?.toFixed(2)} C: {currentPartialBars[symbol].close?.toFixed(2)}</p>
                       <p className="text-xs">Volume: {currentPartialBars[symbol].totalVolume?.toFixed(2)} Delta: {currentPartialBars[symbol].delta?.toFixed(2)}</p>
-                      <p className="text-xs">Price Levels Seen: {currentPartialBars[symbol].priceLevels?.size || 0}</p>
+                       <p className="text-xs">Price Levels Seen: {currentPartialBars[symbol].priceLevels instanceof Map ? currentPartialBars[symbol].priceLevels!.size : Object.keys(currentPartialBars[symbol].priceLevels!).length}</p>
                     </div>
                   )}
                   {(footprintBars[symbol] && footprintBars[symbol].length > 0) ? (
@@ -248,3 +263,4 @@ export default function FootprintChartsPage() {
     </div>
   );
 }
+
