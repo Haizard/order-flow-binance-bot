@@ -10,9 +10,11 @@ import { Loader2, PlayCircle, StopCircle, BarChartHorizontalBig } from 'lucide-r
 import type { FootprintBar, PriceLevelData } from '@/types/footprint';
 import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; // Default symbols
 
+const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute
+
 const SimpleFootprintBarDisplay: React.FC<{ bar: FootprintBar }> = ({ bar }) => {
   if (!bar || !bar.priceLevels) {
-    console.log("SimpleFootprintBarDisplay: No bar or bar.priceLevels. Bar:", bar);
+    // console.log("SimpleFootprintBarDisplay: No bar or bar.priceLevels. Bar:", bar);
     return <p className="text-muted-foreground">No bar data or price levels available.</p>;
   }
 
@@ -21,7 +23,7 @@ const SimpleFootprintBarDisplay: React.FC<{ bar: FootprintBar }> = ({ bar }) => 
 
   const sortedPriceLevels = Array.from(priceLevelsMap.entries())
     .map(([price, data]) => ({ price: parseFloat(price), ...data }))
-    .sort((a, b) => b.price - a.price); 
+    .sort((a, b) => b.price - a.price);
 
   const maxVolumeAtLevel = Math.max(...sortedPriceLevels.map(pl => Math.max(pl.buyVolume, pl.sellVolume)), 0);
 
@@ -35,8 +37,8 @@ const SimpleFootprintBarDisplay: React.FC<{ bar: FootprintBar }> = ({ bar }) => 
       {sortedPriceLevels.map(({ price, buyVolume, sellVolume }) => (
         <div key={price} className="grid grid-cols-3 items-center gap-x-1 hover:bg-muted/50">
           <div className="text-right text-red-500 relative h-4">
-            <div 
-              className="absolute right-0 top-0 bottom-0 bg-red-500/30" 
+            <div
+              className="absolute right-0 top-0 bottom-0 bg-red-500/30"
               style={{ width: maxVolumeAtLevel > 0 ? `${(sellVolume / maxVolumeAtLevel) * 100}%` : '0%' }}
             />
             <span className="relative pr-1">{sellVolume.toFixed(2)}</span>
@@ -45,7 +47,7 @@ const SimpleFootprintBarDisplay: React.FC<{ bar: FootprintBar }> = ({ bar }) => 
             {price.toFixed(Math.max(2, (price < 1 ? 4 : 2)))}
           </div>
           <div className="text-left text-green-500 relative h-4">
-            <div 
+            <div
               className="absolute left-0 top-0 bottom-0 bg-green-500/30"
               style={{ width: maxVolumeAtLevel > 0 ? `${(buyVolume / maxVolumeAtLevel) * 100}%` : '0%' }}
             />
@@ -60,7 +62,7 @@ const SimpleFootprintBarDisplay: React.FC<{ bar: FootprintBar }> = ({ bar }) => 
 
 
 export default function FootprintChartsPage() {
-  const [symbolsInput, setSymbolsInput] = useState(MONITORED_MARKET_SYMBOLS.slice(0,3).join(',')); 
+  const [symbolsInput, setSymbolsInput] = useState(MONITORED_MARKET_SYMBOLS.slice(0,3).join(','));
   const [activeSymbols, setActiveSymbols] = useState<string[]>([]);
   const [footprintBars, setFootprintBars] = useState<Record<string, FootprintBar[]>>({});
   const [currentPartialBars, setCurrentPartialBars] = useState<Record<string, Partial<FootprintBar>>>({});
@@ -85,7 +87,7 @@ export default function FootprintChartsPage() {
     setActiveSymbols(symbolsToConnect);
     setIsLoading(true);
     setIsConnected(false);
-    setFootprintBars({}); 
+    setFootprintBars({});
     setCurrentPartialBars({});
 
     const url = `/api/footprint-stream?symbols=${symbolsToConnect.join(',')}`;
@@ -93,7 +95,7 @@ export default function FootprintChartsPage() {
     eventSourceRef.current = es;
 
     es.onopen = () => {
-      console.log("SSE Connection Opened for symbols:", symbolsToConnect.join(','));
+      // console.log("SSE Connection Opened for symbols:", symbolsToConnect.join(','));
       setIsLoading(false);
       setIsConnected(true);
     };
@@ -109,7 +111,7 @@ export default function FootprintChartsPage() {
       const rawData = JSON.parse(event.data);
       const reconstructedPriceLevels = new Map<string, PriceLevelData>(Object.entries(rawData.priceLevels || {}));
       // console.log(`[Client] footprintUpdate for ${rawData.symbol}: Reconstructed priceLevels size: ${reconstructedPriceLevels.size}`, reconstructedPriceLevels.size > 0 ? Array.from(reconstructedPriceLevels.keys()) : "Map is empty");
-      
+
       const barData: FootprintBar = {
         ...rawData,
         priceLevels: reconstructedPriceLevels,
@@ -120,12 +122,12 @@ export default function FootprintChartsPage() {
         const updatedBars = [
             ...existingBars.filter(b => b.timestamp !== barData.timestamp),
             barData
-        ].sort((a,b) => b.timestamp - a.timestamp).slice(0, 10); 
+        ].sort((a,b) => b.timestamp - a.timestamp).slice(0, 10);
         return { ...prev, [barData.symbol]: updatedBars };
       });
       setCurrentPartialBars(prev => ({...prev, [barData.symbol]: {}}));
     });
-    
+
     es.addEventListener('footprintUpdatePartial', (event) => {
         const rawPartialData = JSON.parse(event.data);
         const partialBarDataWithMap: Partial<FootprintBar> = { ...rawPartialData };
@@ -134,7 +136,7 @@ export default function FootprintChartsPage() {
             partialBarDataWithMap.priceLevels = new Map<string, PriceLevelData>(Object.entries(rawPartialData.priceLevels));
             // console.log(`[Client] footprintUpdatePartial for ${rawPartialData.symbol}: Reconstructed partial priceLevels size: ${partialBarDataWithMap.priceLevels.size}`);
         }
-        
+
         if(partialBarDataWithMap.symbol) {
             setCurrentPartialBars(prev => ({...prev, [partialBarDataWithMap.symbol!]: partialBarDataWithMap }));
         }
@@ -149,9 +151,9 @@ export default function FootprintChartsPage() {
     }
     setIsConnected(false);
     setActiveSymbols([]);
-    console.log("SSE Connection Closed by user.");
+    // console.log("SSE Connection Closed by user.");
   };
-  
+
   useEffect(() => {
     return () => {
       if (eventSourceRef.current) {
@@ -262,3 +264,4 @@ export default function FootprintChartsPage() {
   );
 }
 
+    
