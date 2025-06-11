@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Bitcoin, TrendingUp, TrendingDown, ArrowLeft, ArrowRight, History, AlertTriangle, ServerCrash } from 'lucide-react';
+import { Bitcoin, TrendingUp, TrendingDown, ArrowLeft, ArrowRight, History, AlertTriangle, ServerCrash, Activity } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 import * as tradeService from '@/services/tradeService';
 import type { Trade } from '@/types/trade';
@@ -161,12 +161,11 @@ export function TradeHistoryTable({ userId }: TradeHistoryTableProps) {
                 <TableRow key={trade.id}>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                       {/* Basic icon logic, can be expanded */}
-                       {trade.baseAsset === 'BTC' ? <Bitcoin className="h-5 w-5 text-yellow-500" /> : 
-                        trade.baseAsset === 'ETH' ? <svg className="h-5 w-5 text-gray-500" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M15.922 2l-.39 1.12L9.95 17.502l5.972 3.63L21.902 17.5l-5.59-14.38zm.078 21.807l-5.938-3.598 5.938 8.753 5.945-8.753zM22.36 16.97L16 20.178l-6.36-3.208 6.36-6.09z"/></svg> :
-                        <Bitcoin className="h-5 w-5 text-primary" /> /* Default Icon */
-                       }
-                      <span className="font-medium">{trade.symbol}</span>
+                       {trade.baseAsset === 'BTC' ? <Bitcoin className="h-5 w-5 text-primary" /> :
+                        trade.baseAsset === 'ETH' ? <svg className="h-5 w-5 text-primary" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M15.922 2l-.39 1.12L9.95 17.502l5.972 3.63L21.902 17.5l-5.59-14.38zm.078 21.807l-5.938-3.598 5.938 8.753 5.945-8.753zM22.36 16.97L16 20.178l-6.36-3.208 6.36-6.09z"/></svg> :
+                        trade.baseAsset === 'SOL' ? <svg className="h-5 w-5 text-primary" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M4.75 2.75a.75.75 0 0 0-.75.75v12.04a.75.75 0 0 0 .75.75h14.5a.75.75 0 0 0 .75-.75V7.543a.75.75 0 0 0-.75-.75H9.295a.75.75 0 0 1-.53-.22L7.046 4.854a.75.75 0 0 0-.53-.22H4.75zm4.545 4.545h10.205V15.H9.295V7.295zM2.75 18.54v-1.75h18.5v1.75a.75.75 0 0 1-.75.75H3.5a.75.75 0 0 1-.75-.75z"/></svg> :
+                        <Activity className="h-5 w-5 text-primary" />}
+                      <span className="font-medium">{trade.baseAsset}/{trade.quoteAsset}</span>
                     </div>
                   </TableCell>
                   <TableCell className="text-right">{formatCurrency(trade.buyPrice, trade.quoteAsset)}</TableCell>
@@ -175,13 +174,13 @@ export function TradeHistoryTable({ userId }: TradeHistoryTableProps) {
                   <TableCell className={`text-right font-medium ${trade.pnl && trade.pnl >= 0 ? 'text-accent-foreground' : 'text-destructive'}`}>
                     {trade.pnl !== undefined ? formatCurrency(trade.pnl, trade.quoteAsset) : 'N/A'}
                   </TableCell>
-                   <TableCell className={`text-right ${trade.pnlPercentage && trade.pnlPercentage >= 0 ? 'text-accent-foreground' : 'text-destructive'}`}>
+                   <TableCell className={`text-right font-medium ${trade.pnlPercentage && trade.pnlPercentage >= 0 ? 'text-accent-foreground' : 'text-destructive'}`}>
                     {trade.pnlPercentage !== undefined ? `${trade.pnlPercentage.toFixed(2)}%` : 'N/A'}
                     {trade.pnlPercentage !== undefined ? (trade.pnlPercentage >= 0 ? <TrendingUp className="inline ml-1 h-4 w-4" /> : <TrendingDown className="inline ml-1 h-4 w-4" />) : null}
                   </TableCell>
                   <TableCell>{trade.sellTimestamp ? new Date(trade.sellTimestamp).toLocaleDateString() : 'N/A'}</TableCell>
                   <TableCell>
-                    <Badge variant={trade.status === 'CLOSED_SOLD' ? 'default' : 'destructive'}>
+                    <Badge variant={trade.status === 'CLOSED_SOLD' ? 'default' : (trade.status === 'CLOSED_ERROR' ? 'destructive' : 'outline')}>
                         {trade.status.replace('CLOSED_', '')}
                     </Badge>
                   </TableCell>
@@ -221,3 +220,4 @@ export function TradeHistoryTable({ userId }: TradeHistoryTableProps) {
     </Card>
   );
 }
+
