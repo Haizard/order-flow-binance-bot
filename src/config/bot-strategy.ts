@@ -3,18 +3,16 @@
 // These are centrally managed for the entire bot's operation.
 
 /** Bot considers buying if 24hr change is less than or equal to this percentage (e.g., -5 for -5%). */
-export const GLOBAL_DIP_PERCENTAGE = -4; // Set back to a realistic strategy value
+export const GLOBAL_DIP_PERCENTAGE = -4;
 
 /** Each trade will be for this amount in USD. */
 export const GLOBAL_BUY_AMOUNT_USD = 50;
 
 /** Activate trailing stop when profit reaches this percentage (e.g., 2.5 for 2.5%). */
-// TEMPORARILY SET LOW TO CLOSE TRADES
-export const GLOBAL_TRAIL_ACTIVATION_PROFIT = 0.01;
+export const GLOBAL_TRAIL_ACTIVATION_PROFIT = 2.5;
 
 /** Trailing stop loss distance from the high price, as a percentage (e.g., 0.8 for 0.8%). */
-// TEMPORARILY SET LOW TO CLOSE TRADES
-export const GLOBAL_TRAIL_DELTA = 0.01;
+export const GLOBAL_TRAIL_DELTA = 0.8;
 
 /**
  * List of market symbols the bot and dashboard will monitor.
