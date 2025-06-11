@@ -1,7 +1,7 @@
 
 'use server';
 /**
- * @fileOverview SettingsService - Manages user-specific settings (now primarily API keys) using MongoDB.
+ * @fileOverview SettingsService - Manages user-specific settings (API keys and bot strategy) using MongoDB.
  */
 
 import type { SettingsFormValues } from '@/components/settings/settings-form';
@@ -28,7 +28,7 @@ if (!MONGODB_URI) {
 
 
 const DB_NAME = process.env.MONGODB_DB_NAME || 'binanceTrailblazerDb';
-const COLLECTION_NAME = 'userApiSettings'; 
+const COLLECTION_NAME = 'userApiSettings'; // Collection now stores API keys and strategy params
 
 interface CustomGlobal extends NodeJS.Global {
   _mongoSettingsClientPromise?: Promise<MongoClient>;
@@ -68,16 +68,18 @@ async function getSettingsCollection(): Promise<Collection<SettingsFormValues>> 
 }
 
 /**
- * Retrieves the API key settings for a specific user from MongoDB.
- * If no settings are found for the user, returns default settings populated with the userId.
+ * Retrieves the settings (API keys and strategy) for a specific user from MongoDB.
+ * If no settings are found, returns default settings populated with the userId.
  * @param userId - The ID of the user whose settings to retrieve.
- * @returns A promise that resolves to the SettingsFormValues (API keys) for the user.
+ * @returns A promise that resolves to the SettingsFormValues for the user.
  */
 export async function getSettings(userId: string): Promise<SettingsFormValues> {
   const logTimestamp = new Date().toISOString();
   if (!userId) {
     console.warn(`[${logTimestamp}] settingsService.getSettings (MongoDB): Called without userId. Returning default settings with a placeholder userId.`);
-    return { ...defaultSettingsValues, userId: "UNKNOWN_USER_ID_IN_GETSETTINGS" };
+    // Ensure all fields from SettingsFormValues are present in the default
+    const fullDefaultSettings = { ...defaultSettingsValues, userId: "UNKNOWN_USER_ID_IN_GETSETTINGS" };
+    return fullDefaultSettings;
   }
   console.log(`[${logTimestamp}] settingsService.getSettings (MongoDB) called for user: ${userId}`);
   const settingsCollection = await getSettingsCollection();
@@ -85,22 +87,22 @@ export async function getSettings(userId: string): Promise<SettingsFormValues> {
   const settingsDoc = await settingsCollection.findOne({ userId: userId });
 
   if (settingsDoc) {
-    const apiKeyPresent = !!settingsDoc.binanceApiKey && settingsDoc.binanceApiKey.length > 0;
-    const secretKeyPresent = !!settingsDoc.binanceSecretKey && settingsDoc.binanceSecretKey.length > 0;
-    console.log(`[${logTimestamp}] settingsService.getSettings (MongoDB): Found existing API key settings for user ${userId}. API Key Data Present: ${apiKeyPresent}, Secret Key Data Present: ${secretKeyPresent}. API Key Length: ${settingsDoc.binanceApiKey?.length || 0}`);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { _id, ...settingsWithoutMongoId } = settingsDoc as WithId<SettingsFormValues>;
-    return { ...defaultSettingsValues, ...settingsWithoutMongoId, userId: userId };
+    // Merge fetched settings with defaults to ensure all fields are present, especially for users with older settings objects
+    const mergedSettings = { ...defaultSettingsValues, ...settingsWithoutMongoId, userId: userId };
+    console.log(`[${logTimestamp}] settingsService.getSettings (MongoDB): Found existing settings for user ${userId}. API Key Present: ${!!mergedSettings.binanceApiKey}, Dip%: ${mergedSettings.dipPercentage}, Buy Amount: ${mergedSettings.buyAmountUsd}`);
+    return mergedSettings;
   } else {
-    console.log(`[${logTimestamp}] settingsService.getSettings (MongoDB): No API key settings found for user ${userId}. Returning new default settings object for this user.`);
+    console.log(`[${logTimestamp}] settingsService.getSettings (MongoDB): No settings found for user ${userId}. Returning new default settings object for this user.`);
     return { ...defaultSettingsValues, userId: userId };
   }
 }
 
 /**
- * Saves the API key settings for a specific user to MongoDB.
+ * Saves the settings (API keys and strategy) for a specific user to MongoDB.
  * @param userId - The ID of the user whose settings to save.
- * @param settings - The settings (API keys and userId) to save.
+ * @param settings - The settings to save.
  * @returns A promise that resolves when settings are saved.
  */
 export async function saveSettings(userId: string, settings: SettingsFormValues): Promise<void> {
@@ -114,27 +116,40 @@ export async function saveSettings(userId: string, settings: SettingsFormValues)
     throw new Error('User ID mismatch in saveSettings.');
   }
   
-  const apiKeyProvidedLength = settings.binanceApiKey?.length || 0;
-  const secretKeyProvidedLength = settings.binanceSecretKey?.length || 0;
-  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) ATTEMPTING TO SAVE for user: ${userId}. API Key Provided Length: ${apiKeyProvidedLength}, Secret Key Provided Length: ${secretKeyProvidedLength}`);
-  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) for user: ${userId}. Input settings object:`, JSON.stringify({userId: settings.userId, binanceApiKeyLength: apiKeyProvidedLength, binanceSecretKeyLength: secretKeyProvidedLength}));
+  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) ATTEMPTING TO SAVE for user: ${userId}. Full settings object:`, JSON.stringify(settings, (key, value) => key === 'binanceSecretKey' && value ? '[REDACTED]' : value));
   
   const settingsCollection = await getSettingsCollection();
 
-  const { userId: settingsUserId, binanceApiKey, binanceSecretKey } = settings;
+  // Destructure all relevant fields to be saved from the input 'settings' object
+  const { 
+    userId: settingsUserId, // This is used for $setOnInsert
+    binanceApiKey, 
+    binanceSecretKey,
+    dipPercentage,
+    buyAmountUsd,
+    trailActivationProfit,
+    trailDelta
+  } = settings;
+
+  // Ensure that strategy parameters are numbers and fall back to defaults from defaultSettingsValues if undefined in input
+  // This covers cases where form fields might be empty or not submitted
   const settingsDataToSet = {
     binanceApiKey: binanceApiKey || "", 
     binanceSecretKey: binanceSecretKey || "", 
+    dipPercentage: typeof dipPercentage === 'number' ? dipPercentage : defaultSettingsValues.dipPercentage,
+    buyAmountUsd: typeof buyAmountUsd === 'number' && buyAmountUsd > 0 ? buyAmountUsd : defaultSettingsValues.buyAmountUsd,
+    trailActivationProfit: typeof trailActivationProfit === 'number' && trailActivationProfit > 0 ? trailActivationProfit : defaultSettingsValues.trailActivationProfit,
+    trailDelta: typeof trailDelta === 'number' && trailDelta > 0 ? trailDelta : defaultSettingsValues.trailDelta,
   };
 
   const filter = { userId: userId };
   const updateOperation: UpdateFilter<SettingsFormValues> = {
     $set: settingsDataToSet, 
-    $setOnInsert: { userId: settingsUserId } 
+    $setOnInsert: { userId: settingsUserId } // Ensures userId is set on document creation
   };
 
   console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) for user: ${userId}. Filter:`, JSON.stringify(filter));
-  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) for user: ${userId}. Update Operation:`, JSON.stringify(updateOperation));
+  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) for user: ${userId}. Update Operation ($set part):`, JSON.stringify(settingsDataToSet));
 
   try {
     const result = await settingsCollection.updateOne(
@@ -146,17 +161,16 @@ export async function saveSettings(userId: string, settings: SettingsFormValues)
     console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) for user: ${userId}. MongoDB updateOne RAW result:`, JSON.stringify(result));
 
     if (result.upsertedCount > 0) {
-      console.log(`[${logTimestamp}] settingsService (MongoDB): API Key settings for user ${userId} UPSERTED successfully. Upserted ID: ${result.upsertedId}`);
+      console.log(`[${logTimestamp}] settingsService (MongoDB): Settings for user ${userId} UPSERTED successfully. Upserted ID: ${result.upsertedId}`);
     } else if (result.modifiedCount > 0) {
-     console.log(`[${logTimestamp}] settingsService (MongoDB): API Key settings for user ${userId} MODIFIED successfully.`);
+     console.log(`[${logTimestamp}] settingsService (MongoDB): Settings for user ${userId} MODIFIED successfully.`);
     } else if (result.matchedCount > 0 && result.modifiedCount === 0) {
-      console.log(`[${logTimestamp}] settingsService (MongoDB): API Key settings for user ${userId} matched but NOT modified (likely same values).`);
+      console.log(`[${logTimestamp}] settingsService (MongoDB): Settings for user ${userId} matched but NOT modified (likely same values).`);
     } else {
-      console.warn(`[${logTimestamp}] settingsService (MongoDB): API Key settings save operation for user ${userId} resulted in no change or no match. Matched: ${result.matchedCount}, Modified: ${result.modifiedCount}, Upserted: ${result.upsertedCount > 0 ? 'Yes' : 'No'}`);
+      console.warn(`[${logTimestamp}] settingsService (MongoDB): Settings save operation for user ${userId} resulted in no change or no match. Matched: ${result.matchedCount}, Modified: ${result.modifiedCount}, Upserted: ${result.upsertedCount > 0 ? 'Yes' : 'No'}`);
     }
   } catch (dbError) {
     console.error(`[${logTimestamp}] settingsService.saveSettings (MongoDB) for user: ${userId}. DATABASE OPERATION FAILED:`, dbError);
-    throw dbError; // Re-throw the error so SettingsForm can catch it
+    throw dbError;
   }
 }
-

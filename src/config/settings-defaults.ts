@@ -1,14 +1,16 @@
 
 import type { SettingsFormValues } from '@/components/settings/settings-form';
 
-// Defines the base default values for user settings, now primarily API keys.
+// Defines the base default values for user settings.
 // Excludes userId, which is added dynamically.
 export const defaultSettingsValues: Omit<SettingsFormValues, 'userId'> = {
   binanceApiKey: "",
   binanceSecretKey: "",
-  // Bot-specific parameters like buyAmountUsd, dipPercentage, etc., are now global
-  // and managed within core/bot.ts or by an admin.
-  // isBotActive is also removed from user settings; activity will depend on API keys provided
-  // and, in a full system, subscription status.
+  // Bot strategy defaults - these will be used if a user hasn't configured their own.
+  // Values are taken from the original bot-strategy.ts global constants.
+  dipPercentage: -4, // Default dip percentage to consider for buys
+  buyAmountUsd: 50,    // Default amount in USD for each trade
+  trailActivationProfit: 2.5, // Default profit % to activate trailing stop
+  trailDelta: 0.8,      // Default trailing stop loss delta %
 };
 

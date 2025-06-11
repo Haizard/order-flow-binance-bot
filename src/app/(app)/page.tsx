@@ -1,5 +1,5 @@
 
-import { DollarSign, ListChecks, Bot, TrendingUp, SearchX, TrendingDown, Activity, AlertTriangle, Info, Percent } from 'lucide-react';
+import { DollarSign, ListChecks, Percent, TrendingDown, SearchX, AlertTriangle, Info } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/metric-card';
 import { ActiveTradesList } from '@/components/dashboard/active-trades-list';
 import { MarketOverviewItem } from '@/components/dashboard/market-overview-item';
@@ -7,16 +7,16 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { BotPerformanceChart } from '@/components/dashboard/bot-performance-chart';
 import { get24hrTicker } from '@/services/binance';
 import type { Ticker24hr } from '@/types/binance';
-import type { SettingsFormValues } from '@/components/settings/settings-form';
+import type { SettingsFormValues } from '@/components/settings/settings-form'; // For type
 import { getSettings } from '@/services/settingsService';
 import { runBotCycle } from '@/core/bot';
-import { BOT_GLOBAL_SETTINGS, MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy';
+import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; // MONITORED_MARKET_SYMBOLS can remain global
 import * as tradeService from '@/services/tradeService';
+import { defaultSettingsValues } from '@/config/settings-defaults'; // For fallback strategy values
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-// Placeholder for current user ID - replace with actual auth system integration
 const DEMO_USER_ID = "user123";
 
 async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
@@ -67,9 +67,13 @@ async function calculateOverallPerformance(userId: string): Promise<string> {
   const logTimestamp = new Date().toISOString();
   console.log(`[${logTimestamp}] DashboardPage: calculateOverallPerformance called for user ${userId}`);
   const closedTrades = await tradeService.getClosedTrades(userId);
+  console.log(`[${logTimestamp}] DashboardPage: calculateOverallPerformance (user ${userId}): Total closed trades: ${closedTrades.length}`);
+  
   const soldTrades = closedTrades.filter(
     trade => trade.status === 'CLOSED_SOLD' && typeof trade.pnl === 'number'
   );
+  console.log(`[${logTimestamp}] DashboardPage: calculateOverallPerformance (user ${userId}): Filtered 'CLOSED_SOLD' trades with P&L: ${soldTrades.length}`);
+
 
   if (soldTrades.length === 0) {
     console.log(`[${logTimestamp}] DashboardPage: No CLOSED_SOLD trades found for performance calculation for user ${userId}.`);
@@ -77,33 +81,38 @@ async function calculateOverallPerformance(userId: string): Promise<string> {
   }
 
   const profitableTrades = soldTrades.filter(trade => trade.pnl! > 0).length;
-  const winRate = (profitableTrades / soldTrades.length) * 100;
+  console.log(`[${logTimestamp}] DashboardPage: calculateOverallPerformance (user ${userId}): Profitable 'CLOSED_SOLD' trades: ${profitableTrades}`);
   
-  console.log(`[${logTimestamp}] DashboardPage: Overall performance for user ${userId}: ${winRate.toFixed(1)}% (${profitableTrades}/${soldTrades.length})`);
-  return winRate.toFixed(1);
+  const winRate = (profitableTrades / soldTrades.length) * 100;
+  const formattedWinRate = winRate.toFixed(1);
+  console.log(`[${logTimestamp}] DashboardPage: Overall performance for user ${userId}: Calculated winRate: ${winRate}, Returning: "${formattedWinRate}" (will become "${formattedWinRate}%") (${profitableTrades}/${soldTrades.length})`);
+  return formattedWinRate;
 }
 
 
 export default async function DashboardPage() {
   console.log(`[${new Date().toISOString()}] DashboardPage: Component rendering started for user ${DEMO_USER_ID}.`);
 
+  let userSettings: SettingsFormValues;
+  try {
+    userSettings = await getSettings(DEMO_USER_ID);
+    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded user settings for ${DEMO_USER_ID}. API Key Present: ${!!userSettings.binanceApiKey}, Dip Percentage: ${userSettings.dipPercentage}`);
+  } catch (error) {
+    console.error(`[${new Date().toISOString()}] DashboardPage: Failed to load user settings for ${DEMO_USER_ID}, using defaults for bot cycle and display:`, error);
+    userSettings = { ...defaultSettingsValues, userId: DEMO_USER_ID };
+  }
+  
   const liveMarketData = await getMarketData(MONITORED_MARKET_SYMBOLS);
 
-  let userApiSettings: Pick<SettingsFormValues, 'binanceApiKey' | 'binanceSecretKey'> = {};
-  try {
-    const fullUserSettings = await getSettings(DEMO_USER_ID);
-    userApiSettings = {
-        binanceApiKey: fullUserSettings.binanceApiKey,
-        binanceSecretKey: fullUserSettings.binanceSecretKey,
-    };
-    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded user API key settings for user ${DEMO_USER_ID}. API Key Loaded: ${!!userApiSettings.binanceApiKey}, Secret Key Loaded: ${!!userApiSettings.binanceSecretKey}`);
-  } catch (error) {
-    console.error(`[${new Date().toISOString()}] DashboardPage: Failed to load user API key settings for ${DEMO_USER_ID}, bot cycle may not trade:`, error);
-  }
+  const userApiSettingsForBot = {
+      binanceApiKey: userSettings.binanceApiKey,
+      binanceSecretKey: userSettings.binanceSecretKey,
+  };
 
-  console.log(`[${new Date().toISOString()}] DashboardPage (user ${DEMO_USER_ID}): API keys being passed to runBotCycle: API Key Present: ${!!userApiSettings.binanceApiKey}, Secret Key Present: ${!!userApiSettings.binanceSecretKey}`);
+  console.log(`[${new Date().toISOString()}] DashboardPage (user ${DEMO_USER_ID}): API keys being passed to runBotCycle: API Key Present: ${!!userApiSettingsForBot.binanceApiKey}, Secret Key Present: ${!!userApiSettingsForBot.binanceSecretKey}`);
   try {
-    await runBotCycle(DEMO_USER_ID, userApiSettings, liveMarketData);
+    // Pass only API keys to runBotCycle; it will fetch full settings internally if needed
+    await runBotCycle(DEMO_USER_ID, userApiSettingsForBot, liveMarketData);
   } catch (botError) {
     console.error(`[${new Date().toISOString()}] DashboardPage: Error running bot cycle for user ${DEMO_USER_ID}:`, botError);
   }
@@ -113,16 +122,17 @@ export default async function DashboardPage() {
   const activeTradesCount = activeTrades.length;
   const overallPerformancePercent = await calculateOverallPerformance(DEMO_USER_ID);
 
-
-  const dipPercentageToUse = BOT_GLOBAL_SETTINGS.GLOBAL_DIP_PERCENTAGE;
+  // Use the user's configured dip percentage, or fallback to default if not set
+  const dipPercentageToUse = typeof userSettings.dipPercentage === 'number' 
+    ? userSettings.dipPercentage 
+    : defaultSettingsValues.dipPercentage;
 
   const potentialDipBuys = liveMarketData.filter(
     (ticker) => parseFloat(ticker.priceChangePercent) <= dipPercentageToUse &&
                  !activeTrades.some(at => at.symbol === ticker.symbol)
   );
 
-  console.log(`[${new Date().toISOString()}] DashboardPage PRE-RENDER: User: ${DEMO_USER_ID}, Total P&L: ${totalPnl}, Active Trades: ${activeTradesCount}, Overall Win Rate: ${overallPerformancePercent}%, Potential Dips: ${potentialDipBuys.length}, BTC Price (example): ${liveMarketData.find(t => t.symbol === 'BTCUSDT')?.lastPrice || 'N/A'}`);
-
+  console.log(`[${new Date().toISOString()}] DashboardPage PRE-RENDER: User: ${DEMO_USER_ID}, Total P&L: ${totalPnl}, Active Trades: ${activeTradesCount}, Overall Win Rate: ${overallPerformancePercent}%, User Dip Setting: ${dipPercentageToUse}%, Potential Dips: ${potentialDipBuys.length}`);
 
   return (
     <div className="flex flex-col gap-8">
@@ -186,7 +196,7 @@ export default async function DashboardPage() {
                  Potential Dip Buys (24hr ≤ {dipPercentageToUse}%)
             </CardTitle>
             <CardDescription className="flex items-center text-xs text-muted-foreground">
-                <Info className="h-3 w-3 mr-1.5" /> Based on live market data & global bot strategy. Auto-refreshes. Excludes already active bot trades.
+                <Info className="h-3 w-3 mr-1.5" /> Based on live market data & your strategy setting. Auto-refreshes. Excludes already active bot trades.
             </CardDescription>
         </CardHeader>
         {liveMarketData.length > 0 ? ( potentialDipBuys.length > 0 ? (
@@ -200,8 +210,8 @@ export default async function DashboardPage() {
             <CardContent className="pt-6">
               <div className="flex flex-col items-center justify-center py-10 text-center">
                 <SearchX className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No new coins from the monitored list meet the global dip criteria (≤ {dipPercentageToUse}%).</p>
-                <p className="text-xs text-muted-foreground mt-1">Market conditions may change.</p>
+                <p className="text-muted-foreground">No new coins from the monitored list meet your dip criteria (≤ {dipPercentageToUse}%).</p>
+                <p className="text-xs text-muted-foreground mt-1">Market conditions may change, or adjust your "Dip Percentage" in Settings.</p>
               </div>
             </CardContent>
           </Card>
@@ -214,7 +224,6 @@ export default async function DashboardPage() {
           </Card>
         )}
       </div>
-
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
