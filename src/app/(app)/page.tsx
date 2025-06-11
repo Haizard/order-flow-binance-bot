@@ -1,11 +1,11 @@
 
-import { DollarSign, ListChecks, Percent, TrendingDown, SearchX, AlertTriangle, Info } from 'lucide-react';
+import { DollarSign, ListChecks, Percent, TrendingDown, SearchX, AlertTriangle, Info, Activity } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/metric-card';
 import { ActiveTradesList } from '@/components/dashboard/active-trades-list';
 import { MarketOverviewItem } from '@/components/dashboard/market-overview-item';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BotPerformanceChart } from '@/components/dashboard/bot-performance-chart';
-import { AccountBalances } from '@/components/dashboard/account-balances'; // Import the new component
+import { AccountBalances } from '@/components/dashboard/account-balances';
 import { get24hrTicker } from '@/services/binance';
 import type { Ticker24hr } from '@/types/binance';
 import type { SettingsFormValues } from '@/components/settings/settings-form';
@@ -135,48 +135,51 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight font-headline mb-6">Bot Performance</h1>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <section>
+        <h1 className="text-3xl font-headline mb-6">Bot Performance</h1>
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           <MetricCard
             title="Total P&L (Bot)"
             value={`${totalPnl >= 0 ? '+' : ''}$${totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             icon={DollarSign}
-            description="P&L from bot-managed trades, live prices. Auto-refreshes."
-            className={`shadow-md ${totalPnl >=0 ? 'text-accent-foreground' : 'text-destructive'}`}
+            description="P&L from bot-managed trades. Live prices. Auto-refreshes."
+            className={`shadow-card hover:shadow-card-hover ${totalPnl >=0 ? 'text-accent-foreground bg-accent/10 dark:bg-accent/20' : 'text-destructive bg-destructive/10 dark:bg-destructive/20'}`}
           />
           <MetricCard
             title="Active Bot Trades"
             value={activeTradesCount.toString()}
             icon={ListChecks}
-            description="Number of bot's open positions. Prices and P&L are live. Auto-refreshes."
-            className="shadow-md"
+            description="Open positions managed by the bot. Prices/P&L are live. Auto-refreshes."
+            className="shadow-card hover:shadow-card-hover"
           />
           <MetricCard
             title="Overall Win Rate"
             value={`${overallPerformancePercent}%`}
             icon={Percent}
-            description="Percentage of profitable closed trades. Auto-refreshes."
-            className="shadow-md"
+            description="Profitable closed trades. Auto-refreshes."
+            className="shadow-card hover:shadow-card-hover"
           />
         </div>
-      </div>
+      </section>
 
-      <div>
+      <section>
         <CardHeader className="px-0 pt-0 pb-4">
-          <CardTitle className="text-2xl font-semibold tracking-tight font-headline">Market Overview</CardTitle>
-          <CardDescription className="flex items-center text-xs text-muted-foreground">
-            <Info className="h-3 w-3 mr-1.5" /> Live market data. Auto-refreshes periodically. Some symbols may be unavailable on Testnet.
+          <CardTitle className="text-2xl font-headline flex items-center">
+            <Activity className="mr-3 h-6 w-6 text-primary" />
+            Market Overview
+          </CardTitle>
+          <CardDescription className="flex items-center text-sm text-muted-foreground">
+            <Info className="h-4 w-4 mr-1.5 flex-shrink-0" /> Live market data. Auto-refreshes. Some symbols may be unavailable on Testnet.
           </CardDescription>
         </CardHeader>
         {liveMarketData.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
             {liveMarketData.map(ticker => (
               <MarketOverviewItem key={ticker.symbol} ticker={ticker} />
             ))}
           </div>
         ) : (
-          <Card className="shadow-md">
+          <Card className="shadow-card">
             <CardContent className="pt-6">
               <div className="flex flex-col items-center justify-center py-10 text-center">
                 <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
@@ -186,26 +189,26 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
         )}
-      </div>
+      </section>
 
-      <div>
+      <section>
          <CardHeader className="px-0 pt-0 pb-4">
-            <CardTitle className="text-2xl font-semibold tracking-tight font-headline flex items-center">
-                 <TrendingDown className="mr-2 h-6 w-6 text-primary" />
+            <CardTitle className="text-2xl font-headline flex items-center">
+                 <TrendingDown className="mr-3 h-6 w-6 text-primary" />
                  Potential Dip Buys (24hr ≤ {dipPercentageToUse}%)
             </CardTitle>
-            <CardDescription className="flex items-center text-xs text-muted-foreground">
-                <Info className="h-3 w-3 mr-1.5" /> Based on live market data & your strategy setting. Auto-refreshes. Excludes already active bot trades.
+            <CardDescription className="flex items-center text-sm text-muted-foreground">
+                <Info className="h-4 w-4 mr-1.5 flex-shrink-0" /> Based on live market data & your strategy. Auto-refreshes. Excludes active bot trades.
             </CardDescription>
         </CardHeader>
         {liveMarketData.length > 0 ? ( potentialDipBuys.length > 0 ? (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
             {potentialDipBuys.map(ticker => (
               <MarketOverviewItem key={`${ticker.symbol}-dip`} ticker={ticker} />
             ))}
           </div>
         ) : (
-          <Card className="shadow-md">
+          <Card className="shadow-card">
             <CardContent className="pt-6">
               <div className="flex flex-col items-center justify-center py-10 text-center">
                 <SearchX className="h-12 w-12 text-muted-foreground mb-4" />
@@ -216,23 +219,23 @@ export default async function DashboardPage() {
           </Card>
         )
         ) : (
-          <Card className="shadow-md">
+          <Card className="shadow-card">
             <CardContent className="pt-6">
               <p className="text-muted-foreground text-center">Market data unavailable to determine dips.</p>
             </CardContent>
           </Card>
         )}
-      </div>
+      </section>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
+      <section className="grid grid-cols-1 gap-8 xl:grid-cols-3">
         <div className="xl:col-span-2">
           <ActiveTradesList userId={DEMO_USER_ID} />
         </div>
-        <div className="space-y-6">
+        <div className="space-y-8">
           <AccountBalances userId={DEMO_USER_ID} />
           <BotPerformanceChart userId={DEMO_USER_ID} />
         </div>
-      </div>
+      </section>
     </div>
   );
 }

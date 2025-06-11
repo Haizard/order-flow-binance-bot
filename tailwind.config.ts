@@ -10,8 +10,8 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        body: ['Inter', 'sans-serif'],
-        headline: ['Inter', 'sans-serif'],
+        body: ['Inter', 'sans-serif'], // Explicitly use Inter, matches layout.tsx
+        headline: ['Inter', 'sans-serif'], // Explicitly use Inter for headlines
         code: ['monospace'],
       },
       colors: {
@@ -66,10 +66,14 @@ export default {
           ring: 'hsl(var(--sidebar-ring))',
         },
       },
-      borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
+      borderRadius: { // Updated border radius based on globals.css change
+        lg: 'var(--radius)', // 0.75rem
+        md: 'calc(var(--radius) - 0.25rem)', // 0.5rem
+        sm: 'calc(var(--radius) - 0.375rem)', // 0.375rem
+      },
+      boxShadow: { // Adding some more nuanced shadows
+        'card': '0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.07)',
+        'card-hover': '0 10px 15px -3px rgba(0, 0, 0, 0.07), 0 4px 6px -4px rgba(0, 0, 0, 0.07)',
       },
       keyframes: {
         'accordion-down': {
