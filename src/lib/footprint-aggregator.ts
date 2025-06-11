@@ -3,7 +3,7 @@
  * @fileOverview Handles WebSocket connection to Binance for trade streams
  * and aggregates data into FootprintBar structures.
  */
-'use server';
+// 'use server'; REMOVED THIS LINE
 
 import WebSocket from 'ws';
 import type { FootprintTrade, FootprintBar, PriceLevelData, BinanceTradeData, BinanceStreamData } from '@/types/footprint';
@@ -137,7 +137,7 @@ function finalizeBar(bar: FootprintBar): FootprintBar {
     bidVolume: bar.bidVolume,
     askVolume: bar.askVolume,
     priceLevels: bar.priceLevels,
-    tradesInBar: bar.tradesInBar || bar.trades || [], // if trades are stored in currentBarData.trades
+    tradesInBar: bar.tradesInBar || (bar as any).trades || [], // if trades are stored in currentBarData.trades
   };
 }
 
@@ -266,3 +266,4 @@ export function getCurrentAggregatingBar(symbol: string): (Partial<FootprintBar>
 // startFootprintStream();
 
 console.log(`[${new Date().toISOString()}] FootprintAggregator: Module loaded. Call startFootprintStream() to begin.`);
+
