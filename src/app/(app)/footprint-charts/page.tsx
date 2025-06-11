@@ -18,8 +18,13 @@ const SimpleFootprintBarDisplay: React.FC<{ bar: FootprintBar }> = ({ bar }) => 
     return <p className="text-muted-foreground">No bar data or price levels available.</p>;
   }
 
-  const priceLevelsMap = bar.priceLevels instanceof Map ? bar.priceLevels : new Map(Object.entries(bar.priceLevels || {}));
-  // console.log(`SimpleFootprintBarDisplay for ${bar.symbol} @ ${new Date(bar.timestamp).toLocaleTimeString()}: priceLevelsMap size: ${priceLevelsMap.size}`, priceLevelsMap.size > 0 ? Array.from(priceLevelsMap.entries()) : "Map is empty");
+  // Ensure priceLevels is treated as a Map, even if it arrives as a plain object after SSE
+  const priceLevelsMap = bar.priceLevels instanceof Map 
+    ? bar.priceLevels 
+    : new Map(Object.entries(bar.priceLevels || {}));
+  
+  // console.log(`SimpleFootprintBarDisplay for ${bar.symbol} @ ${new Date(bar.timestamp).toLocaleTimeString()}: priceLevelsMap size: ${priceLevelsMap.size}`, priceLevelsMap.size > 0 ? Array.from(priceLevelsMap.entries()) : "Map is empty. Original bar.priceLevels:", bar.priceLevels);
+
 
   const sortedPriceLevels = Array.from(priceLevelsMap.entries())
     .map(([price, data]) => ({ price: parseFloat(price), ...data }))
@@ -109,6 +114,7 @@ export default function FootprintChartsPage() {
 
     es.addEventListener('footprintUpdate', (event) => {
       const rawData = JSON.parse(event.data);
+      // console.log(`[Client] footprintUpdate for ${rawData.symbol}: RAW rawData.priceLevels from SSE:`, JSON.stringify(rawData.priceLevels));
       const reconstructedPriceLevels = new Map<string, PriceLevelData>(Object.entries(rawData.priceLevels || {}));
       // console.log(`[Client] footprintUpdate for ${rawData.symbol}: Reconstructed priceLevels size: ${reconstructedPriceLevels.size}`, reconstructedPriceLevels.size > 0 ? Array.from(reconstructedPriceLevels.keys()) : "Map is empty");
 
@@ -122,10 +128,11 @@ export default function FootprintChartsPage() {
         const updatedBars = [
             ...existingBars.filter(b => b.timestamp !== barData.timestamp),
             barData
-        ].sort((a,b) => b.timestamp - a.timestamp).slice(0, 10);
+        ].sort((a,b) => b.timestamp - a.timestamp).slice(0, 10); // Keep last 10 bars
         return { ...prev, [barData.symbol]: updatedBars };
       });
-      setCurrentPartialBars(prev => ({...prev, [barData.symbol]: {}}));
+      // Clear the partial bar for this symbol once a full bar is received
+      setCurrentPartialBars(prev => ({...prev, [barData.symbol]: {}})); 
     });
 
     es.addEventListener('footprintUpdatePartial', (event) => {
@@ -133,12 +140,26 @@ export default function FootprintChartsPage() {
         const partialBarDataWithMap: Partial<FootprintBar> = { ...rawPartialData };
 
         if (rawPartialData.priceLevels) {
+            // console.log(`[Client] footprintUpdatePartial for ${rawPartialData.symbol}: RAW rawPartialData.priceLevels from SSE:`, JSON.stringify(rawPartialData.priceLevels));
             partialBarDataWithMap.priceLevels = new Map<string, PriceLevelData>(Object.entries(rawPartialData.priceLevels));
             // console.log(`[Client] footprintUpdatePartial for ${rawPartialData.symbol}: Reconstructed partial priceLevels size: ${partialBarDataWithMap.priceLevels.size}`);
         }
 
         if(partialBarDataWithMap.symbol) {
-            setCurrentPartialBars(prev => ({...prev, [partialBarDataWithMap.symbol!]: partialBarDataWithMap }));
+            // Merge with existing partial bar data for the symbol if any
+            setCurrentPartialBars(prev => {
+                const existingSymbolPartial = prev[partialBarDataWithMap.symbol!] || {};
+                const mergedPartial = { ...existingSymbolPartial, ...partialBarDataWithMap };
+                // If priceLevels were updated, ensure they are merged correctly (Map to Map)
+                if (rawPartialData.priceLevels && existingSymbolPartial.priceLevels instanceof Map) {
+                    const newLevels = partialBarDataWithMap.priceLevels as Map<string, PriceLevelData>;
+                    mergedPartial.priceLevels = new Map([...existingSymbolPartial.priceLevels, ...newLevels]);
+                } else if (rawPartialData.priceLevels) {
+                    mergedPartial.priceLevels = partialBarDataWithMap.priceLevels; // Already a Map
+                }
+
+                return {...prev, [partialBarDataWithMap.symbol!]: mergedPartial };
+            });
         }
     });
 
@@ -227,7 +248,11 @@ export default function FootprintChartsPage() {
                       <p className="text-xs">Timestamp: {currentPartialBars[symbol].timestamp ? new Date(currentPartialBars[symbol].timestamp!).toISOString() : 'N/A'}</p>
                       <p className="text-xs">O: {currentPartialBars[symbol].open?.toFixed(2)} H: {currentPartialBars[symbol].high?.toFixed(2)} L: {currentPartialBars[symbol].low?.toFixed(2)} C: {currentPartialBars[symbol].close?.toFixed(2)}</p>
                       <p className="text-xs">Volume: {currentPartialBars[symbol].totalVolume?.toFixed(2)} Delta: {currentPartialBars[symbol].delta?.toFixed(2)}</p>
-                       <p className="text-xs">Price Levels Seen: {currentPartialBars[symbol].priceLevels instanceof Map ? currentPartialBars[symbol].priceLevels!.size : Object.keys(currentPartialBars[symbol].priceLevels!).length}</p>
+                       <p className="text-xs">Price Levels Seen: {
+                            currentPartialBars[symbol].priceLevels instanceof Map 
+                                ? (currentPartialBars[symbol].priceLevels as Map<string, PriceLevelData>).size 
+                                : (typeof currentPartialBars[symbol].priceLevels === 'object' ? Object.keys(currentPartialBars[symbol].priceLevels!).length : 'N/A')
+                        }</p>
                     </div>
                   )}
                   {(footprintBars[symbol] && footprintBars[symbol].length > 0) ? (
