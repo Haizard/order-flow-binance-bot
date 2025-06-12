@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, PlayCircle, StopCircle, BarChartHorizontalBig } from 'lucide-react';
 import type { FootprintBar, PriceLevelData } from '@/types/footprint';
 import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; // Default symbols
+import { useToast } from "@/hooks/use-toast";
 
 const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute
 
@@ -74,19 +75,28 @@ export default function FootprintChartsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const { toast } = useToast();
 
   const connectToStream = () => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }
     if (!symbolsInput.trim()) {
-        alert("Please enter symbols to track.");
+        toast({
+            title: "Symbols Missing",
+            description: "Please enter symbols to track.",
+            variant: "destructive",
+        });
         return;
     }
 
     const symbolsToConnect = symbolsInput.split(',').map(s => s.trim().toUpperCase()).filter(s => s);
     if (symbolsToConnect.length === 0) {
-        alert("No valid symbols entered.");
+        toast({
+            title: "No Valid Symbols",
+            description: "No valid symbols were entered.",
+            variant: "destructive",
+        });
         return;
     }
     setActiveSymbols(symbolsToConnect);
@@ -103,13 +113,34 @@ export default function FootprintChartsPage() {
       // console.log("SSE Connection Opened for symbols:", symbolsToConnect.join(','));
       setIsLoading(false);
       setIsConnected(true);
+      toast({
+        title: "Stream Connected",
+        description: `Connected to footprint data stream for: ${symbolsToConnect.join(', ')}`,
+        variant: "default",
+        className: "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700 text-green-800 dark:text-green-300",
+      });
     };
 
-    es.onerror = (error) => {
-      console.error("SSE Error:", error);
+    es.onerror = (event) => { 
+      console.error("EventSource connection error occurred. Event details:", event);
+      
+      if (event.target instanceof EventSource) {
+        const esTarget = event.target as EventSource; 
+        console.log("EventSource readyState at error:", esTarget.readyState, "(CONNECTING=0, OPEN=1, CLOSED=2)");
+      }
+
+      toast({
+        title: "Stream Connection Error",
+        description: "Lost connection to the data stream or failed to connect. Check console & network tab, then try reconnecting.",
+        variant: "destructive",
+      });
+      
       setIsLoading(false);
       setIsConnected(false);
-      es.close();
+      if (eventSourceRef.current) { 
+         eventSourceRef.current.close();
+         eventSourceRef.current = null; 
+      }
     };
 
     es.addEventListener('footprintUpdate', (event) => {
@@ -128,10 +159,9 @@ export default function FootprintChartsPage() {
         const updatedBars = [
             ...existingBars.filter(b => b.timestamp !== barData.timestamp),
             barData
-        ].sort((a,b) => b.timestamp - a.timestamp).slice(0, 10); // Keep last 10 bars
+        ].sort((a,b) => b.timestamp - a.timestamp).slice(0, 10); 
         return { ...prev, [barData.symbol]: updatedBars };
       });
-      // Clear the partial bar for this symbol once a full bar is received
       setCurrentPartialBars(prev => ({...prev, [barData.symbol]: {}})); 
     });
 
@@ -146,23 +176,19 @@ export default function FootprintChartsPage() {
         }
 
         if(partialBarDataWithMap.symbol) {
-            // Merge with existing partial bar data for the symbol if any
             setCurrentPartialBars(prev => {
                 const existingSymbolPartial = prev[partialBarDataWithMap.symbol!] || {};
                 const mergedPartial = { ...existingSymbolPartial, ...partialBarDataWithMap };
-                // If priceLevels were updated, ensure they are merged correctly (Map to Map)
                 if (rawPartialData.priceLevels && existingSymbolPartial.priceLevels instanceof Map) {
                     const newLevels = partialBarDataWithMap.priceLevels as Map<string, PriceLevelData>;
                     mergedPartial.priceLevels = new Map([...existingSymbolPartial.priceLevels, ...newLevels]);
                 } else if (rawPartialData.priceLevels) {
-                    mergedPartial.priceLevels = partialBarDataWithMap.priceLevels; // Already a Map
+                    mergedPartial.priceLevels = partialBarDataWithMap.priceLevels; 
                 }
-
                 return {...prev, [partialBarDataWithMap.symbol!]: mergedPartial };
             });
         }
     });
-
   };
 
   const disconnectStream = () => {
@@ -171,14 +197,19 @@ export default function FootprintChartsPage() {
       eventSourceRef.current = null;
     }
     setIsConnected(false);
-    setActiveSymbols([]);
-    // console.log("SSE Connection Closed by user.");
+    setActiveSymbols([]); // Clear active symbols on manual disconnect
+    toast({
+        title: "Stream Disconnected",
+        description: "You have manually disconnected from the footprint data stream.",
+        variant: "default",
+    });
   };
 
   useEffect(() => {
     return () => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
+        eventSourceRef.current = null; 
       }
     };
   }, []);
@@ -246,12 +277,12 @@ export default function FootprintChartsPage() {
                     <div className="mb-4 p-3 border border-dashed rounded-md bg-primary/5">
                       <p className="text-sm font-semibold text-primary mb-1">Current Aggregating Bar (Partial):</p>
                       <p className="text-xs">Timestamp: {currentPartialBars[symbol].timestamp ? new Date(currentPartialBars[symbol].timestamp!).toISOString() : 'N/A'}</p>
-                      <p className="text-xs">O: {currentPartialBars[symbol].open?.toFixed(2)} H: {currentPartialBars[symbol].high?.toFixed(2)} L: {currentPartialBars[symbol].low?.toFixed(2)} C: {currentPartialBars[symbol].close?.toFixed(2)}</p>
+                      <p className="text-xs">O: {currentPartialBars[symbol].open?.toFixed(Math.max(2, (currentPartialBars[symbol].open ?? 0) < 1 ? 4 : 2))} H: {currentPartialBars[symbol].high?.toFixed(Math.max(2, (currentPartialBars[symbol].high ?? 0) < 1 ? 4 : 2))} L: {currentPartialBars[symbol].low?.toFixed(Math.max(2, (currentPartialBars[symbol].low ?? 0) < 1 ? 4 : 2))} C: {currentPartialBars[symbol].close?.toFixed(Math.max(2, (currentPartialBars[symbol].close ?? 0) < 1 ? 4 : 2))}</p>
                       <p className="text-xs">Volume: {currentPartialBars[symbol].totalVolume?.toFixed(2)} Delta: {currentPartialBars[symbol].delta?.toFixed(2)}</p>
                        <p className="text-xs">Price Levels Seen: {
                             currentPartialBars[symbol].priceLevels instanceof Map 
                                 ? (currentPartialBars[symbol].priceLevels as Map<string, PriceLevelData>).size 
-                                : (typeof currentPartialBars[symbol].priceLevels === 'object' ? Object.keys(currentPartialBars[symbol].priceLevels!).length : 'N/A')
+                                : (typeof currentPartialBars[symbol].priceLevels === 'object' && currentPartialBars[symbol].priceLevels !== null ? Object.keys(currentPartialBars[symbol].priceLevels!).length : 'N/A')
                         }</p>
                     </div>
                   )}
@@ -262,7 +293,7 @@ export default function FootprintChartsPage() {
                            Bar: {new Date(bar.timestamp).toLocaleTimeString()} - {new Date(bar.timestamp + AGGREGATION_INTERVAL_MS -1).toLocaleTimeString()}
                          </h4>
                          <p className="text-xs text-muted-foreground">
-                            O:{bar.open.toFixed(2)} H:{bar.high.toFixed(2)} L:{bar.low.toFixed(2)} C:{bar.close.toFixed(2)} Vol:{bar.totalVolume.toFixed(2)} Delta:{bar.delta.toFixed(2)}
+                            O:{bar.open.toFixed(Math.max(2, bar.open < 1 ? 4 : 2))} H:{bar.high.toFixed(Math.max(2, bar.high < 1 ? 4 : 2))} L:{bar.low.toFixed(Math.max(2, bar.low < 1 ? 4 : 2))} C:{bar.close.toFixed(Math.max(2, bar.close < 1 ? 4 : 2))} Vol:{bar.totalVolume.toFixed(2)} Delta:{bar.delta.toFixed(2)}
                          </p>
                          <SimpleFootprintBarDisplay bar={bar} />
                        </div>
@@ -288,5 +319,6 @@ export default function FootprintChartsPage() {
     </div>
   );
 }
+    
 
     
