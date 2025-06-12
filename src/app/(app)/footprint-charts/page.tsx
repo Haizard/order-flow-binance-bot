@@ -122,12 +122,12 @@ export default function FootprintChartsPage() {
     };
 
     es.onerror = (event) => { 
-      console.error("EventSource connection error occurred. Event details:", event);
-      
-      if (event.target instanceof EventSource) {
-        const esTarget = event.target as EventSource; 
-        console.log("EventSource readyState at error:", esTarget.readyState, "(CONNECTING=0, OPEN=1, CLOSED=2)");
+      let errorDetails = `Type: ${event.type}`;
+      if (event.target && event.target instanceof EventSource) {
+        errorDetails += `, ReadyState: ${event.target.readyState} (0=CONNECTING, 1=OPEN, 2=CLOSED)`;
       }
+      console.error(`EventSource connection error occurred. Details: ${errorDetails}.`);
+      console.debug("Full EventSource error event object for debugging:", event);
 
       toast({
         title: "Stream Connection Error",
