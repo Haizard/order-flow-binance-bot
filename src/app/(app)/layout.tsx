@@ -61,14 +61,14 @@ function ThemeToggle() {
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
 
-  React.useEffect(() => {
-    const intervalId = setInterval(() => {
-      router.refresh();
-      console.log(`[${new Date().toISOString()}] AppLayout: Automatic router.refresh() called (every 5 seconds).`);
-    }, 5000); // Refresh every 5 seconds
+  // React.useEffect(() => {
+  //   const intervalId = setInterval(() => {
+  //     router.refresh();
+  //     console.log(`[${new Date().toISOString()}] AppLayout: Automatic router.refresh() called (every 5 seconds).`);
+  //   }, 5000); // Refresh every 5 seconds
 
-    return () => clearInterval(intervalId); // Clear interval on component unmount
-  }, [router]);
+  //   return () => clearInterval(intervalId); // Clear interval on component unmount
+  // }, [router]);
 
   const handleRefresh = () => {
     router.refresh();
