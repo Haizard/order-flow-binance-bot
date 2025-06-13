@@ -20,10 +20,10 @@ const SimpleFootprintBarDisplay: React.FC<{ bar: FootprintBar }> = ({ bar }) => 
   }
 
   // Ensure priceLevels is treated as a Map, even if it arrives as a plain object after SSE
-  const priceLevelsMap = bar.priceLevels instanceof Map 
-    ? bar.priceLevels 
+  const priceLevelsMap = bar.priceLevels instanceof Map
+    ? bar.priceLevels
     : new Map(Object.entries(bar.priceLevels || {}));
-  
+
   // console.log(`SimpleFootprintBarDisplay for ${bar.symbol} @ ${new Date(bar.timestamp).toLocaleTimeString()}: priceLevelsMap size: ${priceLevelsMap.size}`, priceLevelsMap.size > 0 ? Array.from(priceLevelsMap.entries()) : "Map is empty. Original bar.priceLevels:", bar.priceLevels);
 
 
@@ -121,7 +121,7 @@ export default function FootprintChartsPage() {
       });
     };
 
-    es.onerror = (event) => { 
+    es.onerror = (event) => {
       let errorDetails = `Type: ${event.type}`;
       if (event.target && event.target instanceof EventSource) {
         errorDetails += `, ReadyState: ${event.target.readyState} (0=CONNECTING, 1=OPEN, 2=CLOSED)`;
@@ -134,12 +134,13 @@ export default function FootprintChartsPage() {
         description: "Lost connection to the data stream or failed to connect. Check console & network tab, then try reconnecting.",
         variant: "destructive",
       });
-      
+
       setIsLoading(false);
       setIsConnected(false);
-      if (eventSourceRef.current) { 
+      setActiveSymbols([]); // Clear active symbols on error
+      if (eventSourceRef.current) {
          eventSourceRef.current.close();
-         eventSourceRef.current = null; 
+         eventSourceRef.current = null;
       }
     };
 
@@ -159,10 +160,10 @@ export default function FootprintChartsPage() {
         const updatedBars = [
             ...existingBars.filter(b => b.timestamp !== barData.timestamp),
             barData
-        ].sort((a,b) => b.timestamp - a.timestamp).slice(0, 10); 
+        ].sort((a,b) => b.timestamp - a.timestamp).slice(0, 10);
         return { ...prev, [barData.symbol]: updatedBars };
       });
-      setCurrentPartialBars(prev => ({...prev, [barData.symbol]: {}})); 
+      setCurrentPartialBars(prev => ({...prev, [barData.symbol]: {}}));
     });
 
     es.addEventListener('footprintUpdatePartial', (event) => {
@@ -183,7 +184,7 @@ export default function FootprintChartsPage() {
                     const newLevels = partialBarDataWithMap.priceLevels as Map<string, PriceLevelData>;
                     mergedPartial.priceLevels = new Map([...existingSymbolPartial.priceLevels, ...newLevels]);
                 } else if (rawPartialData.priceLevels) {
-                    mergedPartial.priceLevels = partialBarDataWithMap.priceLevels; 
+                    mergedPartial.priceLevels = partialBarDataWithMap.priceLevels;
                 }
                 return {...prev, [partialBarDataWithMap.symbol!]: mergedPartial };
             });
@@ -209,7 +210,7 @@ export default function FootprintChartsPage() {
     return () => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
-        eventSourceRef.current = null; 
+        eventSourceRef.current = null;
       }
     };
   }, []);
@@ -280,8 +281,8 @@ export default function FootprintChartsPage() {
                       <p className="text-xs">O: {currentPartialBars[symbol].open?.toFixed(Math.max(2, (currentPartialBars[symbol].open ?? 0) < 1 ? 4 : 2))} H: {currentPartialBars[symbol].high?.toFixed(Math.max(2, (currentPartialBars[symbol].high ?? 0) < 1 ? 4 : 2))} L: {currentPartialBars[symbol].low?.toFixed(Math.max(2, (currentPartialBars[symbol].low ?? 0) < 1 ? 4 : 2))} C: {currentPartialBars[symbol].close?.toFixed(Math.max(2, (currentPartialBars[symbol].close ?? 0) < 1 ? 4 : 2))}</p>
                       <p className="text-xs">Volume: {currentPartialBars[symbol].totalVolume?.toFixed(2)} Delta: {currentPartialBars[symbol].delta?.toFixed(2)}</p>
                        <p className="text-xs">Price Levels Seen: {
-                            currentPartialBars[symbol].priceLevels instanceof Map 
-                                ? (currentPartialBars[symbol].priceLevels as Map<string, PriceLevelData>).size 
+                            currentPartialBars[symbol].priceLevels instanceof Map
+                                ? (currentPartialBars[symbol].priceLevels as Map<string, PriceLevelData>).size
                                 : (typeof currentPartialBars[symbol].priceLevels === 'object' && currentPartialBars[symbol].priceLevels !== null ? Object.keys(currentPartialBars[symbol].priceLevels!).length : 'N/A')
                         }</p>
                     </div>
@@ -319,6 +320,3 @@ export default function FootprintChartsPage() {
     </div>
   );
 }
-    
-
-    
