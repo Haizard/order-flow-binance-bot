@@ -19,16 +19,33 @@ interface GraphicalFootprintBarProps {
 }
 
 const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) => {
-  if (!bar || !bar.priceLevels || (bar.priceLevels instanceof Map && bar.priceLevels.size === 0) || (typeof bar.priceLevels === 'object' && Object.keys(bar.priceLevels).length === 0) ) {
+  if (!bar || !bar.priceLevels) {
     return <p className="text-muted-foreground text-xs py-2 text-center">No price level data for graphical display.</p>;
   }
 
-  const priceLevelsMap = bar.priceLevels instanceof Map
-    ? bar.priceLevels
-    : new Map(Object.entries(bar.priceLevels || {}));
+  const isMap = bar.priceLevels instanceof Map;
+  const isPlainObject = typeof bar.priceLevels === 'object' && bar.priceLevels !== null && !isMap;
 
+  if (isMap && bar.priceLevels.size === 0) {
+    return <p className="text-muted-foreground text-xs py-2 text-center">No price level data for graphical display.</p>;
+  }
+  if (isPlainObject && Object.keys(bar.priceLevels).length === 0) {
+    return <p className="text-muted-foreground text-xs py-2 text-center">No price level data for graphical display.</p>;
+  }
+  // If it's not a Map and not a plain Object (or it's a null object), it's invalid or effectively empty for our use.
+  if (!isMap && !isPlainObject) {
+    return <p className="text-muted-foreground text-xs py-2 text-center">No price level data for graphical display (invalid type).</p>;
+  }
+
+  // At this point, bar.priceLevels is either a non-empty Map or a non-empty plain Object.
+  // Convert to Map if it's an object (this is defensive, as page.tsx should already pass a Map).
+  const priceLevelsMap = isMap
+    ? bar.priceLevels
+    : new Map(Object.entries(bar.priceLevels)); // bar.priceLevels here is a non-empty plain object
+
+  // Final check on the derived map, in case the conversion from object somehow failed or it was an unhandled type.
   if (priceLevelsMap.size === 0) {
-    return <p className="text-muted-foreground text-xs py-2 text-center">No price level data for graphical display after map conversion.</p>;
+     return <p className="text-muted-foreground text-xs py-2 text-center">No price level data for graphical display after map conversion.</p>;
   }
   
   const chartData = Array.from(priceLevelsMap.entries())
