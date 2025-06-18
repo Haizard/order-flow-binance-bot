@@ -10,62 +10,9 @@ import { Loader2, PlayCircle, StopCircle, BarChartHorizontalBig } from 'lucide-r
 import type { FootprintBar, PriceLevelData } from '@/types/footprint';
 import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; // Default symbols
 import { useToast } from "@/hooks/use-toast";
+import GraphicalFootprintBar from '@/components/footprint/GraphicalFootprintBar'; // Import the new component
 
-const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute
-
-const SimpleFootprintBarDisplay: React.FC<{ bar: Partial<FootprintBar> }> = ({ bar }) => {
-  if (!bar || !bar.priceLevels) {
-    // console.log("SimpleFootprintBarDisplay: No bar or bar.priceLevels. Bar:", bar);
-    return <p className="text-muted-foreground text-xs py-2">No price level data in this bar.</p>;
-  }
-
-  // Ensure priceLevels is treated as a Map, even if it arrives as a plain object after SSE
-  const priceLevelsMap = bar.priceLevels instanceof Map
-    ? bar.priceLevels
-    : new Map(Object.entries(bar.priceLevels || {}));
-
-  // console.log(`SimpleFootprintBarDisplay for ${bar.symbol} @ ${bar.timestamp ? new Date(bar.timestamp).toLocaleTimeString() : 'N/A'}: priceLevelsMap size: ${priceLevelsMap.size}`, priceLevelsMap.size > 0 ? Array.from(priceLevelsMap.entries()) : "Map is empty. Original bar.priceLevels:", bar.priceLevels);
-
-
-  const sortedPriceLevels = Array.from(priceLevelsMap.entries())
-    .map(([price, data]) => ({ price: parseFloat(price), ...data }))
-    .sort((a, b) => b.price - a.price);
-
-  const maxVolumeAtLevel = Math.max(...sortedPriceLevels.map(pl => Math.max(pl.buyVolume, pl.sellVolume)), 0);
-
-  return (
-    <div className="mt-2 space-y-1 text-xs border p-2 rounded-md bg-muted/30 max-h-60 overflow-y-auto">
-      <div className="grid grid-cols-3 items-center gap-x-2 font-semibold sticky top-0 bg-muted/30 py-1 z-10">
-        <div className="text-right">Sell Vol</div>
-        <div className="text-center">Price</div>
-        <div>Buy Vol</div>
-      </div>
-      {sortedPriceLevels.map(({ price, buyVolume, sellVolume }) => (
-        <div key={price} className="grid grid-cols-3 items-center gap-x-1 hover:bg-muted/50">
-          <div className="text-right text-red-500 relative h-4">
-            <div
-              className="absolute right-0 top-0 bottom-0 bg-red-500/30"
-              style={{ width: maxVolumeAtLevel > 0 ? `${(sellVolume / maxVolumeAtLevel) * 100}%` : '0%' }}
-            />
-            <span className="relative pr-1">{sellVolume.toFixed(2)}</span>
-          </div>
-          <div className="text-center font-mono px-1 py-0.5 rounded bg-background shadow-sm">
-            {price.toFixed(Math.max(2, (price < 1 ? 5 : 2)))}
-          </div>
-          <div className="text-left text-green-500 relative h-4">
-            <div
-              className="absolute left-0 top-0 bottom-0 bg-green-500/30"
-              style={{ width: maxVolumeAtLevel > 0 ? `${(buyVolume / maxVolumeAtLevel) * 100}%` : '0%' }}
-            />
-            <span className="relative pl-1">{buyVolume.toFixed(2)}</span>
-          </div>
-        </div>
-      ))}
-      {sortedPriceLevels.length === 0 && <p className="text-center text-muted-foreground py-4">No price level data in this bar.</p>}
-    </div>
-  );
-};
-
+const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute, matches server-side
 
 export default function FootprintChartsPage() {
   const [symbolsInput, setSymbolsInput] = useState(MONITORED_MARKET_SYMBOLS.slice(0,3).join(','));
@@ -110,7 +57,6 @@ export default function FootprintChartsPage() {
     eventSourceRef.current = es;
 
     es.onopen = () => {
-      // console.log("SSE Connection Opened for symbols:", symbolsToConnect.join(','));
       setIsLoading(false);
       setIsConnected(true);
       toast({
@@ -137,7 +83,7 @@ export default function FootprintChartsPage() {
 
       setIsLoading(false);
       setIsConnected(false);
-      setActiveSymbols([]); // Clear active symbols on error
+      setActiveSymbols([]); 
       if (eventSourceRef.current) {
          eventSourceRef.current.close();
          eventSourceRef.current = null;
@@ -146,14 +92,13 @@ export default function FootprintChartsPage() {
 
     es.addEventListener('footprintUpdate', (event) => {
       const rawData = JSON.parse(event.data);
-      // Client-side log for received raw priceLevels (can be verbose)
       // console.log(`[Client] footprintUpdate for ${rawData.symbol}: RAW rawData.priceLevels from SSE:`, JSON.stringify(rawData.priceLevels));
       const reconstructedPriceLevels = new Map<string, PriceLevelData>(Object.entries(rawData.priceLevels || {}));
       // console.log(`[Client] footprintUpdate for ${rawData.symbol}: Reconstructed priceLevels size: ${reconstructedPriceLevels.size}`, reconstructedPriceLevels.size > 0 ? Array.from(reconstructedPriceLevels.keys()) : "Map is empty");
 
       const barData: FootprintBar = {
         ...rawData,
-        timestamp: Number(rawData.timestamp), // Ensure timestamp is a number
+        timestamp: Number(rawData.timestamp),
         priceLevels: reconstructedPriceLevels,
       };
 
@@ -165,18 +110,18 @@ export default function FootprintChartsPage() {
         ].sort((a,b) => b.timestamp - a.timestamp).slice(0, 10);
         return { ...prev, [barData.symbol]: updatedBars };
       });
-      setCurrentPartialBars(prev => ({...prev, [barData.symbol]: { symbol: barData.symbol, timestamp: barData.timestamp + AGGREGATION_INTERVAL_MS, priceLevels: new Map()}})); // Reset partial for next interval
+      // Initialize the next partial bar correctly, ensuring timestamp is a number
+      setCurrentPartialBars(prev => ({...prev, [barData.symbol]: { symbol: barData.symbol, timestamp: Number(barData.timestamp) + AGGREGATION_INTERVAL_MS, priceLevels: new Map()}}));
     });
 
     es.addEventListener('footprintUpdatePartial', (event) => {
         const rawPartialData = JSON.parse(event.data);
         const partialBarDataWithMap: Partial<FootprintBar> = { 
             ...rawPartialData,
-            timestamp: Number(rawPartialData.timestamp) // Ensure timestamp is a number
+            timestamp: Number(rawPartialData.timestamp)
         };
 
         if (rawPartialData.priceLevels) {
-            // Client-side log for received raw partial priceLevels (can be verbose)
             // console.log(`[Client] footprintUpdatePartial for ${rawPartialData.symbol}: RAW rawPartialData.priceLevels from SSE:`, JSON.stringify(rawPartialData.priceLevels));
             partialBarDataWithMap.priceLevels = new Map<string, PriceLevelData>(Object.entries(rawPartialData.priceLevels));
             // console.log(`[Client] footprintUpdatePartial for ${rawPartialData.symbol}: Reconstructed partial priceLevels size: ${partialBarDataWithMap.priceLevels.size}`);
@@ -193,7 +138,7 @@ export default function FootprintChartsPage() {
                 if (rawPartialData.priceLevels && existingSymbolPartial.priceLevels instanceof Map) {
                     const newLevels = partialBarDataWithMap.priceLevels as Map<string, PriceLevelData>;
                     mergedPartial.priceLevels = new Map([...existingSymbolPartial.priceLevels, ...newLevels]);
-                } else if (rawPartialData.priceLevels) { // if existing is not a map or doesn't exist, just use new
+                } else if (rawPartialData.priceLevels) { 
                     mergedPartial.priceLevels = partialBarDataWithMap.priceLevels;
                 }
                 return {...prev, [partialBarDataWithMap.symbol!]: mergedPartial };
@@ -208,7 +153,7 @@ export default function FootprintChartsPage() {
       eventSourceRef.current = null;
     }
     setIsConnected(false);
-    setActiveSymbols([]); // Clear active symbols on manual disconnect
+    setActiveSymbols([]); 
     toast({
         title: "Stream Disconnected",
         description: "You have manually disconnected from the footprint data stream.",
@@ -264,7 +209,7 @@ export default function FootprintChartsPage() {
        )}
 
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6"> {/* Adjusted to lg:grid-cols-2 for better chart space */}
         {activeSymbols.map(symbol => (
           <Card key={symbol} className="shadow-lg">
             <CardHeader>
@@ -277,7 +222,7 @@ export default function FootprintChartsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {isLoading && !footprintBars[symbol]?.length && !currentPartialBars[symbol]?.priceLevels ? (
+              {isLoading && !footprintBars[symbol]?.length && !(currentPartialBars[symbol]?.priceLevels && ((currentPartialBars[symbol]?.priceLevels as Map<string,PriceLevelData>)?.size > 0 || (currentPartialBars[symbol]?.totalVolume ?? 0) > 0) ) ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   <p className="ml-2 text-muted-foreground">Waiting for data...</p>
@@ -296,23 +241,23 @@ export default function FootprintChartsPage() {
                       <p className="text-xs">
                         Volume: {currentPartialBars[symbol].totalVolume?.toFixed(2) ?? 'N/A'} Delta: {currentPartialBars[symbol].delta?.toFixed(2) ?? 'N/A'}
                       </p>
-                      {(currentPartialBars[symbol].priceLevels && (currentPartialBars[symbol].priceLevels as Map<string, PriceLevelData>).size > 0) || (currentPartialBars[symbol].totalVolume ?? 0 > 0) ? (
-                        <SimpleFootprintBarDisplay bar={currentPartialBars[symbol]} />
+                      {(currentPartialBars[symbol].priceLevels && ((currentPartialBars[symbol].priceLevels instanceof Map && (currentPartialBars[symbol].priceLevels as Map<string, PriceLevelData>).size > 0) || (typeof currentPartialBars[symbol].priceLevels === 'object' && Object.keys(currentPartialBars[symbol].priceLevels!).length > 0)) || (currentPartialBars[symbol].totalVolume ?? 0 > 0)) ? (
+                        <GraphicalFootprintBar bar={currentPartialBars[symbol]} />
                       ) : (
-                        <p className="text-xs text-muted-foreground mt-1 py-2">Aggregating price levels...</p>
+                        <p className="text-xs text-muted-foreground mt-1 py-2 text-center">Aggregating price levels...</p>
                       )}
                     </div>
                   )}
                   {(footprintBars[symbol] && footprintBars[symbol].length > 0) ? (
                      footprintBars[symbol].map(bar => (
-                       <div key={bar.timestamp} className="mb-3 last:mb-0">
+                       <div key={bar.timestamp} className="mb-6 last:mb-0"> {/* Increased mb for completed bars */}
                          <h4 className="font-medium text-sm mb-1">
-                           Bar: {new Date(bar.timestamp).toLocaleTimeString()} - {new Date(bar.timestamp + AGGREGATION_INTERVAL_MS -1).toLocaleTimeString()}
+                           Bar: {new Date(bar.timestamp).toLocaleTimeString()} - {new Date(Number(bar.timestamp) + AGGREGATION_INTERVAL_MS -1).toLocaleTimeString()}
                          </h4>
                          <p className="text-xs text-muted-foreground">
                             O:{bar.open.toFixed(Math.max(2, bar.open < 1 ? 5 : 2))} H:{bar.high.toFixed(Math.max(2, bar.high < 1 ? 5 : 2))} L:{bar.low.toFixed(Math.max(2, bar.low < 1 ? 5 : 2))} C:{bar.close.toFixed(Math.max(2, bar.close < 1 ? 5 : 2))} Vol:{bar.totalVolume.toFixed(2)} Delta:{bar.delta.toFixed(2)}
                          </p>
-                         <SimpleFootprintBarDisplay bar={bar} />
+                         <GraphicalFootprintBar bar={bar} />
                        </div>
                      ))
                   ) : (
@@ -324,7 +269,7 @@ export default function FootprintChartsPage() {
           </Card>
         ))}
         {activeSymbols.length === 0 && !isLoading && (
-            <Card className="md:col-span-2 lg:col-span-3">
+            <Card className="md:col-span-2 lg:col-span-2"> {/* Adjusted colspan */}
                 <CardContent className="pt-6">
                     <p className="text-muted-foreground text-center py-10">
                         Enter symbols (e.g., BTCUSDT,ETHUSDT) and click "Connect" to start viewing footprint data.
