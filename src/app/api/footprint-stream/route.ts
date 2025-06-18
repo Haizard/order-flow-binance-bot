@@ -21,137 +21,126 @@ function createSSEMessage(data: any, eventName?: string): string {
   if (eventName) {
     message += `event: ${eventName}\n`;
   }
-  
-  // Note: The console.logs here can be verbose for production.
-  // Consider enabling them only for specific debugging sessions.
-  /*
-  if (data && data.priceLevels) {
-    const isMap = data.priceLevels instanceof Map;
-    const originalType = Object.prototype.toString.call(data.priceLevels);
-    const size = isMap ? data.priceLevels.size : (typeof data.priceLevels === 'object' && data.priceLevels !== null ? Object.keys(data.priceLevels).length : 'N/A');
-    console.log(`[API Route SSE] createSSEMessage for event '${eventName}', symbol '${data.symbol || 'N/A'}': Original priceLevels type: ${originalType}, Is Map: ${isMap}, Size: ${size}.`);
-    if (isMap && size > 0) {
-      // console.log(`[API Route SSE] Stringifying Map. Original Map size: ${data.priceLevels.size}. Content (as object):`, JSON.stringify(Object.fromEntries(data.priceLevels)));
-    } else if (!isMap && typeof data.priceLevels === 'object') {
-      // console.log(`[API Route SSE] Stringifying non-Map (should be plain object) priceLevels: `, JSON.stringify(data.priceLevels));
-    }
-  }
-  */
-
   message += `data: ${JSON.stringify(data)}\n\n`;
   return message;
 }
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const symbolsParam = searchParams.get('symbols');
-  let symbolsToStream: string[] = [];
+  try {
+    const { searchParams } = new URL(request.url);
+    const symbolsParam = searchParams.get('symbols');
+    let symbolsToStream: string[] = [];
 
-  if (symbolsParam) {
-    symbolsToStream = symbolsParam.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
-  } else {
-    console.warn(`[${new Date().toISOString()}] Footprint SSE: No symbols provided in query. Stream will not start effectively until symbols are specified.`);
-  }
-  
-  if (symbolsToStream.length > 0) {
-    console.log(`[${new Date().toISOString()}] Footprint SSE: Client connected, attempting to start/update stream for symbols: ${symbolsToStream.join(', ')}`);
-    startFootprintStream(symbolsToStream); 
-  }
+    if (symbolsParam) {
+      symbolsToStream = symbolsParam.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+    } else {
+      console.warn(`[${new Date().toISOString()}] Footprint SSE: No symbols provided in query. Stream will not start effectively until symbols are specified.`);
+    }
+    
+    if (symbolsToStream.length > 0) {
+      console.log(`[${new Date().toISOString()}] Footprint SSE: Client connected, attempting to start/update stream for symbols: ${symbolsToStream.join(', ')}`);
+      startFootprintStream(symbolsToStream); 
+    }
 
 
-  const stream = new ReadableStream({
-    start(controller) {
-      try {
-        const listener: Parameters<typeof addFootprintListener>[0] = (data, eventType) => {
-          const symbol = 'symbol' in data ? data.symbol : undefined;
+    const stream = new ReadableStream({
+      start(controller) {
+        try {
+          const listener: Parameters<typeof addFootprintListener>[0] = (data, eventType) => {
+            const symbol = 'symbol' in data ? data.symbol : undefined;
 
-          if (!symbol || (symbolsToStream.length > 0 && !symbolsToStream.includes(symbol))) {
-              return; 
-          }
-
-          try {
-            let dataToSend = { ...data };
-            if (data.priceLevels instanceof Map) {
-              dataToSend.priceLevels = Object.fromEntries(data.priceLevels);
+            if (!symbol || (symbolsToStream.length > 0 && !symbolsToStream.includes(symbol))) {
+                return; 
             }
-            controller.enqueue(createSSEMessage(dataToSend, eventType));
-          } catch (e) {
-            console.error(`[${new Date().toISOString()}] Footprint SSE: Error enqueueing data for ${symbol}:`, e);
-            // Optionally close stream or notify client of partial error if critical
-          }
-        };
 
-        addFootprintListener(listener);
-        console.log(`[${new Date().toISOString()}] Footprint SSE: Listener added for client monitoring symbols: ${symbolsToStream.join(', ')}`);
-
-        if (symbolsToStream.length > 0) {
-          symbolsToStream.forEach(symbol => {
-            const latestBars = getLatestFootprintBars(symbol, 5); 
-            latestBars.forEach(bar => {
-               try {
-                  let barToSend = { ...bar };
-                  if (bar.priceLevels instanceof Map) {
-                      barToSend.priceLevels = Object.fromEntries(bar.priceLevels);
-                  }
-                  controller.enqueue(createSSEMessage(barToSend, 'footprintUpdate'));
-               } catch (e) {
-                  console.error(`[${new Date().toISOString()}] Footprint SSE: Error enqueueing initial bar data for ${symbol}:`, e);
-               }
-            });
-            const currentAggBar = getCurrentAggregatingBar(symbol);
-            if(currentAggBar && typeof currentAggBar.totalVolume === 'number' && currentAggBar.totalVolume > 0) {
-              try {
-                  let partialBarToSend = { ...currentAggBar };
-                  if (currentAggBar.priceLevels instanceof Map) {
-                      partialBarToSend.priceLevels = Object.fromEntries(currentAggBar.priceLevels);
-                  }
-                  controller.enqueue(createSSEMessage(partialBarToSend, 'footprintUpdatePartial'));
-              } catch (e) {
-                  console.error(`[${new Date().toISOString()}] Footprint SSE: Error enqueueing initial partial bar data for ${symbol}:`, e);
+            try {
+              let dataToSend = { ...data };
+              if (data.priceLevels instanceof Map) {
+                dataToSend.priceLevels = Object.fromEntries(data.priceLevels);
               }
+              controller.enqueue(createSSEMessage(dataToSend, eventType));
+            } catch (e) {
+              console.error(`[${new Date().toISOString()}] Footprint SSE: Error enqueueing data for ${symbol}:`, e);
             }
-          });
-        }
+          };
 
-        const keepAliveInterval = setInterval(() => {
-          try {
-            controller.enqueue(': keep-alive\n\n');
-          } catch (e) {
-            console.error(`[${new Date().toISOString()}] Footprint SSE: Error enqueueing keep-alive:`, e);
-            // If enqueueing keep-alive fails, the stream might be broken.
-            // Consider closing the controller or handling this more gracefully.
+          addFootprintListener(listener);
+          console.log(`[${new Date().toISOString()}] Footprint SSE: Listener added for client monitoring symbols: ${symbolsToStream.join(', ')}`);
+
+          if (symbolsToStream.length > 0) {
+            symbolsToStream.forEach(symbol => {
+              const latestBars = getLatestFootprintBars(symbol, 5); 
+              latestBars.forEach(bar => {
+                 try {
+                    let barToSend = { ...bar };
+                    if (bar.priceLevels instanceof Map) {
+                        barToSend.priceLevels = Object.fromEntries(bar.priceLevels);
+                    }
+                    controller.enqueue(createSSEMessage(barToSend, 'footprintUpdate'));
+                 } catch (e) {
+                    console.error(`[${new Date().toISOString()}] Footprint SSE: Error enqueueing initial bar data for ${symbol}:`, e);
+                 }
+              });
+              const currentAggBar = getCurrentAggregatingBar(symbol);
+              if(currentAggBar && typeof currentAggBar.totalVolume === 'number' && currentAggBar.totalVolume > 0) {
+                try {
+                    let partialBarToSend = { ...currentAggBar };
+                    if (currentAggBar.priceLevels instanceof Map) {
+                        partialBarToSend.priceLevels = Object.fromEntries(currentAggBar.priceLevels);
+                    }
+                    controller.enqueue(createSSEMessage(partialBarToSend, 'footprintUpdatePartial'));
+                } catch (e) {
+                    console.error(`[${new Date().toISOString()}] Footprint SSE: Error enqueueing initial partial bar data for ${symbol}:`, e);
+                }
+              }
+            });
           }
-        }, 20000);
 
-        request.signal.addEventListener('abort', () => {
-          removeFootprintListener(listener);
-          clearInterval(keepAliveInterval);
+          const keepAliveInterval = setInterval(() => {
+            try {
+              controller.enqueue(': keep-alive\n\n');
+            } catch (e) {
+              console.error(`[${new Date().toISOString()}] Footprint SSE: Error enqueueing keep-alive:`, e);
+            }
+          }, 20000);
+
+          request.signal.addEventListener('abort', () => {
+            removeFootprintListener(listener);
+            clearInterval(keepAliveInterval);
+            try {
+              controller.close();
+            } catch (e) { /* ignore if already closed */ }
+            console.log(`[${new Date().toISOString()}] Footprint SSE: Client disconnected (abort signal), listener removed, stream closed for symbols: ${symbolsToStream.join(', ')}`);
+          });
+
+        } catch (error) {
+          console.error(`[${new Date().toISOString()}] Footprint SSE: CRITICAL Error during stream setup phase for symbols ${symbolsToStream.join(', ')}:`, error);
           try {
-            controller.close();
+            controller.error(error instanceof Error ? error : new Error(String(error)));
+          } catch (e) { /* ignore if controller already errored/closed */ }
+          try {
+            controller.close(); 
           } catch (e) { /* ignore if already closed */ }
-          console.log(`[${new Date().toISOString()}] Footprint SSE: Client disconnected (abort signal), listener removed, stream closed for symbols: ${symbolsToStream.join(', ')}`);
-        });
+        }
+      },
+    });
 
-      } catch (error) {
-        console.error(`[${new Date().toISOString()}] Footprint SSE: CRITICAL Error during stream setup phase for symbols ${symbolsToStream.join(', ')}:`, error);
-        try {
-          // Signal an error to the stream if possible
-          controller.error(error instanceof Error ? error : new Error(String(error)));
-        } catch (e) { /* ignore if controller already errored/closed */ }
-        try {
-          controller.close(); // Ensure controller is closed on setup error
-        } catch (e) { /* ignore if already closed */ }
-      }
-    },
-  });
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-    },
-  });
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
+  } catch (error) {
+    const timestamp = new Date().toISOString();
+    const errorMessage = error instanceof Error ? error.message : "Unknown error in GET /api/footprint-stream";
+    console.error(`[${timestamp}] Footprint SSE: CRITICAL UNHANDLED ERROR IN GET HANDLER:`, errorMessage, error);
+    return new Response(`Server error in footprint stream: ${errorMessage}`, { 
+      status: 500,
+      headers: { 'Content-Type': 'text/plain' } 
+    });
+  }
 }
 
 export async function POST(request: Request) {
@@ -166,7 +155,7 @@ export async function POST(request: Request) {
             startFootprintStream(symbols);
             return NextResponse.json({ message: `Footprint stream processing started for ${symbols.join(', ')}.` });
         } else if (action === 'stop') {
-            stopFootprintStream(); // This function now handles all symbols implicitly
+            stopFootprintStream(); 
             return NextResponse.json({ message: "Footprint stream processing stopped for all symbols." });
         } else {
             return NextResponse.json({ message: "Invalid action. Use 'start' or 'stop'." }, { status: 400 });

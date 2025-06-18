@@ -10,7 +10,7 @@ import { Loader2, PlayCircle, StopCircle, BarChartHorizontalBig } from 'lucide-r
 import type { FootprintBar, PriceLevelData } from '@/types/footprint';
 import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; // Default symbols
 import { useToast } from "@/hooks/use-toast";
-import GraphicalFootprintBar from '@/components/footprint/GraphicalFootprintBar'; // Import the new component
+import GraphicalFootprintBar from '@/components/footprint/GraphicalFootprintBar'; 
 
 const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute, matches server-side
 
@@ -27,6 +27,7 @@ export default function FootprintChartsPage() {
   const connectToStream = () => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
+      eventSourceRef.current = null; // Explicitly nullify after close
     }
     if (!symbolsInput.trim()) {
         toast({
@@ -92,10 +93,8 @@ export default function FootprintChartsPage() {
 
     es.addEventListener('footprintUpdate', (event) => {
       const rawData = JSON.parse(event.data);
-      // console.log(`[Client] footprintUpdate for ${rawData.symbol}: RAW rawData.priceLevels from SSE:`, JSON.stringify(rawData.priceLevels));
       const reconstructedPriceLevels = new Map<string, PriceLevelData>(Object.entries(rawData.priceLevels || {}));
-      // console.log(`[Client] footprintUpdate for ${rawData.symbol}: Reconstructed priceLevels size: ${reconstructedPriceLevels.size}`, reconstructedPriceLevels.size > 0 ? Array.from(reconstructedPriceLevels.keys()) : "Map is empty");
-
+      
       const barData: FootprintBar = {
         ...rawData,
         timestamp: Number(rawData.timestamp),
@@ -110,7 +109,6 @@ export default function FootprintChartsPage() {
         ].sort((a,b) => b.timestamp - a.timestamp).slice(0, 10);
         return { ...prev, [barData.symbol]: updatedBars };
       });
-      // Initialize the next partial bar correctly, ensuring timestamp is a number
       setCurrentPartialBars(prev => ({...prev, [barData.symbol]: { symbol: barData.symbol, timestamp: Number(barData.timestamp) + AGGREGATION_INTERVAL_MS, priceLevels: new Map()}}));
     });
 
@@ -122,9 +120,7 @@ export default function FootprintChartsPage() {
         };
 
         if (rawPartialData.priceLevels) {
-            // console.log(`[Client] footprintUpdatePartial for ${rawPartialData.symbol}: RAW rawPartialData.priceLevels from SSE:`, JSON.stringify(rawPartialData.priceLevels));
             partialBarDataWithMap.priceLevels = new Map<string, PriceLevelData>(Object.entries(rawPartialData.priceLevels));
-            // console.log(`[Client] footprintUpdatePartial for ${rawPartialData.symbol}: Reconstructed partial priceLevels size: ${partialBarDataWithMap.priceLevels.size}`);
         }
 
         if(partialBarDataWithMap.symbol) {
@@ -209,7 +205,7 @@ export default function FootprintChartsPage() {
        )}
 
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6"> {/* Adjusted to lg:grid-cols-2 for better chart space */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
         {activeSymbols.map(symbol => (
           <Card key={symbol} className="shadow-lg">
             <CardHeader>
@@ -250,7 +246,7 @@ export default function FootprintChartsPage() {
                   )}
                   {(footprintBars[symbol] && footprintBars[symbol].length > 0) ? (
                      footprintBars[symbol].map(bar => (
-                       <div key={bar.timestamp} className="mb-6 last:mb-0"> {/* Increased mb for completed bars */}
+                       <div key={bar.timestamp} className="mb-6 last:mb-0"> 
                          <h4 className="font-medium text-sm mb-1">
                            Bar: {new Date(bar.timestamp).toLocaleTimeString()} - {new Date(Number(bar.timestamp) + AGGREGATION_INTERVAL_MS -1).toLocaleTimeString()}
                          </h4>
@@ -269,7 +265,7 @@ export default function FootprintChartsPage() {
           </Card>
         ))}
         {activeSymbols.length === 0 && !isLoading && (
-            <Card className="md:col-span-2 lg:col-span-2"> {/* Adjusted colspan */}
+            <Card className="md:col-span-2 lg:col-span-2"> 
                 <CardContent className="pt-6">
                     <p className="text-muted-foreground text-center py-10">
                         Enter symbols (e.g., BTCUSDT,ETHUSDT) and click "Connect" to start viewing footprint data.
