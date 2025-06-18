@@ -13,10 +13,10 @@ import { useToast } from "@/hooks/use-toast";
 
 const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute
 
-const SimpleFootprintBarDisplay: React.FC<{ bar: FootprintBar }> = ({ bar }) => {
+const SimpleFootprintBarDisplay: React.FC<{ bar: Partial<FootprintBar> }> = ({ bar }) => {
   if (!bar || !bar.priceLevels) {
     // console.log("SimpleFootprintBarDisplay: No bar or bar.priceLevels. Bar:", bar);
-    return <p className="text-muted-foreground">No bar data or price levels available.</p>;
+    return <p className="text-muted-foreground text-xs py-2">No price level data in this bar.</p>;
   }
 
   // Ensure priceLevels is treated as a Map, even if it arrives as a plain object after SSE
@@ -24,7 +24,7 @@ const SimpleFootprintBarDisplay: React.FC<{ bar: FootprintBar }> = ({ bar }) => 
     ? bar.priceLevels
     : new Map(Object.entries(bar.priceLevels || {}));
 
-  // console.log(`SimpleFootprintBarDisplay for ${bar.symbol} @ ${new Date(bar.timestamp).toLocaleTimeString()}: priceLevelsMap size: ${priceLevelsMap.size}`, priceLevelsMap.size > 0 ? Array.from(priceLevelsMap.entries()) : "Map is empty. Original bar.priceLevels:", bar.priceLevels);
+  // console.log(`SimpleFootprintBarDisplay for ${bar.symbol} @ ${bar.timestamp ? new Date(bar.timestamp).toLocaleTimeString() : 'N/A'}: priceLevelsMap size: ${priceLevelsMap.size}`, priceLevelsMap.size > 0 ? Array.from(priceLevelsMap.entries()) : "Map is empty. Original bar.priceLevels:", bar.priceLevels);
 
 
   const sortedPriceLevels = Array.from(priceLevelsMap.entries())
@@ -34,7 +34,7 @@ const SimpleFootprintBarDisplay: React.FC<{ bar: FootprintBar }> = ({ bar }) => 
   const maxVolumeAtLevel = Math.max(...sortedPriceLevels.map(pl => Math.max(pl.buyVolume, pl.sellVolume)), 0);
 
   return (
-    <div className="mt-2 space-y-1 text-xs border p-2 rounded-md bg-muted/30 max-h-96 overflow-y-auto">
+    <div className="mt-2 space-y-1 text-xs border p-2 rounded-md bg-muted/30 max-h-60 overflow-y-auto">
       <div className="grid grid-cols-3 items-center gap-x-2 font-semibold sticky top-0 bg-muted/30 py-1 z-10">
         <div className="text-right">Sell Vol</div>
         <div className="text-center">Price</div>
@@ -50,7 +50,7 @@ const SimpleFootprintBarDisplay: React.FC<{ bar: FootprintBar }> = ({ bar }) => 
             <span className="relative pr-1">{sellVolume.toFixed(2)}</span>
           </div>
           <div className="text-center font-mono px-1 py-0.5 rounded bg-background shadow-sm">
-            {price.toFixed(Math.max(2, (price < 1 ? 4 : 2)))}
+            {price.toFixed(Math.max(2, (price < 1 ? 5 : 2)))}
           </div>
           <div className="text-left text-green-500 relative h-4">
             <div
@@ -146,12 +146,14 @@ export default function FootprintChartsPage() {
 
     es.addEventListener('footprintUpdate', (event) => {
       const rawData = JSON.parse(event.data);
+      // Client-side log for received raw priceLevels (can be verbose)
       // console.log(`[Client] footprintUpdate for ${rawData.symbol}: RAW rawData.priceLevels from SSE:`, JSON.stringify(rawData.priceLevels));
       const reconstructedPriceLevels = new Map<string, PriceLevelData>(Object.entries(rawData.priceLevels || {}));
       // console.log(`[Client] footprintUpdate for ${rawData.symbol}: Reconstructed priceLevels size: ${reconstructedPriceLevels.size}`, reconstructedPriceLevels.size > 0 ? Array.from(reconstructedPriceLevels.keys()) : "Map is empty");
 
       const barData: FootprintBar = {
         ...rawData,
+        timestamp: Number(rawData.timestamp), // Ensure timestamp is a number
         priceLevels: reconstructedPriceLevels,
       };
 
@@ -163,14 +165,18 @@ export default function FootprintChartsPage() {
         ].sort((a,b) => b.timestamp - a.timestamp).slice(0, 10);
         return { ...prev, [barData.symbol]: updatedBars };
       });
-      setCurrentPartialBars(prev => ({...prev, [barData.symbol]: {}}));
+      setCurrentPartialBars(prev => ({...prev, [barData.symbol]: { symbol: barData.symbol, timestamp: barData.timestamp + AGGREGATION_INTERVAL_MS, priceLevels: new Map()}})); // Reset partial for next interval
     });
 
     es.addEventListener('footprintUpdatePartial', (event) => {
         const rawPartialData = JSON.parse(event.data);
-        const partialBarDataWithMap: Partial<FootprintBar> = { ...rawPartialData };
+        const partialBarDataWithMap: Partial<FootprintBar> = { 
+            ...rawPartialData,
+            timestamp: Number(rawPartialData.timestamp) // Ensure timestamp is a number
+        };
 
         if (rawPartialData.priceLevels) {
+            // Client-side log for received raw partial priceLevels (can be verbose)
             // console.log(`[Client] footprintUpdatePartial for ${rawPartialData.symbol}: RAW rawPartialData.priceLevels from SSE:`, JSON.stringify(rawPartialData.priceLevels));
             partialBarDataWithMap.priceLevels = new Map<string, PriceLevelData>(Object.entries(rawPartialData.priceLevels));
             // console.log(`[Client] footprintUpdatePartial for ${rawPartialData.symbol}: Reconstructed partial priceLevels size: ${partialBarDataWithMap.priceLevels.size}`);
@@ -179,11 +185,15 @@ export default function FootprintChartsPage() {
         if(partialBarDataWithMap.symbol) {
             setCurrentPartialBars(prev => {
                 const existingSymbolPartial = prev[partialBarDataWithMap.symbol!] || {};
-                const mergedPartial = { ...existingSymbolPartial, ...partialBarDataWithMap };
+                const mergedPartial: Partial<FootprintBar> = { 
+                  ...existingSymbolPartial, 
+                  ...partialBarDataWithMap 
+                };
+                
                 if (rawPartialData.priceLevels && existingSymbolPartial.priceLevels instanceof Map) {
                     const newLevels = partialBarDataWithMap.priceLevels as Map<string, PriceLevelData>;
                     mergedPartial.priceLevels = new Map([...existingSymbolPartial.priceLevels, ...newLevels]);
-                } else if (rawPartialData.priceLevels) {
+                } else if (rawPartialData.priceLevels) { // if existing is not a map or doesn't exist, just use new
                     mergedPartial.priceLevels = partialBarDataWithMap.priceLevels;
                 }
                 return {...prev, [partialBarDataWithMap.symbol!]: mergedPartial };
@@ -267,24 +277,30 @@ export default function FootprintChartsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {isLoading && !footprintBars[symbol]?.length ? (
+              {isLoading && !footprintBars[symbol]?.length && !currentPartialBars[symbol]?.priceLevels ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   <p className="ml-2 text-muted-foreground">Waiting for data...</p>
                 </div>
               ) : (
                 <>
-                  {currentPartialBars[symbol] && Object.keys(currentPartialBars[symbol]).length > 0 && currentPartialBars[symbol].priceLevels && (
+                  {currentPartialBars[symbol] && Object.keys(currentPartialBars[symbol]).length > 0 && (
                     <div className="mb-4 p-3 border border-dashed rounded-md bg-primary/5">
                       <p className="text-sm font-semibold text-primary mb-1">Current Aggregating Bar (Partial):</p>
-                      <p className="text-xs">Timestamp: {currentPartialBars[symbol].timestamp ? new Date(currentPartialBars[symbol].timestamp!).toISOString() : 'N/A'}</p>
-                      <p className="text-xs">O: {currentPartialBars[symbol].open?.toFixed(Math.max(2, (currentPartialBars[symbol].open ?? 0) < 1 ? 4 : 2))} H: {currentPartialBars[symbol].high?.toFixed(Math.max(2, (currentPartialBars[symbol].high ?? 0) < 1 ? 4 : 2))} L: {currentPartialBars[symbol].low?.toFixed(Math.max(2, (currentPartialBars[symbol].low ?? 0) < 1 ? 4 : 2))} C: {currentPartialBars[symbol].close?.toFixed(Math.max(2, (currentPartialBars[symbol].close ?? 0) < 1 ? 4 : 2))}</p>
-                      <p className="text-xs">Volume: {currentPartialBars[symbol].totalVolume?.toFixed(2)} Delta: {currentPartialBars[symbol].delta?.toFixed(2)}</p>
-                       <p className="text-xs">Price Levels Seen: {
-                            currentPartialBars[symbol].priceLevels instanceof Map
-                                ? (currentPartialBars[symbol].priceLevels as Map<string, PriceLevelData>).size
-                                : (typeof currentPartialBars[symbol].priceLevels === 'object' && currentPartialBars[symbol].priceLevels !== null ? Object.keys(currentPartialBars[symbol].priceLevels!).length : 'N/A')
-                        }</p>
+                      <p className="text-xs">
+                        Timestamp: {currentPartialBars[symbol].timestamp ? new Date(currentPartialBars[symbol].timestamp!).toLocaleString() : 'N/A'}
+                      </p>
+                      <p className="text-xs">
+                        O: {currentPartialBars[symbol].open?.toFixed(Math.max(2, (currentPartialBars[symbol].open ?? 0) < 1 ? 5 : 2)) ?? 'N/A'} H: {currentPartialBars[symbol].high?.toFixed(Math.max(2, (currentPartialBars[symbol].high ?? 0) < 1 ? 5 : 2)) ?? 'N/A'} L: {currentPartialBars[symbol].low?.toFixed(Math.max(2, (currentPartialBars[symbol].low ?? 0) < 1 ? 5 : 2)) ?? 'N/A'} C: {currentPartialBars[symbol].close?.toFixed(Math.max(2, (currentPartialBars[symbol].close ?? 0) < 1 ? 5 : 2)) ?? 'N/A'}
+                      </p>
+                      <p className="text-xs">
+                        Volume: {currentPartialBars[symbol].totalVolume?.toFixed(2) ?? 'N/A'} Delta: {currentPartialBars[symbol].delta?.toFixed(2) ?? 'N/A'}
+                      </p>
+                      {(currentPartialBars[symbol].priceLevels && (currentPartialBars[symbol].priceLevels as Map<string, PriceLevelData>).size > 0) || (currentPartialBars[symbol].totalVolume ?? 0 > 0) ? (
+                        <SimpleFootprintBarDisplay bar={currentPartialBars[symbol]} />
+                      ) : (
+                        <p className="text-xs text-muted-foreground mt-1 py-2">Aggregating price levels...</p>
+                      )}
                     </div>
                   )}
                   {(footprintBars[symbol] && footprintBars[symbol].length > 0) ? (
@@ -294,13 +310,13 @@ export default function FootprintChartsPage() {
                            Bar: {new Date(bar.timestamp).toLocaleTimeString()} - {new Date(bar.timestamp + AGGREGATION_INTERVAL_MS -1).toLocaleTimeString()}
                          </h4>
                          <p className="text-xs text-muted-foreground">
-                            O:{bar.open.toFixed(Math.max(2, bar.open < 1 ? 4 : 2))} H:{bar.high.toFixed(Math.max(2, bar.high < 1 ? 4 : 2))} L:{bar.low.toFixed(Math.max(2, bar.low < 1 ? 4 : 2))} C:{bar.close.toFixed(Math.max(2, bar.close < 1 ? 4 : 2))} Vol:{bar.totalVolume.toFixed(2)} Delta:{bar.delta.toFixed(2)}
+                            O:{bar.open.toFixed(Math.max(2, bar.open < 1 ? 5 : 2))} H:{bar.high.toFixed(Math.max(2, bar.high < 1 ? 5 : 2))} L:{bar.low.toFixed(Math.max(2, bar.low < 1 ? 5 : 2))} C:{bar.close.toFixed(Math.max(2, bar.close < 1 ? 5 : 2))} Vol:{bar.totalVolume.toFixed(2)} Delta:{bar.delta.toFixed(2)}
                          </p>
                          <SimpleFootprintBarDisplay bar={bar} />
                        </div>
                      ))
                   ) : (
-                    <p className="text-muted-foreground text-center py-4">No complete bar data received yet for {symbol}.</p>
+                    !currentPartialBars[symbol]?.priceLevels && <p className="text-muted-foreground text-center py-4">No complete bar data received yet for {symbol}.</p>
                   )}
                 </>
               )}
