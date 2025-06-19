@@ -18,10 +18,10 @@ interface ProcessedPriceLevel {
   isPoc: boolean;
   buyImbalance?: boolean;
   sellImbalance?: boolean;
-  ohlcMarkers?: string[]; // Added for O, H, L, C
+  ohlcMarkers?: string[];
 }
 
-const IMBALANCE_RATIO = 3.0;
+const IMBALANCE_RATIO = 3.0; // Example: Buy volume must be 3x sell volume of level below for buy imbalance
 
 const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) => {
   const [processedData, setProcessedData] = useState<ProcessedPriceLevel[]>([]);
@@ -38,13 +38,22 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) =>
       ? bar.priceLevels
       : new Map(Object.entries(bar.priceLevels as Record<string, PriceLevelData>));
 
-    if (priceLevelsMap.size === 0) {
-      setProcessedData([]);
-      setPocInfo(null);
-      return;
+    let isEmptyBar = false;
+    if (priceLevelsMap.size === 0) isEmptyBar = true;
+    
+    if (isEmptyBar && (bar.totalVolume === undefined || bar.totalVolume === 0)) {
+        setProcessedData([]);
+        setPocInfo(null);
+        return;
+    }
+    if (isEmptyBar) { // Has volume but no price levels yet (very early in aggregation)
+        setProcessedData([]); // Keep processed data empty to show "Aggregating..."
+        setPocInfo(null);
+        // No return, allow POC calculation to run if it was somehow set from a previous micro-update
     }
 
-    const { open, high, low, close } = bar; // Destructure OHLC for easier access
+
+    const { open, high, low, close } = bar;
 
     const sortedLevels: Omit<ProcessedPriceLevel, 'isPoc' | 'buyImbalance' | 'sellImbalance' | 'ohlcMarkers'>[] = Array.from(priceLevelsMap.entries())
       .map(([priceStr, levelData]) => {
@@ -59,12 +68,17 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) =>
           totalVolumeAtLevel: sellVol + buyVol,
         };
       })
-      .sort((a, b) => b.priceValue - a.priceValue);
+      .sort((a, b) => b.priceValue - a.priceValue); // Highest price first
 
-    if (sortedLevels.length === 0) {
-      setProcessedData([]);
-      setPocInfo(null);
-      return;
+    if (sortedLevels.length === 0 && bar.totalVolume && bar.totalVolume > 0) {
+        // Still aggregating, no distinct price levels formed yet from trades
+        setProcessedData([]);
+        setPocInfo(null);
+        // return; // Let it fall through if needed
+    } else if (sortedLevels.length === 0) {
+        setProcessedData([]);
+        setPocInfo(null);
+        return;
     }
     
     let maxVolume = -1;
@@ -82,6 +96,7 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) =>
     if (currentPocDisplay) {
       setPocInfo({ priceDisplay: currentPocDisplay, totalVolume: currentPocTotalVolume });
     } else {
+      // If no levels or all zero volume, clear POC
       setPocInfo(null);
     }
 
@@ -90,32 +105,37 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) =>
       let sellImbalance = false;
       const currentOhlcMarkers: string[] = [];
 
+      // Check for OHLC markers
       if (open !== undefined && level.priceValue === open) currentOhlcMarkers.push('O');
       if (high !== undefined && level.priceValue === high) currentOhlcMarkers.push('H');
       if (low !== undefined && level.priceValue === low) currentOhlcMarkers.push('L');
       if (close !== undefined && level.priceValue === close) currentOhlcMarkers.push('C');
 
-      const levelBelow = arr[index + 1];
-      if (levelBelow) {
-        if (levelBelow.sellVolume === 0 && level.buyVolume > 0) {
+      // Buy Imbalance: Compare current buy volume with sell volume of price level diagonally below
+      const levelBelow = arr[index + 1]; // Price is lower, volume is for level below
+      if (levelBelow) { // Ensure there is a level below
+        if (levelBelow.sellVolume === 0 && level.buyVolume > 0) { // If sell below is zero, any buy volume is imbalance
           buyImbalance = true;
         } else if (levelBelow.sellVolume > 0 && level.buyVolume >= levelBelow.sellVolume * IMBALANCE_RATIO) {
           buyImbalance = true;
         }
-      } else if (level.buyVolume > 0 && arr.length > 1) { 
-        buyImbalance = true;
+      } else if (level.buyVolume > 0 && arr.length > 1) { // Very bottom level, if it has buy vol, treat as imbalance (no sell vol below it)
+         buyImbalance = true;
       }
 
-      const levelAbove = arr[index - 1];
-      if (levelAbove) {
-        if (levelAbove.buyVolume === 0 && level.sellVolume > 0) {
+
+      // Sell Imbalance: Compare current sell volume with buy volume of price level diagonally above
+      const levelAbove = arr[index - 1]; // Price is higher, volume is for level above
+      if (levelAbove) { // Ensure there is a level above
+        if (levelAbove.buyVolume === 0 && level.sellVolume > 0) { // If buy above is zero, any sell volume is imbalance
           sellImbalance = true;
         } else if (levelAbove.buyVolume > 0 && level.sellVolume >= levelAbove.buyVolume * IMBALANCE_RATIO) {
           sellImbalance = true;
         }
-      } else if (level.sellVolume > 0 && arr.length > 1) {
+      } else if (level.sellVolume > 0 && arr.length > 1) { // Very top level, if it has sell vol, treat as imbalance (no buy vol above it)
         sellImbalance = true;
       }
+      
 
       return {
         ...level,
@@ -132,22 +152,24 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) =>
 
   const getVolumeDisplay = (volume: number) => {
     if (volume === 0) return <span className="text-muted-foreground/60">-</span>;
-    if (volume < 0.01 && volume > 0) return volume.toFixed(Math.max(2, Number(volume.toString().split('.')[1]?.length || 2) )); // Show more precision for very small numbers
+    if (volume < 0.01 && volume > 0) return volume.toFixed(Math.max(2, Number(volume.toString().split('.')[1]?.length || 2) ));
     return volume.toFixed(2);
   };
   
-  let isEmptyBar = false;
+  let isEmptyBarDisplay = false;
   const priceLevels = bar?.priceLevels;
   if (!priceLevels) {
-    isEmptyBar = true;
+    isEmptyBarDisplay = true;
   } else if (priceLevels instanceof Map) {
-    if (priceLevels.size === 0) isEmptyBar = true;
-  } else if (typeof priceLevels === 'object') {
-    if (Object.keys(priceLevels).length === 0) isEmptyBar = true;
+    if (priceLevels.size === 0) isEmptyBarDisplay = true;
+  } else if (typeof priceLevels === 'object' && priceLevels !== null) {
+    if (Object.keys(priceLevels).length === 0) isEmptyBarDisplay = true;
+  } else {
+      isEmptyBarDisplay = true; // if priceLevels is null or not an object/Map
   }
 
 
-  if (isEmptyBar && (bar.totalVolume === 0 || bar.totalVolume === undefined)) {
+  if (isEmptyBarDisplay && (bar.totalVolume === 0 || bar.totalVolume === undefined)) {
     return <p className="text-muted-foreground text-xs py-2 text-center italic">No trades or price level data for this bar.</p>;
   }
    if (processedData.length === 0 && (bar.totalVolume !== undefined && bar.totalVolume > 0)) {
@@ -158,18 +180,18 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) =>
     }
 
   return (
-    <div className="mt-2 w-full font-mono text-xs tabular-nums">
-      <div className="flex justify-between items-center px-1 py-0.5 bg-muted/50 rounded-t-md border-b border-border sticky top-0 z-10">
+    <div className="mt-2 w-full font-mono text-[11px] tabular-nums leading-tight">
+      <div className="flex justify-between items-center px-1 py-0.5 bg-muted/50 rounded-t-md border-b border-border sticky top-0 z-10 text-xs">
         <span className="w-1/3 text-center font-semibold">Sell Vol</span>
         <span className="w-1/3 text-center font-semibold">Price</span>
         <span className="w-1/3 text-center font-semibold">Buy Vol</span>
       </div>
-      <div className="max-h-80 overflow-y-auto pr-1">
+      <div className="max-h-72 overflow-y-auto pr-1"> {/* Reduced max-h for compactness */}
         {processedData.map((level) => (
           <div
             key={level.priceDisplay}
             className={cn(
-              "flex justify-between items-center border-b border-dotted border-border/30 py-0.5 min-h-[18px]",
+              "flex justify-between items-center border-b border-dotted border-border/30 py-[1px] min-h-[18px]", // Reduced py and min-h
               level.isPoc ? 'bg-primary/20 dark:bg-primary/30' : ''
             )}
           >
@@ -183,7 +205,7 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) =>
             </span>
             
             <span className={cn(
-              "w-1/3 text-center font-medium px-1 relative flex items-center justify-center",
+              "w-1/3 text-center font-medium px-1 relative flex items-center justify-center", // Removed text-sm to inherit from parent
               level.isPoc ? 'text-primary-foreground font-bold' : 'text-foreground'
             )}>
               <span className="flex-grow text-center">{level.priceDisplay}</span>
@@ -206,7 +228,7 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) =>
         ))}
       </div>
       {pocInfo && (
-        <div className="text-center text-xs text-muted-foreground mt-1.5 pt-1 border-t border-border">
+        <div className="text-center text-[10px] text-muted-foreground mt-1.5 pt-1 border-t border-border"> {/* Reduced font size */}
           POC: <span className="font-semibold text-primary">{pocInfo.priceDisplay}</span> (Total Vol: {pocInfo.totalVolume.toFixed(2)})
         </div>
       )}
@@ -215,4 +237,3 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) =>
 };
 
 export default GraphicalFootprintBar;
-
