@@ -308,8 +308,7 @@ export default function FootprintChartsPage() {
     };
 
     es.onerror = (event) => {
-      // Keep this general, server logs will have more details if it's a server-side issue.
-      let errorDetails = `Event Type: error`; // Simplify for client display
+      let errorDetails = `Event Type: error`;
        if (event.target && event.target instanceof EventSource) {
         errorDetails += `, ReadyState: ${event.target.readyState} (0=CONNECTING, 1=OPEN, 2=CLOSED)`;
       }
@@ -318,7 +317,7 @@ export default function FootprintChartsPage() {
 
       toast({
         title: "Stream Connection Error",
-        description: "Lost connection to the data stream or failed to connect. Check console & server logs, then try reconnecting.",
+        description: "Lost connection to data stream or failed to connect. Check console & server logs, then try reconnecting.",
         variant: "destructive",
       });
 
@@ -352,26 +351,23 @@ export default function FootprintChartsPage() {
          .slice(0, numBarsToDisplay); 
         return { ...prev, [barData.symbol]: updatedBars };
       });
-      // Initialize next partial bar with the timestamp of the *next* aggregation interval
       setCurrentPartialBars(prev => ({
         ...prev,
         [barData.symbol]: {
           symbol: barData.symbol,
-          timestamp: Number(barData.timestamp) + AGGREGATION_INTERVAL_MS, // Set to start of next bar
-          priceLevels: new Map<string, PriceLevelData>() // Start with fresh price levels
+          timestamp: Number(barData.timestamp) + AGGREGATION_INTERVAL_MS, 
+          priceLevels: new Map<string, PriceLevelData>() 
         }
       }));
     });
 
     es.addEventListener('footprintUpdatePartial', (event) => {
         const rawPartialData = JSON.parse(event.data);
-        // Reconstruct PriceLevelData map from object if necessary
         const partialBarDataWithMap: Partial<FootprintBar> = {
             ...rawPartialData,
-            timestamp: Number(rawPartialData.timestamp) // Ensure timestamp is a number
+            timestamp: Number(rawPartialData.timestamp) 
         };
 
-        // Explicitly convert plain object priceLevels to Map if needed
         if (rawPartialData.priceLevels && typeof rawPartialData.priceLevels === 'object' && !(rawPartialData.priceLevels instanceof Map)) {
             partialBarDataWithMap.priceLevels = new Map<string, PriceLevelData>(Object.entries(rawPartialData.priceLevels));
         }
@@ -379,21 +375,16 @@ export default function FootprintChartsPage() {
         if(partialBarDataWithMap.symbol) {
             setCurrentPartialBars(prev => {
                 const existingSymbolPartial = prev[partialBarDataWithMap.symbol!] || {};
-                // Merge, but be careful with priceLevels
                 const mergedPartial: Partial<FootprintBar> = {
                   ...existingSymbolPartial, 
                   ...partialBarDataWithMap 
                 };
 
-                // Handle merging of priceLevels maps if both exist
                 if (partialBarDataWithMap.priceLevels instanceof Map && existingSymbolPartial.priceLevels instanceof Map) {
-                    // Create a new map by spreading existing levels, then new/updated levels from partialBarData
                     mergedPartial.priceLevels = new Map([...existingSymbolPartial.priceLevels, ...partialBarDataWithMap.priceLevels]);
                 } else if (partialBarDataWithMap.priceLevels instanceof Map) {
-                    // If only new partial has levels, use that
                     mergedPartial.priceLevels = partialBarDataWithMap.priceLevels;
                 } else if (!mergedPartial.priceLevels) {
-                    // Ensure priceLevels map exists even if empty
                     mergedPartial.priceLevels = new Map<string, PriceLevelData>();
                 }
                 
@@ -418,7 +409,6 @@ export default function FootprintChartsPage() {
   };
 
   useEffect(() => {
-    // Cleanup on component unmount
     return () => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
@@ -460,7 +450,7 @@ export default function FootprintChartsPage() {
               id="numBars"
               type="number"
               min="1"
-              max="50" // Max 50 bars
+              max="50" 
               value={numBarsToDisplay}
               onChange={handleNumBarsChange}
               className="w-20 h-10" 
@@ -486,14 +476,13 @@ export default function FootprintChartsPage() {
           const currentSymbolPartialBar = currentPartialBars[symbol];
           const currentSymbolFootprintBars = footprintBars[symbol] || [];
 
-          // Data for summary table: current partial + completed bars
           const summaryBarsData: Partial<FootprintBar>[] = [
             ...(currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) ? [currentSymbolPartialBar] : []),
-            ...currentSymbolFootprintBars // Already sliced by numBarsToDisplay
-          ].slice(0, numBarsToDisplay + 1); // Ensure table doesn't exceed display count (+1 for partial)
+            ...currentSymbolFootprintBars 
+          ].slice(0, numBarsToDisplay + 1); 
 
           const metrics = [
-            { label: "Bar End Time", getValue: (bar: Partial<FootprintBar>) => bar.timestamp ? formatTimeFromTimestamp(Number(bar.timestamp) + AGGREGATION_INTERVAL_MS -1) : 'N/A' }, // Show end time of interval
+            { label: "Bar End Time", getValue: (bar: Partial<FootprintBar>) => bar.timestamp ? formatTimeFromTimestamp(Number(bar.timestamp) + AGGREGATION_INTERVAL_MS -1) : 'N/A' }, 
             { label: "Open", getValue: (bar: Partial<FootprintBar>) => formatPrice(bar.open) },
             { label: "High", getValue: (bar: Partial<FootprintBar>) => formatPrice(bar.high) },
             { label: "Low", getValue: (bar: Partial<FootprintBar>) => formatPrice(bar.low) },
@@ -513,6 +502,25 @@ export default function FootprintChartsPage() {
                 return 'N/A';
               },
               getCellClass: (bar: Partial<FootprintBar>) => (bar.delta ?? 0) >= 0 ? 'text-accent' : 'text-destructive'
+            },
+            { 
+              label: "Bar Character", 
+              getValue: (bar: Partial<FootprintBar>) => {
+                if (bar.open === undefined || bar.close === undefined || bar.delta === undefined || bar.delta === null) return 'N/A';
+                if (bar.close > bar.open && bar.delta >= 0) return "Price Buy";
+                if (bar.close < bar.open && bar.delta <= 0) return "Price Sell";
+                if (bar.delta < 0) return "Delta Sell"; // Catches delta < 0 with close >= open
+                if (bar.delta > 0) return "Delta Buy";  // Catches delta > 0 with close <= open
+                return "Neutral";
+              },
+              getCellClass: (bar: Partial<FootprintBar>) => {
+                if (bar.open === undefined || bar.close === undefined || bar.delta === undefined || bar.delta === null) return 'text-muted-foreground';
+                if (bar.close > bar.open && bar.delta >= 0) return 'bg-accent/70 text-accent-foreground font-medium';
+                if (bar.close < bar.open && bar.delta <= 0) return 'bg-destructive/70 text-destructive-foreground font-medium';
+                if (bar.delta < 0) return 'bg-orange-400 text-white font-medium';
+                if (bar.delta > 0) return 'bg-sky-400 text-white font-medium'; // Using sky for Delta Buy
+                return 'text-muted-foreground';
+              }
             },
             { label: "POC Price", getValue: (bar: Partial<FootprintBar>) => getBarPocInfo(bar).pocPrice || 'N/A' },
             { label: "POC Volume", getValue: (bar: Partial<FootprintBar>) => formatVolume(getBarPocInfo(bar).pocVolume) },
@@ -556,23 +564,18 @@ export default function FootprintChartsPage() {
                 </div>
               ) : (
                 <>
-                  {/* Graphical Footprint Bars Display */}
                   <div className="flex flex-row-reverse overflow-x-auto gap-1 pb-4 items-end min-h-[300px]">
-                    {/* Current Aggregating Bar */}
                     {currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) && (
                        <div className="min-w-[150px] flex-shrink-0 border border-dashed p-2 rounded-md bg-primary/5 flex flex-col">
                          <h4 className="font-medium text-xs mb-1 text-center text-primary">
-                           {/* Timestamp for partial bar should be its designated start time */}
                            {currentSymbolPartialBar.timestamp ? formatTimeFromTimestamp(currentSymbolPartialBar.timestamp, false) : 'N/A'} (Agg.)
                          </h4>
                          <GraphicalFootprintBar bar={currentSymbolPartialBar} />
                        </div>
                      )}
-                    {/* Completed Bars */}
-                    {currentSymbolFootprintBars.slice(0, numBarsToDisplay).reverse().map(bar => ( // reverse for chronological display L to R
+                    {currentSymbolFootprintBars.slice(0, numBarsToDisplay).reverse().map(bar => ( 
                       <div key={bar.timestamp} className="min-w-[150px] flex-shrink-0 border p-2 rounded-md bg-card flex flex-col">
                         <h4 className="font-medium text-xs mb-1 text-center">
-                          {/* Timestamp for completed bar is its designated start time */}
                           {formatTimeFromTimestamp(bar.timestamp, false)}
                         </h4>
                         <GraphicalFootprintBar bar={bar} sessionVah={vahNum} sessionVal={valNum} />
@@ -583,7 +586,6 @@ export default function FootprintChartsPage() {
                     <p className="text-muted-foreground text-center py-4">No complete bar data received yet for {symbol}.</p>
                   }
 
-                  {/* Session Statistics Card */}
                   {currentSymbolFootprintBars.length > 0 && (
                      <Card className="mt-6 shadow-md">
                       <CardHeader className="py-3 px-4 border-b">
@@ -625,7 +627,6 @@ export default function FootprintChartsPage() {
                             <span className="text-muted-foreground flex items-center"><ArrowDownCircle className="h-3.5 w-3.5 mr-1.5 text-blue-500"/>Value Area Low:</span>
                             <span className="font-semibold">{valStr || 'N/A'}</span>
                         </div>
-                        {/* Divergence Signals Display */}
                         {divergenceSignals.length > 0 && (
                             <div className="sm:col-span-2 mt-1 text-center">
                                 {divergenceSignals.map((signal, idx) => (
@@ -640,8 +641,6 @@ export default function FootprintChartsPage() {
                     </Card>
                   )}
 
-
-                  {/* Transposed Summary Table */}
                   {summaryBarsData.length > 0 && (
                     <div className="mt-6">
                       <h3 className="text-lg font-semibold mb-3 flex items-center">
@@ -655,9 +654,7 @@ export default function FootprintChartsPage() {
                               <TableHead className="px-2 py-2 font-medium text-muted-foreground sticky left-0 bg-muted/50 z-10 whitespace-nowrap">Metric</TableHead>
                               {summaryBarsData.map((sBar, index) => (
                                 <TableHead key={sBar.timestamp || `partial-col-${index}`} className="px-2 py-2 font-medium text-muted-foreground text-center whitespace-nowrap">
-                                  {/* Timestamp for summary table column header should be start of bar */}
                                   {formatTimeFromTimestamp(sBar.timestamp, false)}
-                                  {/* Mark aggregating bar */}
                                   {index === 0 && currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) ? <span className="text-primary/80 ml-1">(Agg.)</span> : ""}
                                 </TableHead>
                               ))}
@@ -675,7 +672,6 @@ export default function FootprintChartsPage() {
                                     className={cn(
                                       "px-2 py-1.5 text-center tabular-nums whitespace-nowrap",
                                       metric.getCellClass ? metric.getCellClass(sBar) : '',
-                                      // Highlight cells for the aggregating bar
                                       index === 0 && currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) && "bg-primary/5"
                                     )}
                                   >
@@ -695,8 +691,8 @@ export default function FootprintChartsPage() {
           </Card>
         )})}
         {activeSymbols.length === 0 && !isLoading && (
-            <Card className="md:col-span-1 lg:col-span-2"> {/* Span across columns if no active symbols */}
-                <CardContent className="pt-6"> {/* Ensure CardContent has padding if CardHeader is not used */}
+            <Card className="md:col-span-1 lg:col-span-2"> 
+                <CardContent className="pt-6"> 
                     <p className="text-muted-foreground text-center py-10">
                         Enter symbols (e.g., BTCUSDT,ETHUSDT) and click "Connect" to start viewing footprint data.
                     </p>

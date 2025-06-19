@@ -65,6 +65,10 @@ export default {
           border: 'hsl(var(--sidebar-border))',
           ring: 'hsl(var(--sidebar-ring))',
         },
+        orange: { // Added orange palette
+          '400': '#fb923c', // Tailwind's orange-400
+          '500': '#f97316', // Tailwind's orange-500
+        }
       },
       borderRadius: { // Updated border radius based on globals.css change
         lg: 'var(--radius)', // 0.75rem
