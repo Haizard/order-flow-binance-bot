@@ -21,6 +21,8 @@ function createSSEMessage(data: any, eventName?: string): string {
   if (eventName) {
     message += `event: ${eventName}\n`;
   }
+  // If data.priceLevels is a Map, it will be converted to an empty object by JSON.stringify
+  // This is handled by converting it to a plain object before this function is called.
   message += `data: ${JSON.stringify(data)}\n\n`;
   return message;
 }
@@ -49,11 +51,13 @@ export async function GET(request: Request) {
           const listener: Parameters<typeof addFootprintListener>[0] = (data, eventType) => {
             const symbol = 'symbol' in data ? data.symbol : undefined;
 
+            // Only send updates for symbols the client requested
             if (!symbol || (symbolsToStream.length > 0 && !symbolsToStream.includes(symbol))) {
                 return; 
             }
 
             try {
+              // Ensure priceLevels Map is converted to a plain object for JSON stringification
               let dataToSend = { ...data };
               if (data.priceLevels instanceof Map) {
                 dataToSend.priceLevels = Object.fromEntries(data.priceLevels);
@@ -67,11 +71,13 @@ export async function GET(request: Request) {
           addFootprintListener(listener);
           console.log(`[${new Date().toISOString()}] Footprint SSE: Listener added for client monitoring symbols: ${symbolsToStream.join(', ')}`);
 
+          // Send initial historical data if available
           if (symbolsToStream.length > 0) {
             symbolsToStream.forEach(symbol => {
-              const latestBars = getLatestFootprintBars(symbol, 5); 
+              const latestBars = getLatestFootprintBars(symbol, 10); // Send up to 10 initial bars
               latestBars.forEach(bar => {
                  try {
+                    // Ensure priceLevels Map is converted to a plain object
                     let barToSend = { ...bar };
                     if (bar.priceLevels instanceof Map) {
                         barToSend.priceLevels = Object.fromEntries(bar.priceLevels);
@@ -84,6 +90,7 @@ export async function GET(request: Request) {
               const currentAggBar = getCurrentAggregatingBar(symbol);
               if(currentAggBar && typeof currentAggBar.totalVolume === 'number' && currentAggBar.totalVolume > 0) {
                 try {
+                    // Ensure priceLevels Map is converted to a plain object
                     let partialBarToSend = { ...currentAggBar };
                     if (currentAggBar.priceLevels instanceof Map) {
                         partialBarToSend.priceLevels = Object.fromEntries(currentAggBar.priceLevels);
@@ -96,14 +103,16 @@ export async function GET(request: Request) {
             });
           }
 
+          // Keep-alive mechanism
           const keepAliveInterval = setInterval(() => {
             try {
               controller.enqueue(': keep-alive\n\n');
             } catch (e) {
               console.error(`[${new Date().toISOString()}] Footprint SSE: Error enqueueing keep-alive:`, e);
             }
-          }, 20000);
+          }, 20000); // Send a keep-alive comment every 20 seconds
 
+          // Clean up when client disconnects
           request.signal.addEventListener('abort', () => {
             removeFootprintListener(listener);
             clearInterval(keepAliveInterval);
@@ -119,7 +128,7 @@ export async function GET(request: Request) {
             controller.error(error instanceof Error ? error : new Error(String(error)));
           } catch (e) { /* ignore if controller already errored/closed */ }
           try {
-            controller.close(); 
+            controller.close(); // Ensure controller is closed on error
           } catch (e) { /* ignore if already closed */ }
         }
       },
@@ -143,10 +152,11 @@ export async function GET(request: Request) {
   }
 }
 
+// POST handler remains unchanged
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { action, symbols } = body; 
+        const { action, symbols } = body; // 'symbols' might be undefined for 'stop'
 
         if (action === 'start') {
             if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
@@ -166,3 +176,4 @@ export async function POST(request: Request) {
         return NextResponse.json({ message: "Error processing request.", error: errorMessage }, { status: 500 });
     }
 }
+

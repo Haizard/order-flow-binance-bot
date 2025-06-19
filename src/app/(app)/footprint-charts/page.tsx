@@ -6,13 +6,15 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2, PlayCircle, StopCircle, BarChartHorizontalBig } from 'lucide-react';
+import { Label } from "@/components/ui/label";
+import { Loader2, PlayCircle, StopCircle, BarChartHorizontalBig, ListFilter } from 'lucide-react';
 import type { FootprintBar, PriceLevelData } from '@/types/footprint';
 import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; // Default symbols
 import { useToast } from "@/hooks/use-toast";
 import GraphicalFootprintBar from '@/components/footprint/GraphicalFootprintBar'; 
 
 const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute, matches server-side
+const DEFAULT_BARS_TO_DISPLAY = 10;
 
 export default function FootprintChartsPage() {
   const [symbolsInput, setSymbolsInput] = useState(MONITORED_MARKET_SYMBOLS.slice(0,3).join(','));
@@ -21,13 +23,23 @@ export default function FootprintChartsPage() {
   const [currentPartialBars, setCurrentPartialBars] = useState<Record<string, Partial<FootprintBar>>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [numBarsToDisplay, setNumBarsToDisplay] = useState<number>(DEFAULT_BARS_TO_DISPLAY);
   const eventSourceRef = useRef<EventSource | null>(null);
   const { toast } = useToast();
+
+  const handleNumBarsChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseInt(event.target.value, 10);
+    if (!isNaN(value) && value > 0 && value <= 50) { // Basic validation: positive and not excessively large
+      setNumBarsToDisplay(value);
+    } else if (event.target.value === "") {
+      setNumBarsToDisplay(DEFAULT_BARS_TO_DISPLAY); // Reset to default if input is cleared
+    }
+  };
 
   const connectToStream = () => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
-      eventSourceRef.current = null; // Explicitly nullify after close
+      eventSourceRef.current = null; 
     }
     if (!symbolsInput.trim()) {
         toast({
@@ -93,35 +105,48 @@ export default function FootprintChartsPage() {
 
     es.addEventListener('footprintUpdate', (event) => {
       const rawData = JSON.parse(event.data);
+      // Price levels are now sent as objects, reconstruct to Map client-side
       const reconstructedPriceLevels = new Map<string, PriceLevelData>(Object.entries(rawData.priceLevels || {}));
       
       const barData: FootprintBar = {
         ...rawData,
-        timestamp: Number(rawData.timestamp),
+        timestamp: Number(rawData.timestamp), // Ensure timestamp is a number
         priceLevels: reconstructedPriceLevels,
       };
 
       setFootprintBars(prev => {
         const existingBars = prev[barData.symbol] || [];
+        // Add new bar, filter out any existing bar with the same timestamp (e.g., from initial load vs. live update)
         const updatedBars = [
             ...existingBars.filter(b => b.timestamp !== barData.timestamp),
             barData
-        ].sort((a,b) => b.timestamp - a.timestamp).slice(0, 10);
+        ].sort((a,b) => b.timestamp - a.timestamp) // Sort descending by timestamp (newest first)
+         .slice(0, numBarsToDisplay); // Apply the dynamic limit
         return { ...prev, [barData.symbol]: updatedBars };
       });
-      setCurrentPartialBars(prev => ({...prev, [barData.symbol]: { symbol: barData.symbol, timestamp: Number(barData.timestamp) + AGGREGATION_INTERVAL_MS, priceLevels: new Map()}}));
+      // Initialize the next partial bar with an empty priceLevels map
+      setCurrentPartialBars(prev => ({
+        ...prev, 
+        [barData.symbol]: { 
+          symbol: barData.symbol, 
+          timestamp: Number(barData.timestamp) + AGGREGATION_INTERVAL_MS, // Timestamp for the *next* bar
+          priceLevels: new Map<string, PriceLevelData>() // Initialize as empty map
+        }
+      }));
     });
 
     es.addEventListener('footprintUpdatePartial', (event) => {
         const rawPartialData = JSON.parse(event.data);
         const partialBarDataWithMap: Partial<FootprintBar> = { 
             ...rawPartialData,
-            timestamp: Number(rawPartialData.timestamp)
+            timestamp: Number(rawPartialData.timestamp) // Ensure timestamp is a number
         };
 
-        if (rawPartialData.priceLevels) {
+        // Reconstruct priceLevels to a Map if it's an object
+        if (rawPartialData.priceLevels && typeof rawPartialData.priceLevels === 'object' && !(rawPartialData.priceLevels instanceof Map)) {
             partialBarDataWithMap.priceLevels = new Map<string, PriceLevelData>(Object.entries(rawPartialData.priceLevels));
         }
+
 
         if(partialBarDataWithMap.symbol) {
             setCurrentPartialBars(prev => {
@@ -131,12 +156,14 @@ export default function FootprintChartsPage() {
                   ...partialBarDataWithMap 
                 };
                 
-                if (rawPartialData.priceLevels && existingSymbolPartial.priceLevels instanceof Map) {
-                    const newLevels = partialBarDataWithMap.priceLevels as Map<string, PriceLevelData>;
-                    mergedPartial.priceLevels = new Map([...existingSymbolPartial.priceLevels, ...newLevels]);
-                } else if (rawPartialData.priceLevels) { 
+                // Ensure priceLevels merging handles maps correctly
+                if (partialBarDataWithMap.priceLevels instanceof Map && existingSymbolPartial.priceLevels instanceof Map) {
+                    mergedPartial.priceLevels = new Map([...existingSymbolPartial.priceLevels, ...partialBarDataWithMap.priceLevels]);
+                } else if (partialBarDataWithMap.priceLevels instanceof Map) {
                     mergedPartial.priceLevels = partialBarDataWithMap.priceLevels;
                 }
+                // If existing is a map and new one is not (e.g., initial empty object), it's fine, existing map is kept unless new one has content
+                
                 return {...prev, [partialBarDataWithMap.symbol!]: mergedPartial };
             });
         }
@@ -170,26 +197,41 @@ export default function FootprintChartsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <h1 className="text-3xl font-bold tracking-tight font-headline">Real-Time Footprint Data</h1>
-        <div className="flex gap-2 items-center w-full sm:w-auto">
-          <Input
-            type="text"
-            placeholder="e.g., BTCUSDT,ETHUSDT"
-            value={symbolsInput}
-            onChange={(e) => setSymbolsInput(e.target.value)}
-            className="sm:min-w-[250px]"
-            disabled={isConnected || isLoading}
-          />
-          {!isConnected && !isLoading && (
-            <Button onClick={connectToStream} disabled={!symbolsInput.trim()}>
-              <PlayCircle className="mr-2 h-5 w-5" /> Connect
-            </Button>
-          )}
-          {(isConnected || isLoading) && (
-            <Button onClick={disconnectStream} variant="outline" disabled={isLoading && !isConnected}>
-              {isLoading && !isConnected ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <StopCircle className="mr-2 h-5 w-5" />}
-              {isLoading && !isConnected ? 'Connecting...' : 'Disconnect'}
-            </Button>
-          )}
+        <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center w-full sm:w-auto">
+          <div className="flex gap-2 items-center w-full sm:w-auto">
+            <Input
+              type="text"
+              placeholder="e.g., BTCUSDT,ETHUSDT"
+              value={symbolsInput}
+              onChange={(e) => setSymbolsInput(e.target.value)}
+              className="sm:min-w-[200px] md:min-w-[250px]"
+              disabled={isConnected || isLoading}
+            />
+            {!isConnected && !isLoading && (
+              <Button onClick={connectToStream} disabled={!symbolsInput.trim()}>
+                <PlayCircle className="mr-2 h-5 w-5" /> Connect
+              </Button>
+            )}
+            {(isConnected || isLoading) && (
+              <Button onClick={disconnectStream} variant="outline" disabled={isLoading && !isConnected}>
+                {isLoading && !isConnected ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <StopCircle className="mr-2 h-5 w-5" />}
+                {isLoading && !isConnected ? 'Connecting...' : 'Disconnect'}
+              </Button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Label htmlFor="numBars" className="whitespace-nowrap text-sm">Bars:</Label>
+            <Input
+              id="numBars"
+              type="number"
+              min="1"
+              max="50"
+              value={numBarsToDisplay}
+              onChange={handleNumBarsChange}
+              className="w-20 h-10"
+              disabled={isConnected || isLoading}
+            />
+          </div>
         </div>
       </div>
 
@@ -205,7 +247,7 @@ export default function FootprintChartsPage() {
        )}
 
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
         {activeSymbols.map(symbol => (
           <Card key={symbol} className="shadow-lg">
             <CardHeader>
@@ -214,7 +256,7 @@ export default function FootprintChartsPage() {
                 {symbol} - Footprint Aggregation
               </CardTitle>
               <CardDescription>
-                Latest completed 1-min aggregate. Updates in real-time. Max 10 bars shown.
+                Latest completed {numBarsToDisplay}-min aggregate. Updates in real-time. Max {numBarsToDisplay} bars shown.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -237,7 +279,7 @@ export default function FootprintChartsPage() {
                       <p className="text-xs">
                         Volume: {currentPartialBars[symbol].totalVolume?.toFixed(2) ?? 'N/A'} Delta: {currentPartialBars[symbol].delta?.toFixed(2) ?? 'N/A'}
                       </p>
-                      {(currentPartialBars[symbol].priceLevels && ((currentPartialBars[symbol].priceLevels instanceof Map && (currentPartialBars[symbol].priceLevels as Map<string, PriceLevelData>).size > 0) || (typeof currentPartialBars[symbol].priceLevels === 'object' && Object.keys(currentPartialBars[symbol].priceLevels!).length > 0)) || (currentPartialBars[symbol].totalVolume ?? 0 > 0)) ? (
+                      {(currentPartialBars[symbol]?.priceLevels && ((currentPartialBars[symbol]?.priceLevels instanceof Map && (currentPartialBars[symbol].priceLevels as Map<string, PriceLevelData>).size > 0) || (typeof currentPartialBars[symbol].priceLevels === 'object' && Object.keys(currentPartialBars[symbol].priceLevels!).length > 0)) || (currentPartialBars[symbol].totalVolume ?? 0 > 0)) ? (
                         <GraphicalFootprintBar bar={currentPartialBars[symbol]} />
                       ) : (
                         <p className="text-xs text-muted-foreground mt-1 py-2 text-center">Aggregating price levels...</p>
@@ -257,7 +299,8 @@ export default function FootprintChartsPage() {
                        </div>
                      ))
                   ) : (
-                    !currentPartialBars[symbol]?.priceLevels && <p className="text-muted-foreground text-center py-4">No complete bar data received yet for {symbol}.</p>
+                    !(currentPartialBars[symbol]?.priceLevels && ((currentPartialBars[symbol]?.priceLevels instanceof Map && (currentPartialBars[symbol].priceLevels as Map<string, PriceLevelData>).size > 0) || (typeof currentPartialBars[symbol].priceLevels === 'object' && Object.keys(currentPartialBars[symbol].priceLevels!).length > 0))) &&
+                    <p className="text-muted-foreground text-center py-4">No complete bar data received yet for {symbol}.</p>
                   )}
                 </>
               )}
@@ -265,7 +308,7 @@ export default function FootprintChartsPage() {
           </Card>
         ))}
         {activeSymbols.length === 0 && !isLoading && (
-            <Card className="md:col-span-2 lg:col-span-2"> 
+            <Card className="md:col-span-1 lg:col-span-2"> {/* Adjusted span for placeholder */}
                 <CardContent className="pt-6">
                     <p className="text-muted-foreground text-center py-10">
                         Enter symbols (e.g., BTCUSDT,ETHUSDT) and click "Connect" to start viewing footprint data.
@@ -277,3 +320,4 @@ export default function FootprintChartsPage() {
     </div>
   );
 }
+
