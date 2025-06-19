@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Loader2, PlayCircle, StopCircle, BarChartHorizontalBig, ListFilter, Info } from 'lucide-react';
+import { Loader2, PlayCircle, StopCircle, BarChartHorizontalBig, Info } from 'lucide-react';
 import type { FootprintBar, PriceLevelData } from '@/types/footprint';
 import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; // Default symbols
 import { useToast } from "@/hooks/use-toast";
@@ -17,6 +17,35 @@ import { cn } from '@/lib/utils';
 
 const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute, matches server-side
 const DEFAULT_BARS_TO_DISPLAY = 10;
+
+// Helper to calculate POC for the summary table
+function getBarPocInfo(bar: Partial<FootprintBar>): { pocPrice: string | null; pocVolume: number | null } {
+  if (!bar.priceLevels) return { pocPrice: null, pocVolume: null };
+
+  const levels = bar.priceLevels instanceof Map ? bar.priceLevels : new Map(Object.entries(bar.priceLevels));
+  if (levels.size === 0) return { pocPrice: null, pocVolume: null };
+
+  let maxVolume = -1;
+  let pocPriceStr: string | null = null;
+
+  levels.forEach((levelData, priceStr) => {
+    const totalVolumeAtLevel = (levelData.buyVolume || 0) + (levelData.sellVolume || 0);
+    if (totalVolumeAtLevel > maxVolume) {
+      maxVolume = totalVolumeAtLevel;
+      pocPriceStr = priceStr;
+    }
+  });
+
+  if (pocPriceStr) {
+    const priceNum = parseFloat(pocPriceStr);
+    return { 
+      pocPrice: priceNum.toFixed(Math.max(2, priceNum < 1 && priceNum !== 0 ? 5 : 2)), 
+      pocVolume: parseFloat(maxVolume.toFixed(2)) // Ensure POC volume is also formatted
+    };
+  }
+  return { pocPrice: null, pocVolume: null };
+}
+
 
 export default function FootprintChartsPage() {
   const [symbolsInput, setSymbolsInput] = useState(MONITORED_MARKET_SYMBOLS.slice(0,3).join(','));
@@ -87,7 +116,7 @@ export default function FootprintChartsPage() {
       if (event.target && event.target instanceof EventSource) {
         errorDetails += `, ReadyState: ${event.target.readyState} (0=CONNECTING, 1=OPEN, 2=CLOSED)`;
       }
-      console.error(`Client-side EventSource connection error. ${errorDetails}. The server likely failed to establish the stream.`);
+      console.error(`Client-side EventSource connection error. ${errorDetails}. The server likely failed to establish the stream or the connection was interrupted.`);
       console.debug("Full EventSource error event object for debugging:", event);
 
       toast({
@@ -203,9 +232,11 @@ export default function FootprintChartsPage() {
     return volume.toFixed(2);
   };
   
-  const formatTimeFromTimestamp = (timestamp: number | undefined) => {
+  const formatTimeFromTimestamp = (timestamp: number | undefined, includeSeconds = true) => {
     if (timestamp === undefined || timestamp === null) return 'N/A';
-    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const options: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit' };
+    if (includeSeconds) options.second = '2-digit';
+    return new Date(timestamp).toLocaleTimeString([], options);
   };
 
 
@@ -266,10 +297,38 @@ export default function FootprintChartsPage() {
         {activeSymbols.map(symbol => {
           const currentSymbolPartialBar = currentPartialBars[symbol];
           const currentSymbolFootprintBars = footprintBars[symbol] || [];
-          const summaryBarsData = [
+          
+          const summaryBarsData: Partial<FootprintBar>[] = [
             ...(currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) ? [currentSymbolPartialBar] : []),
             ...currentSymbolFootprintBars
+          ].slice(0, numBarsToDisplay + 1); // Ensure we consider the partial bar for the total count
+
+          const metrics = [
+            { label: "Bar End Time", getValue: (bar: Partial<FootprintBar>) => bar.timestamp ? formatTimeFromTimestamp(Number(bar.timestamp) + AGGREGATION_INTERVAL_MS -1) : 'N/A' },
+            { label: "Open", getValue: (bar: Partial<FootprintBar>) => formatPrice(bar.open) },
+            { label: "High", getValue: (bar: Partial<FootprintBar>) => formatPrice(bar.high) },
+            { label: "Low", getValue: (bar: Partial<FootprintBar>) => formatPrice(bar.low) },
+            { label: "Close", getValue: (bar: Partial<FootprintBar>) => formatPrice(bar.close) },
+            { label: "Volume", getValue: (bar: Partial<FootprintBar>) => formatVolume(bar.totalVolume) },
+            { 
+              label: "Delta", 
+              getValue: (bar: Partial<FootprintBar>) => formatVolume(bar.delta),
+              getCellClass: (bar: Partial<FootprintBar>) => (bar.delta ?? 0) >= 0 ? 'text-accent' : 'text-destructive'
+            },
+            { 
+              label: "Delta %", 
+              getValue: (bar: Partial<FootprintBar>) => {
+                if (bar.totalVolume && bar.totalVolume > 0 && bar.delta !== undefined) {
+                  return `${((bar.delta / bar.totalVolume) * 100).toFixed(2)}%`;
+                }
+                return 'N/A';
+              },
+              getCellClass: (bar: Partial<FootprintBar>) => (bar.delta ?? 0) >= 0 ? 'text-accent' : 'text-destructive'
+            },
+            { label: "POC Price", getValue: (bar: Partial<FootprintBar>) => getBarPocInfo(bar).pocPrice || 'N/A' },
+            { label: "POC Volume", getValue: (bar: Partial<FootprintBar>) => formatVolume(getBarPocInfo(bar).pocVolume ?? undefined) },
           ];
+
 
           return (
           <Card key={symbol} className="shadow-lg">
@@ -279,7 +338,7 @@ export default function FootprintChartsPage() {
                 {symbol} - Footprint Aggregation
               </CardTitle>
               <CardDescription>
-                Latest completed {numBarsToDisplay}-min aggregate. Updates in real-time. Max {numBarsToDisplay} bars shown.
+                Latest completed aggregate. Max {numBarsToDisplay} bars shown (+ current). Updates in real-time.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -290,74 +349,67 @@ export default function FootprintChartsPage() {
                 </div>
               ) : (
                 <>
-                  {currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) && (
-                    <div className="mb-4 p-3 border border-dashed rounded-md bg-primary/5">
-                      <p className="text-sm font-semibold text-primary mb-1">Current Aggregating Bar (Partial):</p>
-                      <p className="text-xs">
-                        Timestamp: {currentSymbolPartialBar.timestamp ? new Date(currentSymbolPartialBar.timestamp).toLocaleString() : 'N/A'}
-                      </p>
-                      <p className="text-xs">
-                        O: {formatPrice(currentSymbolPartialBar.open)} H: {formatPrice(currentSymbolPartialBar.high)} L: {formatPrice(currentSymbolPartialBar.low)} C: {formatPrice(currentSymbolPartialBar.close)}
-                      </p>
-                      <p className="text-xs">
-                        Volume: {formatVolume(currentSymbolPartialBar.totalVolume)} Delta: {formatVolume(currentSymbolPartialBar.delta)}
-                      </p>
-                      {(currentSymbolPartialBar.priceLevels && (currentSymbolPartialBar.priceLevels.size > 0)) || (currentSymbolPartialBar.totalVolume ?? 0) > 0 ? (
-                        <GraphicalFootprintBar bar={currentSymbolPartialBar} />
-                      ) : (
-                        <p className="text-xs text-muted-foreground mt-1 py-2 text-center">Aggregating price levels...</p>
-                      )}
-                    </div>
-                  )}
-                  {(currentSymbolFootprintBars.length > 0) ? (
-                     currentSymbolFootprintBars.map(bar => (
-                       <div key={bar.timestamp} className="mb-6 last:mb-0"> 
-                         <h4 className="font-medium text-sm mb-1">
-                           Bar: {new Date(bar.timestamp).toLocaleTimeString()} - {new Date(Number(bar.timestamp) + AGGREGATION_INTERVAL_MS -1).toLocaleTimeString()}
+                  {/* Graphical display of bars */}
+                  <div className="flex flex-row-reverse overflow-x-auto gap-1 pb-4 items-end min-h-[300px]">
+                    {currentSymbolFootprintBars.slice(0, numBarsToDisplay).reverse().map(bar => ( // Show oldest on left
+                      <div key={bar.timestamp} className="min-w-[150px] flex-shrink-0 border p-2 rounded-md bg-card flex flex-col">
+                        <h4 className="font-medium text-xs mb-1 text-center">
+                          {formatTimeFromTimestamp(bar.timestamp, false)}
+                        </h4>
+                        <GraphicalFootprintBar bar={bar} />
+                      </div>
+                    ))}
+                    {currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) && (
+                       <div className="min-w-[150px] flex-shrink-0 border border-dashed p-2 rounded-md bg-primary/5 flex flex-col">
+                         <h4 className="font-medium text-xs mb-1 text-center text-primary">
+                           {currentSymbolPartialBar.timestamp ? formatTimeFromTimestamp(currentSymbolPartialBar.timestamp, false) : 'N/A'} (Agg.)
                          </h4>
-                         <p className="text-xs text-muted-foreground">
-                            O:{formatPrice(bar.open)} H:{formatPrice(bar.high)} L:{formatPrice(bar.low)} C:{formatPrice(bar.close)} Vol:{formatVolume(bar.totalVolume)} Delta:{formatVolume(bar.delta)}
-                         </p>
-                         <GraphicalFootprintBar bar={bar} />
+                         <GraphicalFootprintBar bar={currentSymbolPartialBar} />
                        </div>
-                     ))
-                  ) : (
-                    !(currentSymbolPartialBar?.priceLevels && currentSymbolPartialBar.priceLevels.size > 0) &&
+                     )}
+                  </div>
+                  {currentSymbolFootprintBars.length === 0 && !(currentSymbolPartialBar?.priceLevels && currentSymbolPartialBar.priceLevels.size > 0) &&
                     <p className="text-muted-foreground text-center py-4">No complete bar data received yet for {symbol}.</p>
-                  )}
+                  }
 
+                  {/* Transposed Summary Table */}
                   {summaryBarsData.length > 0 && (
-                    <div className="mt-8">
+                    <div className="mt-6">
                       <h3 className="text-lg font-semibold mb-3 flex items-center">
                         <Info className="h-5 w-5 mr-2 text-primary/80" />
-                        Bar Summary
+                        Bar Summary Statistics
                       </h3>
                       <div className="overflow-x-auto rounded-md border">
-                        <Table className="min-w-full">
+                        <Table className="min-w-full text-xs">
                           <TableHeader className="bg-muted/50">
                             <TableRow>
-                              <TableHead className="px-3 py-2 text-xs font-medium text-muted-foreground">Time</TableHead>
-                              <TableHead className="px-3 py-2 text-xs font-medium text-muted-foreground text-right">Open</TableHead>
-                              <TableHead className="px-3 py-2 text-xs font-medium text-muted-foreground text-right">High</TableHead>
-                              <TableHead className="px-3 py-2 text-xs font-medium text-muted-foreground text-right">Low</TableHead>
-                              <TableHead className="px-3 py-2 text-xs font-medium text-muted-foreground text-right">Close</TableHead>
-                              <TableHead className="px-3 py-2 text-xs font-medium text-muted-foreground text-right">Volume</TableHead>
-                              <TableHead className="px-3 py-2 text-xs font-medium text-muted-foreground text-right">Delta</TableHead>
+                              <TableHead className="px-2 py-2 font-medium text-muted-foreground sticky left-0 bg-muted/50 z-10">Metric</TableHead>
+                              {summaryBarsData.map((sBar, index) => (
+                                <TableHead key={sBar.timestamp || `partial-col-${index}`} className="px-2 py-2 font-medium text-muted-foreground text-center whitespace-nowrap">
+                                  {formatTimeFromTimestamp(sBar.timestamp, false)}
+                                  {index === 0 && currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) ? <span className="text-primary/80 ml-1">(Agg.)</span> : ""}
+                                </TableHead>
+                              ))}
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {summaryBarsData.map((sBar, index) => (
-                              <TableRow key={sBar.timestamp || `partial-${index}`} className={index === 0 && currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) ? "bg-primary/5 hover:bg-primary/10" : "hover:bg-muted/20"}>
-                                <TableCell className="px-3 py-2 text-xs whitespace-nowrap">
-                                  {formatTimeFromTimestamp(sBar.timestamp)}
-                                  {index === 0 && currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) ? <span className="text-primary/80 ml-1">(Aggregating)</span> : ""}
+                            {metrics.map(metric => (
+                              <TableRow key={metric.label} className="hover:bg-muted/20">
+                                <TableCell className="px-2 py-1.5 font-medium sticky left-0 bg-background border-r">
+                                  {metric.label}
                                 </TableCell>
-                                <TableCell className="px-3 py-2 text-xs text-right tabular-nums">{formatPrice(sBar.open)}</TableCell>
-                                <TableCell className="px-3 py-2 text-xs text-right tabular-nums">{formatPrice(sBar.high)}</TableCell>
-                                <TableCell className="px-3 py-2 text-xs text-right tabular-nums">{formatPrice(sBar.low)}</TableCell>
-                                <TableCell className="px-3 py-2 text-xs text-right tabular-nums">{formatPrice(sBar.close)}</TableCell>
-                                <TableCell className="px-3 py-2 text-xs text-right tabular-nums">{formatVolume(sBar.totalVolume)}</TableCell>
-                                <TableCell className={cn("px-3 py-2 text-xs text-right tabular-nums", (sBar.delta ?? 0) >= 0 ? 'text-accent' : 'text-destructive')}>{formatVolume(sBar.delta)}</TableCell>
+                                {summaryBarsData.map((sBar, index) => (
+                                  <TableCell 
+                                    key={`${metric.label}-${sBar.timestamp || `partial-cell-${index}`}`} 
+                                    className={cn(
+                                      "px-2 py-1.5 text-center tabular-nums whitespace-nowrap",
+                                      metric.getCellClass ? metric.getCellClass(sBar) : '',
+                                      index === 0 && currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) && "bg-primary/5"
+                                    )}
+                                  >
+                                    {metric.getValue(sBar)}
+                                  </TableCell>
+                                ))}
                               </TableRow>
                             ))}
                           </TableBody>
