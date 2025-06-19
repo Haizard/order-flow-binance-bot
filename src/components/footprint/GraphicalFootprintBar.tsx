@@ -2,53 +2,28 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  Cell, // Import Cell for customizing bar colors
-} from 'recharts';
 import type { FootprintBar, PriceLevelData } from '@/types/footprint';
+import { cn } from '@/lib/utils';
 
 interface GraphicalFootprintBarProps {
   bar: Partial<FootprintBar>;
 }
 
-// Custom tick component for Y-axis to highlight POC
-const CustomizedYAxisTick = (props: any) => {
-  const { x, y, payload, pocPriceDisplay } = props;
-  const isPoc = payload.value === pocPriceDisplay;
-
-  return (
-    <g transform={`translate(${x},${y})`}>
-      <text
-        x={0}
-        y={0}
-        dy={3.5} // Minor adjustment for vertical alignment
-        textAnchor="end"
-        fill={isPoc ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))"}
-        fontWeight={isPoc ? "bold" : "normal"}
-        fontSize={9}
-      >
-        {payload.value}
-      </text>
-    </g>
-  );
-};
-
+interface ProcessedPriceLevel {
+  priceDisplay: string;
+  priceValue: number;
+  buyVolume: number;
+  sellVolume: number;
+  totalVolumeAtLevel: number;
+}
 
 const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) => {
   const [pocInfo, setPocInfo] = useState<{ priceDisplay: string; totalVolume: number } | null>(null);
-  const [chartData, setChartData] = useState<any[]>([]);
+  const [processedData, setProcessedData] = useState<ProcessedPriceLevel[]>([]);
 
   useEffect(() => {
     if (!bar || !bar.priceLevels) {
-      setChartData([]);
+      setProcessedData([]);
       setPocInfo(null);
       return;
     }
@@ -58,33 +33,35 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) =>
       : new Map(Object.entries(bar.priceLevels as Record<string, PriceLevelData>));
 
     if (priceLevelsMap.size === 0) {
-      setChartData([]);
+      setProcessedData([]);
       setPocInfo(null);
       return;
     }
 
-    const processedData = Array.from(priceLevelsMap.entries())
-      .map(([priceStr, data]) => {
+    const data: ProcessedPriceLevel[] = Array.from(priceLevelsMap.entries())
+      .map(([priceStr, levelData]) => {
         const price = parseFloat(priceStr);
+        const sellVol = levelData.sellVolume || 0;
+        const buyVol = levelData.buyVolume || 0;
         return {
           priceDisplay: price.toFixed(Math.max(2, price < 1 && price !== 0 ? 5 : 2)),
           priceValue: price,
-          buyVolume: data.buyVolume || 0,
-          sellVolume: data.sellVolume || 0,
+          buyVolume: buyVol,
+          sellVolume: sellVol,
+          totalVolumeAtLevel: sellVol + buyVol,
         };
       })
-      .sort((a, b) => b.priceValue - a.priceValue); // Sort descending by priceValue
+      .sort((a, b) => b.priceValue - a.priceValue); // Sort descending by priceValue (highest price first)
     
-    setChartData(processedData);
+    setProcessedData(data);
 
     // Calculate POC
-    if (processedData.length > 0) {
+    if (data.length > 0) {
       let maxVolume = -1;
       let currentPoc: { priceDisplay: string; totalVolume: number } | null = null;
-      processedData.forEach(level => {
-        const totalVolAtLevel = (level.buyVolume || 0) + (level.sellVolume || 0);
-        if (totalVolAtLevel > maxVolume) {
-          maxVolume = totalVolAtLevel;
+      data.forEach(level => {
+        if (level.totalVolumeAtLevel > maxVolume) {
+          maxVolume = level.totalVolumeAtLevel;
           currentPoc = { priceDisplay: level.priceDisplay, totalVolume: maxVolume };
         }
       });
@@ -95,98 +72,75 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) =>
 
   }, [bar]);
 
-
-  // Initial checks for data availability
   const isMap = bar.priceLevels instanceof Map;
   const isPlainObject = typeof bar.priceLevels === 'object' && bar.priceLevels !== null && !isMap;
 
   if (!bar || !bar.priceLevels) {
-    return <p className="text-muted-foreground text-xs py-2 text-center">No price level data for graphical display.</p>;
+    return <p className="text-muted-foreground text-xs py-2 text-center">No price level data for display.</p>;
   }
   
   let isEmpty = false;
   if (isMap) {
-    if ((bar.priceLevels as Map<string, PriceLevelData>).size === 0) {
-      isEmpty = true;
-    }
+    if ((bar.priceLevels as Map<string, PriceLevelData>).size === 0) isEmpty = true;
   } else if (isPlainObject) {
-    if (Object.keys(bar.priceLevels as Record<string, PriceLevelData>).length === 0) {
-      isEmpty = true;
-    }
+    if (Object.keys(bar.priceLevels as Record<string, PriceLevelData>).length === 0) isEmpty = true;
   } else {
-    // Neither a Map nor a plain object, or null/undefined (already caught)
     return <p className="text-muted-foreground text-xs py-2 text-center">Price level data is not a valid Map or Object.</p>;
   }
 
-  if (isEmpty) {
-    return <p className="text-muted-foreground text-xs py-2 text-center">No price level data available for this bar.</p>;
+  if (isEmpty && (bar.totalVolume === 0 || bar.totalVolume === undefined)) {
+    return <p className="text-muted-foreground text-xs py-2 text-center italic">No trades or price level data for this bar.</p>;
   }
-  
-   if (chartData.length === 0) { // This check can catch cases where processing results in empty chartable data
-      return <p className="text-muted-foreground text-xs py-2 text-center">No chartable data after processing.</p>;
-  }
-  
+   if (processedData.length === 0 && (bar.totalVolume !== undefined && bar.totalVolume > 0)) {
+     return <p className="text-muted-foreground text-xs py-2 text-center italic">Aggregating volume data...</p>;
+   }
+    if (processedData.length === 0) {
+      return <p className="text-muted-foreground text-xs py-2 text-center italic">No price levels to display.</p>;
+    }
+
+
   return (
-    <div className="mt-2 h-80 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart
-          layout="vertical"
-          data={chartData}
-          margin={{
-            top: 5,
-            right: 25, 
-            left: 15, 
-            bottom: 20, 
-          }}
-          barCategoryGap="10%" 
-        >
-          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-          <XAxis 
-            type="number" 
-            domain={[0, 'auto']}
-            tickFormatter={(value) => value.toFixed(Math.max(0, (value < 1 && value !==0 ? 1:0)))} 
-            stroke="hsl(var(--muted-foreground))" 
-            fontSize={10} 
-            allowDecimals={true}
-          />
-          <YAxis
-            type="category"
-            dataKey="priceDisplay"
-            width={70} 
-            reversed 
-            tick={<CustomizedYAxisTick pocPriceDisplay={pocInfo?.priceDisplay} />}
-            axisLine={{ stroke: 'hsl(var(--border))' }}
-            tickLine={{ stroke: 'hsl(var(--border))' }}
-            interval={0} 
-          />
-          <Tooltip
-            contentStyle={{ backgroundColor: 'hsl(var(--background))', border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius)', fontSize: '11px' }}
-            labelStyle={{ color: 'hsl(var(--foreground))', fontWeight: 'bold', marginBottom: '4px' }}
-            itemStyle={{ color: 'hsl(var(--foreground))' }}
-            formatter={(value: number, name: string) => [value.toFixed(Math.max(2, (value < 1 && value !== 0 ? 5 : 2))), name === 'buyVolume' ? 'Buy Vol' : 'Sell Vol']}
-            labelFormatter={(label) => `Price: ${label}`}
-          />
-          <Legend 
-            wrapperStyle={{fontSize: "10px", paddingTop: "10px", paddingBottom: "0px", marginTop: "auto" }} 
-            verticalAlign="bottom"
-            align="center"
-            height={30}
-          />
-          <Bar dataKey="sellVolume" name="Sell Vol" stackId="a" fill="hsl(var(--destructive))" barSize={8} radius={[0, 2, 2, 0]} isAnimationActive={false}>
-            {chartData.map((entry) => (
-              <Cell key={`cell-sell-${entry.priceDisplay}`} fill={entry.priceDisplay === pocInfo?.priceDisplay ? "hsla(var(--destructive-h), var(--destructive-s), calc(var(--destructive-l) + 10%), 0.9)" : "hsl(var(--destructive))"} />
-            ))}
-          </Bar>
-          <Bar dataKey="buyVolume" name="Buy Vol" stackId="a" fill="hsl(var(--accent))" barSize={8} radius={[0, 2, 2, 0]} isAnimationActive={false}>
-             {chartData.map((entry) => (
-              <Cell key={`cell-buy-${entry.priceDisplay}`} fill={entry.priceDisplay === pocInfo?.priceDisplay ? "hsla(var(--accent-h), var(--accent-s), calc(var(--accent-l) + 10%), 0.9)" : "hsl(var(--accent))"} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+    <div className="mt-2 w-full font-mono text-xs">
+      <div className="flex justify-between items-center px-1 py-0.5 bg-muted/50 rounded-t-md border-b border-border">
+        <span className="w-1/3 text-center font-semibold">Sell Vol</span>
+        <span className="w-1/3 text-center font-semibold">Price</span>
+        <span className="w-1/3 text-center font-semibold">Buy Vol</span>
+      </div>
+      <div className="max-h-80 overflow-y-auto pr-1"> {/* Added pr-1 for scrollbar spacing */}
+        {processedData.map((level) => (
+          <div
+            key={level.priceDisplay}
+            className={cn(
+              "flex justify-between items-center border-b border-dotted border-border/30 py-0.5",
+              level.priceDisplay === pocInfo?.priceDisplay ? 'bg-primary/20 font-bold text-primary-foreground' : ''
+            )}
+          >
+            <span className={cn(
+              "w-1/3 text-center px-1",
+              level.sellVolume === 0 ? 'text-muted-foreground/70' : 'text-destructive-foreground',
+              level.priceDisplay === pocInfo?.priceDisplay ? 'text-primary-foreground' : (level.sellVolume > 0 ? 'text-destructive' : '')
+            )}>
+              {level.sellVolume > 0 ? `x${level.sellVolume.toFixed(2)}` : '-'}
+            </span>
+            <span className={cn(
+              "w-1/3 text-center font-medium",
+              level.priceDisplay === pocInfo?.priceDisplay ? 'text-primary-foreground' : 'text-foreground'
+            )}>
+              {level.priceDisplay}
+            </span>
+            <span className={cn(
+              "w-1/3 text-center px-1",
+              level.buyVolume === 0 ? 'text-muted-foreground/70' : 'text-accent-foreground',
+              level.priceDisplay === pocInfo?.priceDisplay ? 'text-primary-foreground' : (level.buyVolume > 0 ?'text-accent' : '')
+            )}>
+              {level.buyVolume > 0 ? `x${level.buyVolume.toFixed(2)}` : '-'}
+            </span>
+          </div>
+        ))}
+      </div>
       {pocInfo && (
-        <div className="text-center text-xs text-muted-foreground mt-1.5">
-          POC: <span className="font-semibold text-primary">{pocInfo.priceDisplay}</span> (Vol: {pocInfo.totalVolume.toFixed(2)})
+        <div className="text-center text-xs text-muted-foreground mt-1.5 pt-1 border-t border-border">
+          POC: <span className="font-semibold text-primary">{pocInfo.priceDisplay}</span> (Total Vol: {pocInfo.totalVolume.toFixed(2)})
         </div>
       )}
     </div>
