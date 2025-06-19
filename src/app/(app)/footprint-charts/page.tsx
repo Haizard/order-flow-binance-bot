@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Loader2, PlayCircle, StopCircle, BarChartHorizontalBig, Info, TrendingUp, TrendingDown, Maximize, Minimize, Activity, Target, ArrowUpCircle, ArrowDownCircle } from 'lucide-react';
+import { Loader2, PlayCircle, StopCircle, BarChartHorizontalBig, Info, TrendingUp, TrendingDown, Maximize, Minimize, Activity, Target, ArrowUpCircle, ArrowDownCircle, GitCompareArrows } from 'lucide-react';
 import type { FootprintBar, PriceLevelData } from '@/types/footprint';
 import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; // Default symbols
 import { useToast } from "@/hooks/use-toast";
@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute, matches server-side
 const DEFAULT_BARS_TO_DISPLAY = 10;
 const VALUE_AREA_PERCENTAGE = 0.7; // 70% for VAH/VAL calculation
+const MIN_BARS_FOR_DIVERGENCE = 5; // Minimum bars to attempt divergence calculation
 
 // Helper to format price consistently
 const formatPrice = (price: number | undefined | null, defaultPrecision = 2): string => {
@@ -119,7 +120,6 @@ function calculateSessionVolumeProfileAndVA(bars: FootprintBar[]): SessionProfil
   let currentVah = sessionPocPrice;
   let currentVal = sessionPocPrice;
 
-  // Find POC index in sortedProfile
   const pocIndex = sortedProfile.findIndex(p => p.price === sessionPocPrice);
   if (pocIndex === -1) return { sessionPocPriceStr: formatPrice(sessionPocPrice), sessionPocVolumeStr: formatVolume(sessionPocVolume), vahStr: null, valStr: null };
 
@@ -132,13 +132,13 @@ function calculateSessionVolumeProfileAndVA(bars: FootprintBar[]): SessionProfil
     const volAbove = topPointer >= 0 ? sortedProfile[topPointer].volume : -1;
     const volBelow = bottomPointer < sortedProfile.length ? sortedProfile[bottomPointer].volume : -1;
 
-    if (volAbove === -1 && volBelow === -1) break; // No more levels to add
+    if (volAbove === -1 && volBelow === -1) break;
 
     if (volAbove > volBelow) {
       volumeInVA += volAbove;
       currentVah = sortedProfile[topPointer].price;
       topPointer--;
-    } else if (volBelow >= volAbove) { // Includes case where volAbove is -1
+    } else if (volBelow >= volAbove) {
       volumeInVA += volBelow;
       currentVal = sortedProfile[bottomPointer].price;
       bottomPointer++;
@@ -151,6 +151,67 @@ function calculateSessionVolumeProfileAndVA(bars: FootprintBar[]): SessionProfil
     vahStr: formatPrice(currentVah),
     valStr: formatPrice(currentVal),
   };
+}
+
+
+interface SwingPoint {
+  price: number;
+  cd: number;
+  index: number; // Index in the chronological bar array
+}
+
+function calculateDivergences(completedBars: FootprintBar[]): string[] {
+  if (completedBars.length < MIN_BARS_FOR_DIVERGENCE) {
+    return [];
+  }
+
+  // 1. Reverse to chronological order and calculate Cumulative Delta (CD)
+  const chronologicalBars = [...completedBars].reverse();
+  let currentCD = 0;
+  const barsWithCD = chronologicalBars.map(bar => {
+    currentCD += bar.delta || 0;
+    return { ...bar, cumulativeDelta: currentCD };
+  });
+
+  const divergenceSignals: string[] = [];
+
+  // 2. Identify swing highs and lows (simple 3-bar pattern)
+  const swingHighs: SwingPoint[] = [];
+  const swingLows: SwingPoint[] = [];
+
+  for (let i = 1; i < barsWithCD.length - 1; i++) {
+    const prevBar = barsWithCD[i-1];
+    const currBar = barsWithCD[i];
+    const nextBar = barsWithCD[i+1];
+
+    // Swing High: Current bar's high is higher than its neighbors
+    if (currBar.high > prevBar.high && currBar.high > nextBar.high) {
+      swingHighs.push({ price: currBar.high, cd: currBar.cumulativeDelta, index: i });
+    }
+    // Swing Low: Current bar's low is lower than its neighbors
+    if (currBar.low < prevBar.low && currBar.low < nextBar.low) {
+      swingLows.push({ price: currBar.low, cd: currBar.cumulativeDelta, index: i });
+    }
+  }
+
+  // 3. Check for Bearish Divergence (Higher price highs, Lower CD highs)
+  if (swingHighs.length >= 2) {
+    const lastSwingHigh = swingHighs[swingHighs.length - 1];
+    const prevSwingHigh = swingHighs[swingHighs.length - 2];
+    if (lastSwingHigh.price > prevSwingHigh.price && lastSwingHigh.cd < prevSwingHigh.cd) {
+      divergenceSignals.push("Bearish Delta Divergence");
+    }
+  }
+
+  // 4. Check for Bullish Divergence (Lower price lows, Higher CD lows)
+  if (swingLows.length >= 2) {
+    const lastSwingLow = swingLows[swingLows.length - 1];
+    const prevSwingLow = swingLows[swingLows.length - 2];
+    if (lastSwingLow.price < prevSwingLow.price && lastSwingLow.cd > prevSwingLow.cd) {
+      divergenceSignals.push("Bullish Delta Divergence");
+    }
+  }
+  return divergenceSignals;
 }
 
 
@@ -170,7 +231,7 @@ export default function FootprintChartsPage() {
     if (!isNaN(value) && value > 0 && value <= 50) {
       setNumBarsToDisplay(value);
     } else if (event.target.value === "") {
-      setNumBarsToDisplay(DEFAULT_BARS_TO_DISPLAY); // Reset to default if empty
+      setNumBarsToDisplay(DEFAULT_BARS_TO_DISPLAY);
     }
   };
 
@@ -223,7 +284,7 @@ export default function FootprintChartsPage() {
       if (event.target && event.target instanceof EventSource) {
         errorDetails += `, ReadyState: ${event.target.readyState} (0=CONNECTING, 1=OPEN, 2=CLOSED)`;
       }
-      console.error(`Client-side EventSource connection error. ${errorDetails}. This often indicates the server at /api/footprint-stream failed to establish the stream or the connection was interrupted. Check server logs for /api/footprint-stream errors.`);
+      console.error(`Client-side EventSource connection error. ${errorDetails}. This likely indicates the server at /api/footprint-stream failed to establish or maintain the stream. Check server logs for errors from that endpoint.`);
       console.debug("Full EventSource error event object for debugging:", event);
 
       toast({
@@ -249,7 +310,7 @@ export default function FootprintChartsPage() {
 
       const barData: FootprintBar = {
         ...rawData,
-        timestamp: Number(rawData.timestamp), // Ensure timestamp is a number
+        timestamp: Number(rawData.timestamp),
         priceLevels: reconstructedPriceLevels,
       };
 
@@ -258,17 +319,16 @@ export default function FootprintChartsPage() {
         const updatedBars = [
             ...existingBars.filter(b => b.timestamp !== barData.timestamp),
             barData
-        ].sort((a,b) => b.timestamp - a.timestamp) // Ensure latest first
-         .slice(0, numBarsToDisplay); // Limit to numBarsToDisplay
+        ].sort((a,b) => b.timestamp - a.timestamp)
+         .slice(0, numBarsToDisplay);
         return { ...prev, [barData.symbol]: updatedBars };
       });
-      // Initialize the next partial bar for this symbol
       setCurrentPartialBars(prev => ({
         ...prev,
         [barData.symbol]: {
           symbol: barData.symbol,
-          timestamp: Number(barData.timestamp) + AGGREGATION_INTERVAL_MS, // Timestamp for the NEXT bar
-          priceLevels: new Map<string, PriceLevelData>() // Start with an empty map
+          timestamp: Number(barData.timestamp) + AGGREGATION_INTERVAL_MS,
+          priceLevels: new Map<string, PriceLevelData>()
         }
       }));
     });
@@ -277,10 +337,9 @@ export default function FootprintChartsPage() {
         const rawPartialData = JSON.parse(event.data);
         const partialBarDataWithMap: Partial<FootprintBar> = {
             ...rawPartialData,
-            timestamp: Number(rawPartialData.timestamp) // Ensure timestamp is a number
+            timestamp: Number(rawPartialData.timestamp)
         };
 
-        // Ensure priceLevels is a Map
         if (rawPartialData.priceLevels && typeof rawPartialData.priceLevels === 'object' && !(rawPartialData.priceLevels instanceof Map)) {
             partialBarDataWithMap.priceLevels = new Map<string, PriceLevelData>(Object.entries(rawPartialData.priceLevels));
         }
@@ -289,22 +348,16 @@ export default function FootprintChartsPage() {
             setCurrentPartialBars(prev => {
                 const existingSymbolPartial = prev[partialBarDataWithMap.symbol!] || {};
                 const mergedPartial: Partial<FootprintBar> = {
-                  ...existingSymbolPartial, // Ensures we keep older fields if new data only has some
-                  ...partialBarDataWithMap // Overwrite with new fields
+                  ...existingSymbolPartial,
+                  ...partialBarDataWithMap
                 };
-
-                // Merge priceLevels if both are maps
                 if (partialBarDataWithMap.priceLevels instanceof Map && existingSymbolPartial.priceLevels instanceof Map) {
-                    // Create a new map by merging existing and new entries
                     mergedPartial.priceLevels = new Map([...existingSymbolPartial.priceLevels, ...partialBarDataWithMap.priceLevels]);
                 } else if (partialBarDataWithMap.priceLevels instanceof Map) {
-                    // If only new data has priceLevels, use it
                     mergedPartial.priceLevels = partialBarDataWithMap.priceLevels;
                 } else if (!mergedPartial.priceLevels) {
-                    // If no priceLevels exist yet, initialize an empty map
                     mergedPartial.priceLevels = new Map<string, PriceLevelData>();
                 }
-
                 return {...prev, [partialBarDataWithMap.symbol!]: mergedPartial };
             });
         }
@@ -317,7 +370,7 @@ export default function FootprintChartsPage() {
       eventSourceRef.current = null;
     }
     setIsConnected(false);
-    setActiveSymbols([]); // Clear active symbols as we are disconnected
+    setActiveSymbols([]);
     toast({
         title: "Stream Disconnected",
         description: "You have manually disconnected from the footprint data stream.",
@@ -326,7 +379,6 @@ export default function FootprintChartsPage() {
   };
 
   useEffect(() => {
-    // Cleanup on component unmount
     return () => {
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
@@ -371,7 +423,7 @@ export default function FootprintChartsPage() {
               max="50"
               value={numBarsToDisplay}
               onChange={handleNumBarsChange}
-              className="w-20 h-10" // Standard ShadCN input height
+              className="w-20 h-10"
               disabled={isConnected || isLoading}
             />
           </div>
@@ -394,11 +446,10 @@ export default function FootprintChartsPage() {
           const currentSymbolPartialBar = currentPartialBars[symbol];
           const currentSymbolFootprintBars = footprintBars[symbol] || [];
 
-          // Prepare data for the summary table (partial bar first, then completed bars)
           const summaryBarsData: Partial<FootprintBar>[] = [
             ...(currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) ? [currentSymbolPartialBar] : []),
             ...currentSymbolFootprintBars
-          ].slice(0, numBarsToDisplay + 1); // +1 for the potential partial bar
+          ].slice(0, numBarsToDisplay + 1);
 
           const metrics = [
             { label: "Bar End Time", getValue: (bar: Partial<FootprintBar>) => bar.timestamp ? formatTimeFromTimestamp(Number(bar.timestamp) + AGGREGATION_INTERVAL_MS -1) : 'N/A' },
@@ -426,7 +477,6 @@ export default function FootprintChartsPage() {
             { label: "POC Volume", getValue: (bar: Partial<FootprintBar>) => formatVolume(getBarPocInfo(bar).pocVolume) },
           ];
 
-          // Calculate Session Statistics
           let sessionHigh: number | undefined = undefined;
           let sessionLow: number | undefined = undefined;
           let maxDeltaInSession: number | undefined = undefined;
@@ -443,6 +493,7 @@ export default function FootprintChartsPage() {
           }
           
           const { sessionPocPriceStr, sessionPocVolumeStr, vahStr, valStr } = calculateSessionVolumeProfileAndVA(currentSymbolFootprintBars);
+          const divergenceSignals = calculateDivergences(currentSymbolFootprintBars);
 
 
           return (
@@ -464,9 +515,7 @@ export default function FootprintChartsPage() {
                 </div>
               ) : (
                 <>
-                  {/* Horizontal display of graphical bars */}
                   <div className="flex flex-row-reverse overflow-x-auto gap-1 pb-4 items-end min-h-[300px]">
-                    {/* Current Aggregating Bar */}
                     {currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) && (
                        <div className="min-w-[150px] flex-shrink-0 border border-dashed p-2 rounded-md bg-primary/5 flex flex-col">
                          <h4 className="font-medium text-xs mb-1 text-center text-primary">
@@ -475,8 +524,7 @@ export default function FootprintChartsPage() {
                          <GraphicalFootprintBar bar={currentSymbolPartialBar} />
                        </div>
                      )}
-                    {/* Completed Bars */}
-                    {currentSymbolFootprintBars.slice(0, numBarsToDisplay).reverse().map(bar => ( // reverse to show oldest on left
+                    {currentSymbolFootprintBars.slice(0, numBarsToDisplay).reverse().map(bar => (
                       <div key={bar.timestamp} className="min-w-[150px] flex-shrink-0 border p-2 rounded-md bg-card flex flex-col">
                         <h4 className="font-medium text-xs mb-1 text-center">
                           {formatTimeFromTimestamp(bar.timestamp, false)}
@@ -518,7 +566,7 @@ export default function FootprintChartsPage() {
                             <span className="text-muted-foreground flex items-center"><Target className="h-3.5 w-3.5 mr-1.5 text-primary/70"/>Session POC:</span>
                             <span className="font-semibold">{sessionPocPriceStr || 'N/A'}</span>
                         </div>
-                        <div className="flex justify-between items-center col-span-1 sm:col-span-2"> {/* POC Volume can span */}
+                        <div className="flex justify-between items-center"> {/* POC Volume can span if needed */}
                             <span className="text-muted-foreground flex items-center"><Info className="h-3.5 w-3.5 mr-1.5 text-primary/70"/>Session POC Vol:</span>
                             <span className="font-semibold">{sessionPocVolumeStr || 'N/A'}</span>
                         </div>
@@ -530,6 +578,16 @@ export default function FootprintChartsPage() {
                             <span className="text-muted-foreground flex items-center"><ArrowDownCircle className="h-3.5 w-3.5 mr-1.5 text-blue-500"/>Value Area Low:</span>
                             <span className="font-semibold">{valStr || 'N/A'}</span>
                         </div>
+                        {divergenceSignals.length > 0 && (
+                            <div className="sm:col-span-2 mt-1 text-center">
+                                {divergenceSignals.map((signal, idx) => (
+                                <span key={idx} className="inline-flex items-center text-xs font-semibold px-2 py-1 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 mr-1.5 mb-1">
+                                    <GitCompareArrows className="h-3.5 w-3.5 mr-1.5"/>
+                                    {signal}
+                                </span>
+                                ))}
+                            </div>
+                        )}
                       </CardContent>
                     </Card>
                   )}
