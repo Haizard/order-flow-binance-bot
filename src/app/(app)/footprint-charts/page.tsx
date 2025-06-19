@@ -153,12 +153,12 @@ function calculateSessionVolumeProfileAndVA(bars: FootprintBar[]): SessionProfil
       volumeInVA += volBelow;
       valNum = sortedProfile[bottomPointer].price;
       bottomPointer++;
-    } else { // Should only happen if both are -1 and we didn't break, or they are equal (prefer expanding down in tie)
-        if (volBelow !== -1) { // If volBelow is valid, expand down
+    } else { 
+        if (volBelow !== -1) { 
             volumeInVA += volBelow;
             valNum = sortedProfile[bottomPointer].price;
             bottomPointer++;
-        } else { // If only volAbove is valid or both are -1 (covered by break)
+        } else { 
             break;
         }
     }
@@ -541,7 +541,7 @@ export default function FootprintChartsPage() {
             }
           }
 
-          const { sessionPocPriceStr, sessionPocVolumeStr, vahStr, valStr, vahNum, valNum } = calculateSessionVolumeProfileAndVA(currentSymbolFootprintBars);
+          const { sessionPocPriceStr, sessionPocVolumeStr, vahStr, valStr, sessionPocPriceNum, vahNum, valNum } = calculateSessionVolumeProfileAndVA(currentSymbolFootprintBars);
           const divergenceSignals = calculateDivergences(currentSymbolFootprintBars);
 
 
@@ -578,7 +578,7 @@ export default function FootprintChartsPage() {
                         <h4 className="font-medium text-xs mb-1 text-center">
                           {formatTimeFromTimestamp(bar.timestamp, false)}
                         </h4>
-                        <GraphicalFootprintBar bar={bar} sessionVah={vahNum} sessionVal={valNum} />
+                        <GraphicalFootprintBar bar={bar} sessionVah={vahNum} sessionVal={valNum} sessionPocPrice={sessionPocPriceNum} />
                       </div>
                     ))}
                   </div>

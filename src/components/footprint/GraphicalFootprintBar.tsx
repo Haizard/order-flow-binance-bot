@@ -9,6 +9,7 @@ interface GraphicalFootprintBarProps {
   bar: Partial<FootprintBar>;
   sessionVah?: number | null;
   sessionVal?: number | null;
+  sessionPocPrice?: number | null;
 }
 
 interface ProcessedPriceLevel {
@@ -22,11 +23,14 @@ interface ProcessedPriceLevel {
   sellImbalance?: boolean;
   ohlcMarkers?: string[];
   isInSessionValueArea?: boolean;
+  isSessionPoc?: boolean;
+  isSessionVahLine?: boolean;
+  isSessionValLine?: boolean;
 }
 
 const IMBALANCE_RATIO = 3.0; 
 
-const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar, sessionVah, sessionVal }) => {
+const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar, sessionVah, sessionVal, sessionPocPrice }) => {
   const [processedData, setProcessedData] = useState<ProcessedPriceLevel[]>([]);
   const [pocInfo, setPocInfo] = useState<{ priceDisplay: string; totalVolume: number } | null>(null);
 
@@ -56,7 +60,7 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar, sess
 
     const { open, high, low, close } = bar;
 
-    const sortedLevels: Omit<ProcessedPriceLevel, 'isPoc' | 'buyImbalance' | 'sellImbalance' | 'ohlcMarkers' | 'isInSessionValueArea'>[] = Array.from(priceLevelsMap.entries())
+    const sortedLevels: Omit<ProcessedPriceLevel, 'isPoc' | 'buyImbalance' | 'sellImbalance' | 'ohlcMarkers' | 'isInSessionValueArea' | 'isSessionPoc' | 'isSessionVahLine' | 'isSessionValLine'>[] = Array.from(priceLevelsMap.entries())
       .map(([priceStr, levelData]) => {
         const price = parseFloat(priceStr);
         const sellVol = levelData.sellVolume || 0;
@@ -103,6 +107,9 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar, sess
       let sellImbalance = false;
       const currentOhlcMarkers: string[] = [];
       let isInSessionValueArea = false;
+      let isCurrentSessionPoc = false;
+      let isCurrentSessionVahLine = false;
+      let isCurrentSessionValLine = false;
 
       if (open !== undefined && level.priceValue === open) currentOhlcMarkers.push('O');
       if (high !== undefined && level.priceValue === high) currentOhlcMarkers.push('H');
@@ -136,6 +143,12 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar, sess
         if (level.priceValue <= sessionVah && level.priceValue >= sessionVal) {
           isInSessionValueArea = true;
         }
+        if (level.priceValue === sessionVah) isCurrentSessionVahLine = true;
+        if (level.priceValue === sessionVal) isCurrentSessionValLine = true;
+      }
+      
+      if (sessionPocPrice !== undefined && sessionPocPrice !== null && level.priceValue === sessionPocPrice) {
+        isCurrentSessionPoc = true;
       }
       
       return {
@@ -145,12 +158,15 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar, sess
         sellImbalance,
         ohlcMarkers: currentOhlcMarkers,
         isInSessionValueArea,
+        isSessionPoc: isCurrentSessionPoc,
+        isSessionVahLine: isCurrentSessionVahLine,
+        isSessionValLine: isCurrentSessionValLine,
       };
     });
     
     setProcessedData(finalProcessedData);
 
-  }, [bar, sessionVah, sessionVal]);
+  }, [bar, sessionVah, sessionVal, sessionPocPrice]);
 
   const getVolumeDisplay = (volume: number) => {
     if (volume === 0) return <span className="text-muted-foreground/60">-</span>;
@@ -194,7 +210,9 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar, sess
             className={cn(
               "flex justify-between items-center border-b border-dotted border-border/30 py-[1px] min-h-[18px]", 
               level.isPoc ? 'bg-primary/20 dark:bg-primary/30' : 
-              level.isInSessionValueArea ? 'bg-blue-500/10 dark:bg-blue-700/20' : ''
+              level.isInSessionValueArea ? 'bg-blue-500/10 dark:bg-blue-700/20' : '',
+              level.isSessionVahLine && 'border-t-2 border-sky-500',
+              level.isSessionValLine && 'border-b-2 border-sky-500'
             )}
           >
             <span className={cn(
@@ -208,7 +226,8 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar, sess
             
             <span className={cn(
               "w-1/3 text-center font-medium px-1 relative flex items-center justify-center", 
-              level.isPoc ? 'text-primary-foreground font-bold' : 'text-foreground'
+              level.isPoc ? 'text-primary-foreground font-bold' : 'text-foreground',
+              level.isSessionPoc && !level.isPoc && 'ring-1 ring-yellow-500 rounded-sm'
             )}>
               <span className="flex-grow text-center">{level.priceDisplay}</span>
               {level.ohlcMarkers && level.ohlcMarkers.length > 0 && (
