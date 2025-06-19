@@ -16,10 +16,19 @@
     --secondary-foreground: 220 10% 25%;
     --muted: 220 25% 95%; /* Muted gray, slightly cooler */
     --muted-foreground: 220 10% 45%; /* Darker gray for muted text */
-    --accent: 160 70% 40%; /* A modern teal/green */
+    
+    --accent-h: 160; /* Hue for accent */
+    --accent-s: 70%; /* Saturation for accent */
+    --accent-l: 40%; /* Lightness for accent */
+    --accent: hsl(var(--accent-h) var(--accent-s) var(--accent-l)); /* A modern teal/green */
     --accent-foreground: 0 0% 100%; /* White text on this accent for contrast */
-    --destructive: 0 75% 55%;
+    
+    --destructive-h: 0; /* Hue for destructive */
+    --destructive-s: 75%; /* Saturation for destructive */
+    --destructive-l: 55%; /* Lightness for destructive */
+    --destructive: hsl(var(--destructive-h) var(--destructive-s) var(--destructive-l));
     --destructive-foreground: 0 0% 98%;
+
     --border: 220 20% 88%; /* Slightly darker, cooler border */
     --input: 220 20% 88%;
     --ring: 205 65% 50%; /* Primary color for rings */
@@ -53,10 +62,19 @@
     --secondary-foreground: 220 20% 90%;
     --muted: 220 15% 18%; /* Dark muted */
     --muted-foreground: 220 15% 65%;
-    --accent: 160 60% 45%; /* Accent, slightly brighter for dark mode */
+
+    --accent-h: 160;
+    --accent-s: 60%;
+    --accent-l: 45%;
+    --accent: hsl(var(--accent-h) var(--accent-s) var(--accent-l)); /* Accent, slightly brighter for dark mode */
     --accent-foreground: 0 0% 100%;
-    --destructive: 0 65% 50%;
+
+    --destructive-h: 0;
+    --destructive-s: 65%;
+    --destructive-l: 50%;
+    --destructive: hsl(var(--destructive-h) var(--destructive-s) var(--destructive-l));
     --destructive-foreground: 0 0% 98%;
+
     --border: 220 15% 25%;
     --input: 220 15% 25%;
     --ring: 205 65% 55%;
