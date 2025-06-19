@@ -72,12 +72,20 @@ interface SessionProfileMetrics {
   sessionPocVolumeStr: string | null;
   vahStr: string | null;
   valStr: string | null;
+  sessionPocPriceNum: number | null;
+  vahNum: number | null;
+  valNum: number | null;
 }
 
 // Helper to calculate Session POC, VAH, VAL
 function calculateSessionVolumeProfileAndVA(bars: FootprintBar[]): SessionProfileMetrics {
+  const emptyMetrics: SessionProfileMetrics = {
+    sessionPocPriceStr: null, sessionPocVolumeStr: null, vahStr: null, valStr: null,
+    sessionPocPriceNum: null, vahNum: null, valNum: null,
+  };
+
   if (!bars || bars.length === 0) {
-    return { sessionPocPriceStr: null, sessionPocVolumeStr: null, vahStr: null, valStr: null };
+    return emptyMetrics;
   }
 
   const sessionProfileMap = new Map<number, number>(); // price (number) -> total volume
@@ -96,34 +104,36 @@ function calculateSessionVolumeProfileAndVA(bars: FootprintBar[]): SessionProfil
   });
 
   if (totalSessionVolume === 0 || sessionProfileMap.size === 0) {
-    return { sessionPocPriceStr: null, sessionPocVolumeStr: null, vahStr: null, valStr: null };
+    return emptyMetrics;
   }
 
   const sortedProfile = Array.from(sessionProfileMap.entries())
     .map(([price, volume]) => ({ price, volume }))
     .sort((a, b) => b.price - a.price); // Sort by price descending (high to low)
 
-  let sessionPocPrice: number | null = null;
+  let sessionPocPriceNum: number | null = null;
   let sessionPocVolume = 0;
   sortedProfile.forEach(level => {
     if (level.volume > sessionPocVolume) {
       sessionPocVolume = level.volume;
-      sessionPocPrice = level.price;
+      sessionPocPriceNum = level.price;
     }
   });
 
-  if (sessionPocPrice === null) {
-    return { sessionPocPriceStr: null, sessionPocVolumeStr: null, vahStr: null, valStr: null };
+  if (sessionPocPriceNum === null) {
+    return emptyMetrics; // Should not happen if totalSessionVolume > 0
   }
 
   const targetVolumeForVA = totalSessionVolume * VALUE_AREA_PERCENTAGE;
   let volumeInVA = 0;
-  let currentVah = sessionPocPrice;
-  let currentVal = sessionPocPrice;
+  let vahNum: number | null = sessionPocPriceNum;
+  let valNum: number | null = sessionPocPriceNum;
 
-  const pocIndex = sortedProfile.findIndex(p => p.price === sessionPocPrice);
-  if (pocIndex === -1) return { sessionPocPriceStr: formatPrice(sessionPocPrice), sessionPocVolumeStr: formatVolume(sessionPocVolume), vahStr: null, valStr: null };
-
+  const pocIndex = sortedProfile.findIndex(p => p.price === sessionPocPriceNum);
+  if (pocIndex === -1) { // Should not happen
+     return { ...emptyMetrics, sessionPocPriceStr: formatPrice(sessionPocPriceNum), sessionPocVolumeStr: formatVolume(sessionPocVolume), sessionPocPriceNum };
+  }
+  
   volumeInVA = sortedProfile[pocIndex].volume;
 
   let topPointer = pocIndex - 1;
@@ -133,26 +143,29 @@ function calculateSessionVolumeProfileAndVA(bars: FootprintBar[]): SessionProfil
     const volAbove = topPointer >= 0 ? sortedProfile[topPointer].volume : -1;
     const volBelow = bottomPointer < sortedProfile.length ? sortedProfile[bottomPointer].volume : -1;
 
-    if (volAbove === -1 && volBelow === -1) break; // No more levels to add
+    if (volAbove === -1 && volBelow === -1) break; 
 
     if (volAbove > volBelow) {
       volumeInVA += volAbove;
-      currentVah = sortedProfile[topPointer].price;
+      vahNum = sortedProfile[topPointer].price;
       topPointer--;
-    } else if (volBelow >= volAbove) { // Prioritize volBelow if equal or greater
+    } else if (volBelow >= volAbove) { 
       volumeInVA += volBelow;
-      currentVal = sortedProfile[bottomPointer].price;
+      valNum = sortedProfile[bottomPointer].price;
       bottomPointer++;
-    } else { // Should not happen if logic is correct and levels have volume
+    } else {
         break;
     }
   }
 
   return {
-    sessionPocPriceStr: formatPrice(sessionPocPrice),
+    sessionPocPriceStr: formatPrice(sessionPocPriceNum),
     sessionPocVolumeStr: formatVolume(sessionPocVolume),
-    vahStr: formatPrice(currentVah),
-    valStr: formatPrice(currentVal),
+    vahStr: formatPrice(vahNum),
+    valStr: formatPrice(valNum),
+    sessionPocPriceNum,
+    vahNum,
+    valNum,
   };
 }
 
@@ -168,7 +181,6 @@ function calculateDivergences(completedBars: FootprintBar[]): string[] {
     return [];
   }
 
-  // 1. Reverse to chronological order and calculate Cumulative Delta (CD)
   const chronologicalBars = [...completedBars].reverse();
   let currentCD = 0;
   const barsWithCD = chronologicalBars.map(bar => {
@@ -180,7 +192,6 @@ function calculateDivergences(completedBars: FootprintBar[]): string[] {
   const swingHighs: SwingPoint[] = [];
   const swingLows: SwingPoint[] = [];
 
-  // 2. Identify swing highs and lows using a lookaround window
   for (let i = SWING_LOOKAROUND_WINDOW; i < barsWithCD.length - SWING_LOOKAROUND_WINDOW; i++) {
     const currentBar = barsWithCD[i];
     let isSwingHigh = true;
@@ -203,23 +214,17 @@ function calculateDivergences(completedBars: FootprintBar[]): string[] {
     }
   }
   
-  // We need at least two swing points of each type to compare for divergence.
-  // Get the two most recent ones if available.
   const recentSwingHighs = swingHighs.slice(-2);
   const recentSwingLows = swingLows.slice(-2);
 
-
-  // 3. Check for Bearish Divergence (Higher price highs, Lower/Equal CD highs)
   if (recentSwingHighs.length >= 2) {
     const lastSwingHigh = recentSwingHighs[1];
     const prevSwingHigh = recentSwingHighs[0];
-    // Ensure swings are distinct in time to avoid comparing the same peak if window is wide
     if (lastSwingHigh.barTimestamp > prevSwingHigh.barTimestamp && lastSwingHigh.price > prevSwingHigh.price && lastSwingHigh.cd <= prevSwingHigh.cd) {
       divergenceSignals.push("Bearish Delta Divergence");
     }
   }
 
-  // 4. Check for Bullish Divergence (Lower price lows, Higher/Equal CD lows)
   if (recentSwingLows.length >= 2) {
     const lastSwingLow = recentSwingLows[1];
     const prevSwingLow = recentSwingLows[0];
@@ -247,13 +252,13 @@ export default function FootprintChartsPage() {
     if (!isNaN(value) && value > 0 && value <= 50) {
       setNumBarsToDisplay(value);
     } else if (event.target.value === "") {
-      setNumBarsToDisplay(DEFAULT_BARS_TO_DISPLAY); // Reset to default if empty
+      setNumBarsToDisplay(DEFAULT_BARS_TO_DISPLAY); 
     }
   };
 
   const connectToStream = () => {
     if (eventSourceRef.current) {
-      eventSourceRef.current.close(); // Close existing connection first
+      eventSourceRef.current.close(); 
       eventSourceRef.current = null;
     }
     if (!symbolsInput.trim()) {
@@ -277,8 +282,8 @@ export default function FootprintChartsPage() {
     setActiveSymbols(symbolsToConnect);
     setIsLoading(true);
     setIsConnected(false);
-    setFootprintBars({}); // Clear old data
-    setCurrentPartialBars({}); // Clear old partial data
+    setFootprintBars({}); 
+    setCurrentPartialBars({}); 
 
     const url = `/api/footprint-stream?symbols=${symbolsToConnect.join(',')}`;
     const es = new EventSource(url);
@@ -297,7 +302,6 @@ export default function FootprintChartsPage() {
 
     es.onerror = (event) => {
       let errorDetails = `Event Type: ${event.type}`;
-      // Check if event.target is an EventSource instance before accessing readyState
       if (event.target && event.target instanceof EventSource) {
         errorDetails += `, ReadyState: ${event.target.readyState} (0=CONNECTING, 1=OPEN, 2=CLOSED)`;
       }
@@ -312,81 +316,68 @@ export default function FootprintChartsPage() {
 
       setIsLoading(false);
       setIsConnected(false);
-      setActiveSymbols([]); // Clear active symbols on error
+      setActiveSymbols([]); 
       if (eventSourceRef.current) {
-         eventSourceRef.current.close(); // Ensure closure
+         eventSourceRef.current.close(); 
          eventSourceRef.current = null;
       }
     };
 
     es.addEventListener('footprintUpdate', (event) => {
       const rawData = JSON.parse(event.data);
-      // Reconstruct Map for priceLevels if it's a plain object
       const reconstructedPriceLevels = rawData.priceLevels && typeof rawData.priceLevels === 'object'
         ? new Map<string, PriceLevelData>(Object.entries(rawData.priceLevels))
-        : new Map<string, PriceLevelData>(); // Default to empty map if not present or not an object
+        : new Map<string, PriceLevelData>(); 
 
       const barData: FootprintBar = {
         ...rawData,
-        timestamp: Number(rawData.timestamp), // Ensure timestamp is a number
+        timestamp: Number(rawData.timestamp), 
         priceLevels: reconstructedPriceLevels,
       };
 
       setFootprintBars(prev => {
         const existingBars = prev[barData.symbol] || [];
-        // Add new bar, remove duplicates by timestamp, sort, and limit
         const updatedBars = [
-            ...existingBars.filter(b => b.timestamp !== barData.timestamp), // Remove old bar with same TS if any
-            barData // Add the new bar
-        ].sort((a,b) => b.timestamp - a.timestamp) // Sort newest first
-         .slice(0, numBarsToDisplay); // Keep only the desired number of bars
+            ...existingBars.filter(b => b.timestamp !== barData.timestamp), 
+            barData 
+        ].sort((a,b) => b.timestamp - a.timestamp) 
+         .slice(0, numBarsToDisplay); 
         return { ...prev, [barData.symbol]: updatedBars };
       });
-      // Initialize next partial bar based on the completed one's timestamp
       setCurrentPartialBars(prev => ({
         ...prev,
         [barData.symbol]: {
           symbol: barData.symbol,
-          timestamp: Number(barData.timestamp) + AGGREGATION_INTERVAL_MS, // Predict next bar's start time
-          priceLevels: new Map<string, PriceLevelData>() // Start with empty price levels
+          timestamp: Number(barData.timestamp) + AGGREGATION_INTERVAL_MS, 
+          priceLevels: new Map<string, PriceLevelData>() 
         }
       }));
     });
 
     es.addEventListener('footprintUpdatePartial', (event) => {
         const rawPartialData = JSON.parse(event.data);
-        // Ensure timestamp is a number
         const partialBarDataWithMap: Partial<FootprintBar> = {
             ...rawPartialData,
             timestamp: Number(rawPartialData.timestamp)
         };
 
-        // Reconstruct Map for priceLevels if it's a plain object
         if (rawPartialData.priceLevels && typeof rawPartialData.priceLevels === 'object' && !(rawPartialData.priceLevels instanceof Map)) {
             partialBarDataWithMap.priceLevels = new Map<string, PriceLevelData>(Object.entries(rawPartialData.priceLevels));
         }
-        // else if (rawPartialData.priceLevels instanceof Map) {
-        //     partialBarDataWithMap.priceLevels = rawPartialData.priceLevels; // Already a map
-        // }
         
         if(partialBarDataWithMap.symbol) {
             setCurrentPartialBars(prev => {
                 const existingSymbolPartial = prev[partialBarDataWithMap.symbol!] || {};
-                // Merge new partial data over existing, ensuring Maps are handled correctly
                 const mergedPartial: Partial<FootprintBar> = {
-                  ...existingSymbolPartial, // Spread existing first
-                  ...partialBarDataWithMap // Then new, potentially overwriting fields like OHLC
+                  ...existingSymbolPartial, 
+                  ...partialBarDataWithMap 
                 };
 
-                // Smart merging for priceLevels Map
                 if (partialBarDataWithMap.priceLevels instanceof Map && existingSymbolPartial.priceLevels instanceof Map) {
-                    // Merge Maps: new entries overwrite old ones if keys clash
                     mergedPartial.priceLevels = new Map([...existingSymbolPartial.priceLevels, ...partialBarDataWithMap.priceLevels]);
                 } else if (partialBarDataWithMap.priceLevels instanceof Map) {
-                    // If only new has a map (e.g., first partial update for this bar)
                     mergedPartial.priceLevels = partialBarDataWithMap.priceLevels;
                 } else if (!mergedPartial.priceLevels) {
-                    // Ensure priceLevels is always a Map, even if empty
                     mergedPartial.priceLevels = new Map<string, PriceLevelData>();
                 }
                 
@@ -402,8 +393,7 @@ export default function FootprintChartsPage() {
       eventSourceRef.current = null;
     }
     setIsConnected(false);
-    // Optionally, keep activeSymbols to show last state, or clear them:
-    setActiveSymbols([]); // Clears the charts
+    setActiveSymbols([]); 
     toast({
         title: "Stream Disconnected",
         description: "You have manually disconnected from the footprint data stream.",
@@ -411,7 +401,6 @@ export default function FootprintChartsPage() {
     });
   };
 
-  // Cleanup on component unmount
   useEffect(() => {
     return () => {
       if (eventSourceRef.current) {
@@ -424,18 +413,16 @@ export default function FootprintChartsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Top Controls Area */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
         <h1 className="text-3xl font-bold tracking-tight font-headline">Real-Time Footprint Data</h1>
         <div className="flex flex-col sm:flex-row gap-2 items-start sm:items-center w-full sm:w-auto">
-          {/* Symbol Input and Connect/Disconnect Buttons */}
           <div className="flex gap-2 items-center w-full sm:w-auto">
             <Input
               type="text"
               placeholder="e.g., BTCUSDT,ETHUSDT"
               value={symbolsInput}
               onChange={(e) => setSymbolsInput(e.target.value)}
-              className="sm:min-w-[200px] md:min-w-[250px]" // Adjusted min-width for better layout
+              className="sm:min-w-[200px] md:min-w-[250px]" 
               disabled={isConnected || isLoading}
             />
             {!isConnected && !isLoading && (
@@ -450,7 +437,6 @@ export default function FootprintChartsPage() {
               </Button>
             )}
           </div>
-          {/* Number of Bars Input */}
           <div className="flex items-center gap-2">
             <Label htmlFor="numBars" className="whitespace-nowrap text-sm">Bars:</Label>
             <Input
@@ -460,41 +446,36 @@ export default function FootprintChartsPage() {
               max="50"
               value={numBarsToDisplay}
               onChange={handleNumBarsChange}
-              className="w-20 h-10" // Standard input height
+              className="w-20 h-10" 
               disabled={isConnected || isLoading}
             />
           </div>
         </div>
       </div>
 
-       {/* Connection Status Messages */}
        {isConnected && activeSymbols.length > 0 && (
          <div className="text-sm text-green-600 dark:text-green-400">
             Connected to stream for: {activeSymbols.join(', ')}. Displaying latest completed bar data.
          </div>
         )}
-       {!isConnected && !isLoading && activeSymbols.length > 0 && ( // Message if disconnected but had active symbols
+       {!isConnected && !isLoading && activeSymbols.length > 0 && ( 
          <div className="text-sm text-red-600 dark:text-red-400">
             Disconnected from stream. Last tracked symbols: {activeSymbols.join(', ')}.
          </div>
        )}
 
-      {/* Main Content Area for Charts and Tables */}
       <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
         {activeSymbols.map(symbol => {
           const currentSymbolPartialBar = currentPartialBars[symbol];
           const currentSymbolFootprintBars = footprintBars[symbol] || [];
 
-          // Data for the summary table: includes current partial bar + completed bars
           const summaryBarsData: Partial<FootprintBar>[] = [
-            // Only include partial bar if it has volume or price levels
             ...(currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) ? [currentSymbolPartialBar] : []),
-            ...currentSymbolFootprintBars // These are already sorted newest first and sliced by numBarsToDisplay
-          ].slice(0, numBarsToDisplay + 1); // Ensure total doesn't exceed display num + 1 for partial
+            ...currentSymbolFootprintBars 
+          ].slice(0, numBarsToDisplay + 1); 
 
-          // Define metrics for the summary table
           const metrics = [
-            { label: "Bar End Time", getValue: (bar: Partial<FootprintBar>) => bar.timestamp ? formatTimeFromTimestamp(Number(bar.timestamp) + AGGREGATION_INTERVAL_MS -1) : 'N/A' }, // Show end time
+            { label: "Bar End Time", getValue: (bar: Partial<FootprintBar>) => bar.timestamp ? formatTimeFromTimestamp(Number(bar.timestamp) + AGGREGATION_INTERVAL_MS -1) : 'N/A' }, 
             { label: "Open", getValue: (bar: Partial<FootprintBar>) => formatPrice(bar.open) },
             { label: "High", getValue: (bar: Partial<FootprintBar>) => formatPrice(bar.high) },
             { label: "Low", getValue: (bar: Partial<FootprintBar>) => formatPrice(bar.low) },
@@ -519,7 +500,6 @@ export default function FootprintChartsPage() {
             { label: "POC Volume", getValue: (bar: Partial<FootprintBar>) => formatVolume(getBarPocInfo(bar).pocVolume) },
           ];
 
-          // Calculate session statistics (max/min price, max/min delta)
           let sessionHigh: number | undefined = undefined;
           let sessionLow: number | undefined = undefined;
           let maxDeltaInSession: number | undefined = undefined;
@@ -535,7 +515,7 @@ export default function FootprintChartsPage() {
             }
           }
           
-          const { sessionPocPriceStr, sessionPocVolumeStr, vahStr, valStr } = calculateSessionVolumeProfileAndVA(currentSymbolFootprintBars);
+          const { sessionPocPriceStr, sessionPocVolumeStr, vahStr, valStr, vahNum, valNum } = calculateSessionVolumeProfileAndVA(currentSymbolFootprintBars);
           const divergenceSignals = calculateDivergences(currentSymbolFootprintBars);
 
 
@@ -558,35 +538,28 @@ export default function FootprintChartsPage() {
                 </div>
               ) : (
                 <>
-                  {/* Horizontal scrollable container for graphical bars */}
                   <div className="flex flex-row-reverse overflow-x-auto gap-1 pb-4 items-end min-h-[300px]">
-                    {/* Current Aggregating Bar */}
                     {currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) && (
                        <div className="min-w-[150px] flex-shrink-0 border border-dashed p-2 rounded-md bg-primary/5 flex flex-col">
                          <h4 className="font-medium text-xs mb-1 text-center text-primary">
-                           {/* Show start time for partial bar */}
                            {currentSymbolPartialBar.timestamp ? formatTimeFromTimestamp(currentSymbolPartialBar.timestamp, false) : 'N/A'} (Agg.)
                          </h4>
                          <GraphicalFootprintBar bar={currentSymbolPartialBar} />
                        </div>
                      )}
-                    {/* Completed Bars - Reverse for chronological display (oldest to newest in visual flow) */}
                     {currentSymbolFootprintBars.slice(0, numBarsToDisplay).reverse().map(bar => (
                       <div key={bar.timestamp} className="min-w-[150px] flex-shrink-0 border p-2 rounded-md bg-card flex flex-col">
                         <h4 className="font-medium text-xs mb-1 text-center">
-                          {/* Show start time for completed bar */}
                           {formatTimeFromTimestamp(bar.timestamp, false)}
                         </h4>
-                        <GraphicalFootprintBar bar={bar} />
+                        <GraphicalFootprintBar bar={bar} sessionVah={vahNum} sessionVal={valNum} />
                       </div>
                     ))}
                   </div>
-                  {/* Message if no completed bars */}
                   {currentSymbolFootprintBars.length === 0 && !(currentSymbolPartialBar?.priceLevels && currentSymbolPartialBar.priceLevels.size > 0) && !isLoading &&
                     <p className="text-muted-foreground text-center py-4">No complete bar data received yet for {symbol}.</p>
                   }
 
-                  {/* Session Statistics Card */}
                   {currentSymbolFootprintBars.length > 0 && (
                      <Card className="mt-6 shadow-md">
                       <CardHeader className="py-3 px-4 border-b">
@@ -612,12 +585,11 @@ export default function FootprintChartsPage() {
                           <span className="text-muted-foreground flex items-center"><TrendingDown className="h-3.5 w-3.5 mr-1.5 text-red-500"/>Min Delta:</span>
                           <span className={cn("font-semibold", (minDeltaInSession ?? 0) >=0 ? "text-accent" : "text-destructive")}>{formatVolume(minDeltaInSession)}</span>
                         </div>
-                        {/* Session POC, VAH, VAL */}
                         <div className="flex justify-between items-center">
                             <span className="text-muted-foreground flex items-center"><Target className="h-3.5 w-3.5 mr-1.5 text-primary/70"/>Session POC:</span>
                             <span className="font-semibold">{sessionPocPriceStr || 'N/A'}</span>
                         </div>
-                        <div className="flex justify-between items-center"> {/* POC Volume can span if needed */}
+                        <div className="flex justify-between items-center"> 
                             <span className="text-muted-foreground flex items-center"><Info className="h-3.5 w-3.5 mr-1.5 text-primary/70"/>Session POC Vol:</span>
                             <span className="font-semibold">{sessionPocVolumeStr || 'N/A'}</span>
                         </div>
@@ -629,7 +601,6 @@ export default function FootprintChartsPage() {
                             <span className="text-muted-foreground flex items-center"><ArrowDownCircle className="h-3.5 w-3.5 mr-1.5 text-blue-500"/>Value Area Low:</span>
                             <span className="font-semibold">{valStr || 'N/A'}</span>
                         </div>
-                        {/* Divergence Signals Display */}
                         {divergenceSignals.length > 0 && (
                             <div className="sm:col-span-2 mt-1 text-center">
                                 {divergenceSignals.map((signal, idx) => (
@@ -645,7 +616,6 @@ export default function FootprintChartsPage() {
                   )}
 
 
-                  {/* Summary Statistics Table */}
                   {summaryBarsData.length > 0 && (
                     <div className="mt-6">
                       <h3 className="text-lg font-semibold mb-3 flex items-center">
@@ -657,11 +627,9 @@ export default function FootprintChartsPage() {
                           <TableHeader className="bg-muted/50">
                             <TableRow>
                               <TableHead className="px-2 py-2 font-medium text-muted-foreground sticky left-0 bg-muted/50 z-10 whitespace-nowrap">Metric</TableHead>
-                              {/* Table headers for each bar (Time + (Agg.) if partial) */}
                               {summaryBarsData.map((sBar, index) => (
                                 <TableHead key={sBar.timestamp || `partial-col-${index}`} className="px-2 py-2 font-medium text-muted-foreground text-center whitespace-nowrap">
                                   {formatTimeFromTimestamp(sBar.timestamp, false)}
-                                  {/* Add (Agg.) for the first bar if it's the current partial bar and has data */}
                                   {index === 0 && currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) ? <span className="text-primary/80 ml-1">(Agg.)</span> : ""}
                                 </TableHead>
                               ))}
@@ -679,7 +647,6 @@ export default function FootprintChartsPage() {
                                     className={cn(
                                       "px-2 py-1.5 text-center tabular-nums whitespace-nowrap",
                                       metric.getCellClass ? metric.getCellClass(sBar) : '',
-                                      // Highlight cells for the aggregating bar
                                       index === 0 && currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) && "bg-primary/5"
                                     )}
                                   >
@@ -698,10 +665,9 @@ export default function FootprintChartsPage() {
             </CardContent>
           </Card>
         )})}
-        {/* Placeholder when no symbols are active */}
         {activeSymbols.length === 0 && !isLoading && (
-            <Card className="md:col-span-1 lg:col-span-2"> {/* Ensure it spans full width if needed */}
-                <CardContent className="pt-6"> {/* Add padding if CardContent is used directly */}
+            <Card className="md:col-span-1 lg:col-span-2"> 
+                <CardContent className="pt-6"> 
                     <p className="text-muted-foreground text-center py-10">
                         Enter symbols (e.g., BTCUSDT,ETHUSDT) and click "Connect" to start viewing footprint data.
                     </p>
@@ -712,3 +678,4 @@ export default function FootprintChartsPage() {
     </div>
   );
 }
+
