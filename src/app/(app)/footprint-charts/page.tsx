@@ -7,11 +7,13 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Loader2, PlayCircle, StopCircle, BarChartHorizontalBig, ListFilter } from 'lucide-react';
+import { Loader2, PlayCircle, StopCircle, BarChartHorizontalBig, ListFilter, Info } from 'lucide-react';
 import type { FootprintBar, PriceLevelData } from '@/types/footprint';
 import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; // Default symbols
 import { useToast } from "@/hooks/use-toast";
 import GraphicalFootprintBar from '@/components/footprint/GraphicalFootprintBar'; 
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { cn } from '@/lib/utils';
 
 const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute, matches server-side
 const DEFAULT_BARS_TO_DISPLAY = 10;
@@ -29,10 +31,10 @@ export default function FootprintChartsPage() {
 
   const handleNumBarsChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseInt(event.target.value, 10);
-    if (!isNaN(value) && value > 0 && value <= 50) { // Basic validation: positive and not excessively large
+    if (!isNaN(value) && value > 0 && value <= 50) { 
       setNumBarsToDisplay(value);
     } else if (event.target.value === "") {
-      setNumBarsToDisplay(DEFAULT_BARS_TO_DISPLAY); // Reset to default if input is cleared
+      setNumBarsToDisplay(DEFAULT_BARS_TO_DISPLAY); 
     }
   };
 
@@ -85,7 +87,6 @@ export default function FootprintChartsPage() {
       if (event.target && event.target instanceof EventSource) {
         errorDetails += `, ReadyState: ${event.target.readyState} (0=CONNECTING, 1=OPEN, 2=CLOSED)`;
       }
-      // Updated console.error message for clarity
       console.error(`Client-side EventSource connection error. ${errorDetails}. The server likely failed to establish the stream.`);
       console.debug("Full EventSource error event object for debugging:", event);
 
@@ -106,7 +107,10 @@ export default function FootprintChartsPage() {
 
     es.addEventListener('footprintUpdate', (event) => {
       const rawData = JSON.parse(event.data);
-      const reconstructedPriceLevels = new Map<string, PriceLevelData>(Object.entries(rawData.priceLevels || {}));
+      // Ensure priceLevels is a Map
+      const reconstructedPriceLevels = rawData.priceLevels && typeof rawData.priceLevels === 'object'
+        ? new Map<string, PriceLevelData>(Object.entries(rawData.priceLevels))
+        : new Map<string, PriceLevelData>();
       
       const barData: FootprintBar = {
         ...rawData,
@@ -156,6 +160,8 @@ export default function FootprintChartsPage() {
                     mergedPartial.priceLevels = new Map([...existingSymbolPartial.priceLevels, ...partialBarDataWithMap.priceLevels]);
                 } else if (partialBarDataWithMap.priceLevels instanceof Map) {
                     mergedPartial.priceLevels = partialBarDataWithMap.priceLevels;
+                } else if (!mergedPartial.priceLevels) {
+                    mergedPartial.priceLevels = new Map<string, PriceLevelData>();
                 }
                 
                 return {...prev, [partialBarDataWithMap.symbol!]: mergedPartial };
@@ -186,6 +192,22 @@ export default function FootprintChartsPage() {
       }
     };
   }, []);
+
+  const formatPrice = (price: number | undefined) => {
+    if (price === undefined || price === null) return 'N/A';
+    return price.toFixed(Math.max(2, price < 1 && price !== 0 ? 5 : 2));
+  };
+
+  const formatVolume = (volume: number | undefined) => {
+    if (volume === undefined || volume === null) return 'N/A';
+    return volume.toFixed(2);
+  };
+  
+  const formatTimeFromTimestamp = (timestamp: number | undefined) => {
+    if (timestamp === undefined || timestamp === null) return 'N/A';
+    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  };
+
 
   return (
     <div className="flex flex-col gap-6">
@@ -241,7 +263,15 @@ export default function FootprintChartsPage() {
        )}
 
       <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
-        {activeSymbols.map(symbol => (
+        {activeSymbols.map(symbol => {
+          const currentSymbolPartialBar = currentPartialBars[symbol];
+          const currentSymbolFootprintBars = footprintBars[symbol] || [];
+          const summaryBarsData = [
+            ...(currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) ? [currentSymbolPartialBar] : []),
+            ...currentSymbolFootprintBars
+          ];
+
+          return (
           <Card key={symbol} className="shadow-lg">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 font-headline">
@@ -253,55 +283,95 @@ export default function FootprintChartsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {isLoading && !footprintBars[symbol]?.length && !(currentPartialBars[symbol]?.priceLevels && ((currentPartialBars[symbol]?.priceLevels as Map<string,PriceLevelData>)?.size > 0 || (currentPartialBars[symbol]?.totalVolume ?? 0) > 0) ) ? (
+              {isLoading && !currentSymbolFootprintBars.length && !(currentSymbolPartialBar?.priceLevels && (currentSymbolPartialBar.priceLevels.size > 0 || (currentSymbolPartialBar.totalVolume ?? 0) > 0) ) ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   <p className="ml-2 text-muted-foreground">Waiting for data...</p>
                 </div>
               ) : (
                 <>
-                  {currentPartialBars[symbol] && Object.keys(currentPartialBars[symbol]).length > 0 && (
+                  {currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) && (
                     <div className="mb-4 p-3 border border-dashed rounded-md bg-primary/5">
                       <p className="text-sm font-semibold text-primary mb-1">Current Aggregating Bar (Partial):</p>
                       <p className="text-xs">
-                        Timestamp: {currentPartialBars[symbol].timestamp ? new Date(currentPartialBars[symbol].timestamp!).toLocaleString() : 'N/A'}
+                        Timestamp: {currentSymbolPartialBar.timestamp ? new Date(currentSymbolPartialBar.timestamp).toLocaleString() : 'N/A'}
                       </p>
                       <p className="text-xs">
-                        O: {currentPartialBars[symbol].open?.toFixed(Math.max(2, (currentPartialBars[symbol].open ?? 0) < 1 ? 5 : 2)) ?? 'N/A'} H: {currentPartialBars[symbol].high?.toFixed(Math.max(2, (currentPartialBars[symbol].high ?? 0) < 1 ? 5 : 2)) ?? 'N/A'} L: {currentPartialBars[symbol].low?.toFixed(Math.max(2, (currentPartialBars[symbol].low ?? 0) < 1 ? 5 : 2)) ?? 'N/A'} C: {currentPartialBars[symbol].close?.toFixed(Math.max(2, (currentPartialBars[symbol].close ?? 0) < 1 ? 5 : 2)) ?? 'N/A'}
+                        O: {formatPrice(currentSymbolPartialBar.open)} H: {formatPrice(currentSymbolPartialBar.high)} L: {formatPrice(currentSymbolPartialBar.low)} C: {formatPrice(currentSymbolPartialBar.close)}
                       </p>
                       <p className="text-xs">
-                        Volume: {currentPartialBars[symbol].totalVolume?.toFixed(2) ?? 'N/A'} Delta: {currentPartialBars[symbol].delta?.toFixed(2) ?? 'N/A'}
+                        Volume: {formatVolume(currentSymbolPartialBar.totalVolume)} Delta: {formatVolume(currentSymbolPartialBar.delta)}
                       </p>
-                      {(currentPartialBars[symbol]?.priceLevels && ((currentPartialBars[symbol]?.priceLevels instanceof Map && (currentPartialBars[symbol].priceLevels as Map<string, PriceLevelData>).size > 0) || (typeof currentPartialBars[symbol].priceLevels === 'object' && Object.keys(currentPartialBars[symbol].priceLevels!).length > 0)) || (currentPartialBars[symbol].totalVolume ?? 0 > 0)) ? (
-                        <GraphicalFootprintBar bar={currentPartialBars[symbol]} />
+                      {(currentSymbolPartialBar.priceLevels && (currentSymbolPartialBar.priceLevels.size > 0)) || (currentSymbolPartialBar.totalVolume ?? 0) > 0 ? (
+                        <GraphicalFootprintBar bar={currentSymbolPartialBar} />
                       ) : (
                         <p className="text-xs text-muted-foreground mt-1 py-2 text-center">Aggregating price levels...</p>
                       )}
                     </div>
                   )}
-                  {(footprintBars[symbol] && footprintBars[symbol].length > 0) ? (
-                     footprintBars[symbol].map(bar => (
+                  {(currentSymbolFootprintBars.length > 0) ? (
+                     currentSymbolFootprintBars.map(bar => (
                        <div key={bar.timestamp} className="mb-6 last:mb-0"> 
                          <h4 className="font-medium text-sm mb-1">
                            Bar: {new Date(bar.timestamp).toLocaleTimeString()} - {new Date(Number(bar.timestamp) + AGGREGATION_INTERVAL_MS -1).toLocaleTimeString()}
                          </h4>
                          <p className="text-xs text-muted-foreground">
-                            O:{bar.open.toFixed(Math.max(2, bar.open < 1 ? 5 : 2))} H:{bar.high.toFixed(Math.max(2, bar.high < 1 ? 5 : 2))} L:{bar.low.toFixed(Math.max(2, bar.low < 1 ? 5 : 2))} C:{bar.close.toFixed(Math.max(2, bar.close < 1 ? 5 : 2))} Vol:{bar.totalVolume.toFixed(2)} Delta:{bar.delta.toFixed(2)}
+                            O:{formatPrice(bar.open)} H:{formatPrice(bar.high)} L:{formatPrice(bar.low)} C:{formatPrice(bar.close)} Vol:{formatVolume(bar.totalVolume)} Delta:{formatVolume(bar.delta)}
                          </p>
                          <GraphicalFootprintBar bar={bar} />
                        </div>
                      ))
                   ) : (
-                    !(currentPartialBars[symbol]?.priceLevels && ((currentPartialBars[symbol]?.priceLevels instanceof Map && (currentPartialBars[symbol].priceLevels as Map<string, PriceLevelData>).size > 0) || (typeof currentPartialBars[symbol].priceLevels === 'object' && Object.keys(currentPartialBars[symbol].priceLevels!).length > 0))) &&
+                    !(currentSymbolPartialBar?.priceLevels && currentSymbolPartialBar.priceLevels.size > 0) &&
                     <p className="text-muted-foreground text-center py-4">No complete bar data received yet for {symbol}.</p>
+                  )}
+
+                  {summaryBarsData.length > 0 && (
+                    <div className="mt-8">
+                      <h3 className="text-lg font-semibold mb-3 flex items-center">
+                        <Info className="h-5 w-5 mr-2 text-primary/80" />
+                        Bar Summary
+                      </h3>
+                      <div className="overflow-x-auto rounded-md border">
+                        <Table className="min-w-full">
+                          <TableHeader className="bg-muted/50">
+                            <TableRow>
+                              <TableHead className="px-3 py-2 text-xs font-medium text-muted-foreground">Time</TableHead>
+                              <TableHead className="px-3 py-2 text-xs font-medium text-muted-foreground text-right">Open</TableHead>
+                              <TableHead className="px-3 py-2 text-xs font-medium text-muted-foreground text-right">High</TableHead>
+                              <TableHead className="px-3 py-2 text-xs font-medium text-muted-foreground text-right">Low</TableHead>
+                              <TableHead className="px-3 py-2 text-xs font-medium text-muted-foreground text-right">Close</TableHead>
+                              <TableHead className="px-3 py-2 text-xs font-medium text-muted-foreground text-right">Volume</TableHead>
+                              <TableHead className="px-3 py-2 text-xs font-medium text-muted-foreground text-right">Delta</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {summaryBarsData.map((sBar, index) => (
+                              <TableRow key={sBar.timestamp || `partial-${index}`} className={index === 0 && currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) ? "bg-primary/5 hover:bg-primary/10" : "hover:bg-muted/20"}>
+                                <TableCell className="px-3 py-2 text-xs whitespace-nowrap">
+                                  {formatTimeFromTimestamp(sBar.timestamp)}
+                                  {index === 0 && currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) ? <span className="text-primary/80 ml-1">(Aggregating)</span> : ""}
+                                </TableCell>
+                                <TableCell className="px-3 py-2 text-xs text-right tabular-nums">{formatPrice(sBar.open)}</TableCell>
+                                <TableCell className="px-3 py-2 text-xs text-right tabular-nums">{formatPrice(sBar.high)}</TableCell>
+                                <TableCell className="px-3 py-2 text-xs text-right tabular-nums">{formatPrice(sBar.low)}</TableCell>
+                                <TableCell className="px-3 py-2 text-xs text-right tabular-nums">{formatPrice(sBar.close)}</TableCell>
+                                <TableCell className="px-3 py-2 text-xs text-right tabular-nums">{formatVolume(sBar.totalVolume)}</TableCell>
+                                <TableCell className={cn("px-3 py-2 text-xs text-right tabular-nums", (sBar.delta ?? 0) >= 0 ? 'text-accent' : 'text-destructive')}>{formatVolume(sBar.delta)}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
                   )}
                 </>
               )}
             </CardContent>
           </Card>
-        ))}
+        )})}
         {activeSymbols.length === 0 && !isLoading && (
-            <Card className="md:col-span-1 lg:col-span-2"> {/* Adjusted span for placeholder */}
+            <Card className="md:col-span-1 lg:col-span-2"> 
                 <CardContent className="pt-6">
                     <p className="text-muted-foreground text-center py-10">
                         Enter symbols (e.g., BTCUSDT,ETHUSDT) and click "Connect" to start viewing footprint data.
