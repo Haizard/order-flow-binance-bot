@@ -81,11 +81,12 @@ export default function FootprintChartsPage() {
     };
 
     es.onerror = (event) => {
-      let errorDetails = `Type: ${event.type}`;
+      let errorDetails = `Event Type: ${event.type}`;
       if (event.target && event.target instanceof EventSource) {
         errorDetails += `, ReadyState: ${event.target.readyState} (0=CONNECTING, 1=OPEN, 2=CLOSED)`;
       }
-      console.error(`EventSource connection error occurred. Details: ${errorDetails}.`);
+      // Updated console.error message for clarity
+      console.error(`Client-side EventSource connection error. ${errorDetails}. The server likely failed to establish the stream.`);
       console.debug("Full EventSource error event object for debugging:", event);
 
       toast({
@@ -105,32 +106,29 @@ export default function FootprintChartsPage() {
 
     es.addEventListener('footprintUpdate', (event) => {
       const rawData = JSON.parse(event.data);
-      // Price levels are now sent as objects, reconstruct to Map client-side
       const reconstructedPriceLevels = new Map<string, PriceLevelData>(Object.entries(rawData.priceLevels || {}));
       
       const barData: FootprintBar = {
         ...rawData,
-        timestamp: Number(rawData.timestamp), // Ensure timestamp is a number
+        timestamp: Number(rawData.timestamp), 
         priceLevels: reconstructedPriceLevels,
       };
 
       setFootprintBars(prev => {
         const existingBars = prev[barData.symbol] || [];
-        // Add new bar, filter out any existing bar with the same timestamp (e.g., from initial load vs. live update)
         const updatedBars = [
             ...existingBars.filter(b => b.timestamp !== barData.timestamp),
             barData
-        ].sort((a,b) => b.timestamp - a.timestamp) // Sort descending by timestamp (newest first)
-         .slice(0, numBarsToDisplay); // Apply the dynamic limit
+        ].sort((a,b) => b.timestamp - a.timestamp) 
+         .slice(0, numBarsToDisplay); 
         return { ...prev, [barData.symbol]: updatedBars };
       });
-      // Initialize the next partial bar with an empty priceLevels map
       setCurrentPartialBars(prev => ({
         ...prev, 
         [barData.symbol]: { 
           symbol: barData.symbol, 
-          timestamp: Number(barData.timestamp) + AGGREGATION_INTERVAL_MS, // Timestamp for the *next* bar
-          priceLevels: new Map<string, PriceLevelData>() // Initialize as empty map
+          timestamp: Number(barData.timestamp) + AGGREGATION_INTERVAL_MS, 
+          priceLevels: new Map<string, PriceLevelData>() 
         }
       }));
     });
@@ -139,14 +137,12 @@ export default function FootprintChartsPage() {
         const rawPartialData = JSON.parse(event.data);
         const partialBarDataWithMap: Partial<FootprintBar> = { 
             ...rawPartialData,
-            timestamp: Number(rawPartialData.timestamp) // Ensure timestamp is a number
+            timestamp: Number(rawPartialData.timestamp)
         };
 
-        // Reconstruct priceLevels to a Map if it's an object
         if (rawPartialData.priceLevels && typeof rawPartialData.priceLevels === 'object' && !(rawPartialData.priceLevels instanceof Map)) {
             partialBarDataWithMap.priceLevels = new Map<string, PriceLevelData>(Object.entries(rawPartialData.priceLevels));
         }
-
 
         if(partialBarDataWithMap.symbol) {
             setCurrentPartialBars(prev => {
@@ -156,13 +152,11 @@ export default function FootprintChartsPage() {
                   ...partialBarDataWithMap 
                 };
                 
-                // Ensure priceLevels merging handles maps correctly
                 if (partialBarDataWithMap.priceLevels instanceof Map && existingSymbolPartial.priceLevels instanceof Map) {
                     mergedPartial.priceLevels = new Map([...existingSymbolPartial.priceLevels, ...partialBarDataWithMap.priceLevels]);
                 } else if (partialBarDataWithMap.priceLevels instanceof Map) {
                     mergedPartial.priceLevels = partialBarDataWithMap.priceLevels;
                 }
-                // If existing is a map and new one is not (e.g., initial empty object), it's fine, existing map is kept unless new one has content
                 
                 return {...prev, [partialBarDataWithMap.symbol!]: mergedPartial };
             });
@@ -245,7 +239,6 @@ export default function FootprintChartsPage() {
             Disconnected from stream. Last tracked symbols: {activeSymbols.join(', ')}.
          </div>
        )}
-
 
       <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
         {activeSymbols.map(symbol => (
