@@ -24,10 +24,6 @@ const CustomizedYAxisTick = (props: any) => {
   const { x, y, payload, pocPriceDisplay } = props;
   const isPoc = payload.value === pocPriceDisplay;
 
-  // Check if the tick value corresponds to the open, high, low, or close price of the bar
-  // This part is removed as it was adding too much visual clutter and complexity for this step.
-  // We will focus only on POC highlighting for now.
-
   return (
     <g transform={`translate(${x},${y})`}>
       <text
@@ -107,17 +103,26 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) =>
   if (!bar || !bar.priceLevels) {
     return <p className="text-muted-foreground text-xs py-2 text-center">No price level data for graphical display.</p>;
   }
-  if (isMap && (bar.priceLevels as Map<string, PriceLevelData>).size === 0) {
-     return <p className="text-muted-foreground text-xs py-2 text-center">No price level data for graphical display (empty map).</p>;
-  }
-  if (isPlainObject && Object.keys(bar.priceLevels as Record<string, PriceLevelData>).length === 0) {
-     return <p className="text-muted-foreground text-xs py-2 text-center">No price level data for graphical display (empty object).</p>;
-  }
-   if (!isMap && !isPlainObject) {
+  
+  let isEmpty = false;
+  if (isMap) {
+    if ((bar.priceLevels as Map<string, PriceLevelData>).size === 0) {
+      isEmpty = true;
+    }
+  } else if (isPlainObject) {
+    if (Object.keys(bar.priceLevels as Record<string, PriceLevelData>).length === 0) {
+      isEmpty = true;
+    }
+  } else {
+    // Neither a Map nor a plain object, or null/undefined (already caught)
     return <p className="text-muted-foreground text-xs py-2 text-center">Price level data is not a valid Map or Object.</p>;
   }
 
-  if (chartData.length === 0) {
+  if (isEmpty) {
+    return <p className="text-muted-foreground text-xs py-2 text-center">No price level data available for this bar.</p>;
+  }
+  
+   if (chartData.length === 0) { // This check can catch cases where processing results in empty chartable data
       return <p className="text-muted-foreground text-xs py-2 text-center">No chartable data after processing.</p>;
   }
   
@@ -130,7 +135,7 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) =>
           margin={{
             top: 5,
             right: 25, 
-            left: 15, // Adjusted left margin for potentially longer Y-axis labels
+            left: 15, 
             bottom: 20, 
           }}
           barCategoryGap="10%" 
@@ -147,7 +152,7 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) =>
           <YAxis
             type="category"
             dataKey="priceDisplay"
-            width={70} // Increased width for Y-axis labels
+            width={70} 
             reversed 
             tick={<CustomizedYAxisTick pocPriceDisplay={pocInfo?.priceDisplay} />}
             axisLine={{ stroke: 'hsl(var(--border))' }}
@@ -167,14 +172,14 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) =>
             align="center"
             height={30}
           />
-          <Bar dataKey="sellVolume" name="Sell Vol" stackId="a" fill="hsl(var(--destructive))" barSize={8} radius={[0, 2, 2, 0]}>
-            {chartData.map((entry, index) => (
-              <Cell key={`cell-sell-${index}`} fill={entry.priceDisplay === pocInfo?.priceDisplay ? "hsla(var(--destructive-h), var(--destructive-s), calc(var(--destructive-l) + 10%), 0.9)" : "hsl(var(--destructive))"} />
+          <Bar dataKey="sellVolume" name="Sell Vol" stackId="a" fill="hsl(var(--destructive))" barSize={8} radius={[0, 2, 2, 0]} isAnimationActive={false}>
+            {chartData.map((entry) => (
+              <Cell key={`cell-sell-${entry.priceDisplay}`} fill={entry.priceDisplay === pocInfo?.priceDisplay ? "hsla(var(--destructive-h), var(--destructive-s), calc(var(--destructive-l) + 10%), 0.9)" : "hsl(var(--destructive))"} />
             ))}
           </Bar>
-          <Bar dataKey="buyVolume" name="Buy Vol" stackId="a" fill="hsl(var(--accent))" barSize={8} radius={[0, 2, 2, 0]}>
-             {chartData.map((entry, index) => (
-              <Cell key={`cell-buy-${index}`} fill={entry.priceDisplay === pocInfo?.priceDisplay ? "hsla(var(--accent-h), var(--accent-s), calc(var(--accent-l) + 10%), 0.9)" : "hsl(var(--accent))"} />
+          <Bar dataKey="buyVolume" name="Buy Vol" stackId="a" fill="hsl(var(--accent))" barSize={8} radius={[0, 2, 2, 0]} isAnimationActive={false}>
+             {chartData.map((entry) => (
+              <Cell key={`cell-buy-${entry.priceDisplay}`} fill={entry.priceDisplay === pocInfo?.priceDisplay ? "hsla(var(--accent-h), var(--accent-s), calc(var(--accent-l) + 10%), 0.9)" : "hsl(var(--accent))"} />
             ))}
           </Bar>
         </BarChart>
@@ -189,4 +194,3 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar }) =>
 };
 
 export default GraphicalFootprintBar;
-
