@@ -1,5 +1,5 @@
 
-# Haitham Scraper
+# Binance Trailblazer
 
 This is a NextJS starter in Firebase Studio.
 

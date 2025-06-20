@@ -4,70 +4,88 @@
 
 @layer base {
   :root {
-    --background: 220 30% 97%; /* Softer, slightly cool off-white */
-    --foreground: 220 10% 25%; /* Dark, slightly desaturated blue-gray for text */
-    --card: 0 0% 100%; /* White */
-    --card-foreground: 220 10% 25%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 220 10% 25%;
-    --primary: 205 65% 50%; /* A slightly more refined, less saturated blue */
-    --primary-foreground: 0 0% 100%;
-    --secondary: 220 20% 92%; /* Lighter gray for secondary elements */
-    --secondary-foreground: 220 10% 25%;
-    --muted: 220 25% 95%; /* Muted gray, slightly cooler */
-    --muted-foreground: 220 10% 45%; /* Darker gray for muted text */
+    /* Updated to match PRD */
+    --background: 0 0% 96%; /* Light gray (#F5F5F5) */
+    --foreground: 220 10% 25%; /* Dark, slightly desaturated blue-gray for text - Kept from previous for general text */
     
-    --accent-h: 160; /* Hue for accent */
-    --accent-s: 70%; /* Saturation for accent */
-    --accent-l: 40%; /* Lightness for accent */
-    --accent: hsl(var(--accent-h) var(--accent-s) var(--accent-l)); /* A modern teal/green */
-    --accent-foreground: 0 0% 100%; /* White text on this accent for contrast */
+    --card: 0 0% 100%; /* White - Kept */
+    --card-foreground: 220 10% 25%; /* Kept */
     
-    --destructive-h: 0; /* Hue for destructive */
-    --destructive-s: 75%; /* Saturation for destructive */
-    --destructive-l: 55%; /* Lightness for destructive */
+    --popover: 0 0% 100%; /* Kept */
+    --popover-foreground: 220 10% 25%; /* Kept */
+    
+    --primary: 197 71% 56%; /* Vibrant blue (#29ABE2) */
+    --primary-foreground: 0 0% 100%; /* White text on primary - Kept */
+    
+    --secondary: 220 20% 92%; /* Lighter gray for secondary elements - Kept */
+    --secondary-foreground: 220 10% 25%; /* Kept */
+    
+    --muted: 220 25% 95%; /* Muted gray, slightly cooler - Kept */
+    --muted-foreground: 220 10% 45%; /* Darker gray for muted text - Kept */
+    
+    /* Updated Accent to match PRD's bright green */
+    --accent-h: 120; /* Hue for #90EE90 */
+    --accent-s: 73%; /* Saturation for #90EE90 */
+    --accent-l: 75%; /* Lightness for #90EE90 */
+    --accent: hsl(var(--accent-h) var(--accent-s) var(--accent-l)); /* Bright green (#90EE90) */
+    --accent-foreground: 0 0% 15%; /* Dark text for contrast on light green accent */
+    
+    --destructive-h: 0; /* Kept */
+    --destructive-s: 75%; /* Kept */
+    --destructive-l: 55%; /* Kept */
     --destructive: hsl(var(--destructive-h) var(--destructive-s) var(--destructive-l));
-    --destructive-foreground: 0 0% 98%;
+    --destructive-foreground: 0 0% 98%; /* Kept */
 
-    --border: 220 20% 88%; /* Slightly darker, cooler border */
-    --input: 220 20% 88%;
-    --ring: 205 65% 50%; /* Primary color for rings */
-    --chart-1: 205 65% 50%;
-    --chart-2: 160 70% 40%;
-    --chart-3: 220 50% 60%;
-    --chart-4: 30 80% 60%;
-    --chart-5: 270 70% 65%;
-    --radius: 0.75rem; /* Slightly larger radius for a softer look */
+    --border: 220 20% 88%; /* Kept */
+    --input: 220 20% 88%; /* Kept */
+    --ring: 197 71% 56%; /* Ring color to match new primary */
+    
+    --chart-1: 197 71% 56%; /* Chart color to match new primary */
+    --chart-2: 120 60% 65%; /* Adjusted green for charts, slightly darker than accent for visibility */
+    --chart-3: 220 50% 60%; /* Kept */
+    --chart-4: 30 80% 60%; /* Kept */
+    --chart-5: 270 70% 65%; /* Kept */
+    
+    --radius: 0.75rem; /* Kept */
 
-    /* Sidebar specific colors using the main theme as a base */
-    --sidebar-background: 220 30% 98%; /* Sidebar matches app background or slightly off */
-    --sidebar-foreground: 220 10% 30%; /* Darker text for sidebar readability */
-    --sidebar-primary: 205 65% 50%; /* Primary color for active/hover states */
-    --sidebar-primary-foreground: 0 0% 100%; /* White text on primary */
-    --sidebar-accent: 220 25% 93%; /* Light gray for hover */
-    --sidebar-accent-foreground: 220 10% 20%; /* Dark text on accent */
-    --sidebar-border: 220 20% 90%; /* Border color for sidebar */
-    --sidebar-ring: 205 65% 50%; /* Ring color for focus */
+    /* Sidebar specific colors - will inherit from above, but can be fine-tuned if needed */
+    /* For simplicity, let them derive. Specific sidebar overrides can be added if clashes occur. */
+    --sidebar-background: 0 0% 97%; /* Slightly off-white, lighter than main bg for subtle diff if needed */
+    --sidebar-foreground: 220 10% 30%; 
+    --sidebar-primary: 197 71% 56%; /* Match primary */
+    --sidebar-primary-foreground: 0 0% 100%; 
+    --sidebar-accent: 0 0% 93%; /* Lighter hover for sidebar items on a light bg */
+    --sidebar-accent-foreground: 220 10% 20%; 
+    --sidebar-border: 0 0% 90%; 
+    --sidebar-ring: 197 71% 56%; /* Match primary */
   }
-  .dark {
-    --background: 220 15% 10%; /* Very dark, cool blue-gray */
-    --foreground: 220 20% 90%; /* Light, cool gray for text */
-    --card: 220 15% 13%; /* Slightly lighter than background for card depth */
-    --card-foreground: 220 20% 90%;
-    --popover: 220 15% 13%;
-    --popover-foreground: 220 20% 90%;
-    --primary: 205 65% 55%; /* Primary, slightly lighter for dark mode */
-    --primary-foreground: 0 0% 100%; 
-    --secondary: 220 15% 20%; /* Darker secondary elements */
-    --secondary-foreground: 220 20% 90%;
-    --muted: 220 15% 18%; /* Dark muted */
-    --muted-foreground: 220 15% 65%;
 
-    --accent-h: 160;
-    --accent-s: 60%;
-    --accent-l: 45%;
-    --accent: hsl(var(--accent-h) var(--accent-s) var(--accent-l)); /* Accent, slightly brighter for dark mode */
-    --accent-foreground: 0 0% 100%;
+  .dark {
+    /* Dark theme adjustments - maintaining contrast with new primary/accent philosophy */
+    --background: 220 15% 10%; 
+    --foreground: 0 0% 90%; /* Adjusted for light gray F5F5F5 style, so dark text needs to be lighter */
+    
+    --card: 220 15% 13%; 
+    --card-foreground: 0 0% 90%;
+    
+    --popover: 220 15% 13%;
+    --popover-foreground: 0 0% 90%;
+    
+    --primary: 197 71% 60%; /* Slightly lighter primary for dark mode */
+    --primary-foreground: 0 0% 100%; 
+    
+    --secondary: 220 15% 20%; 
+    --secondary-foreground: 0 0% 90%;
+    
+    --muted: 220 15% 18%; 
+    --muted-foreground: 0 0% 65%;
+
+    /* Accent for dark mode - PRD's #90EE90 is light, so it can remain relatively bright */
+    --accent-h: 120;
+    --accent-s: 73%;
+    --accent-l: 65%; /* Slightly toned down for dark mode, but still bright green */
+    --accent: hsl(var(--accent-h) var(--accent-s) var(--accent-l));
+    --accent-foreground: 0 0% 10%; /* Very dark text on the bright green accent */
 
     --destructive-h: 0;
     --destructive-s: 65%;
@@ -77,21 +95,22 @@
 
     --border: 220 15% 25%;
     --input: 220 15% 25%;
-    --ring: 205 65% 55%;
-    --chart-1: 205 65% 55%;
-    --chart-2: 160 60% 45%;
+    --ring: 197 71% 60%; /* Ring color to match new dark primary */
+
+    --chart-1: 197 71% 60%; /* Chart color to match new dark primary */
+    --chart-2: 120 73% 65%; 
     --chart-3: 220 50% 65%;
     --chart-4: 30 80% 65%;
     --chart-5: 270 70% 70%;
 
-    --sidebar-background: 220 15% 11%; /* Dark sidebar background, slightly different from main */
-    --sidebar-foreground: 220 20% 85%; /* Light text for sidebar */
-    --sidebar-primary: 205 65% 55%;
+    --sidebar-background: 220 15% 11%; 
+    --sidebar-foreground: 0 0% 85%;
+    --sidebar-primary: 197 71% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 15% 16%; /* Darker accent for hover */
-    --sidebar-accent-foreground: 220 20% 95%;
+    --sidebar-accent: 220 15% 16%; 
+    --sidebar-accent-foreground: 0 0% 95%;
     --sidebar-border: 220 15% 22%;
-    --sidebar-ring: 205 65% 55%;
+    --sidebar-ring: 197 71% 60%;
   }
 
   body {

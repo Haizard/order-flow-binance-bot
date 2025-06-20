@@ -17,7 +17,7 @@ export function Logo({ className, ...props }: LogoProps) {
       {...props}
     >
       <TrendingUp className="h-6 w-6 text-primary" />
-      <span className="font-headline">Haitham Scraper</span>
+      <span className="font-headline">Binance Trailblazer</span>
     </Link>
   );
 }
