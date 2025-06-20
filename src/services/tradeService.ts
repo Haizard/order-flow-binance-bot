@@ -1,18 +1,16 @@
 
 'use server';
 /**
- * @fileOverview TradeService - Manages trade data using MongoDB, now with multi-user support.
+ * @fileOverview TradeService - Manages trade data using MongoDB, now with multi-user support and distinction for LONG/SHORT trades.
  */
 
 import type { Trade, NewTradeInput } from '@/types/trade';
 import { v4 as uuidv4 } from 'uuid'; // For generating unique IDs
-import { MongoClient, type Db, type Collection, type WithId } from 'mongodb';
+import { MongoClient, type Db, type Collection, type WithId, type UpdateFilter, type Document } from 'mongodb';
 
 console.log(`[${new Date().toISOString()}] [tradeService] Module loading. Attempting to read MONGODB_URI from process.env...`);
 
 let MONGODB_URI = process.env.MONGODB_URI;
-// THIS IS A TEMPORARY FALLBACK FOR DEVELOPMENT ONLY.
-// DO NOT USE IN PRODUCTION. CONFIGURE .env.local PROPERLY.
 const MONGODB_URI_FALLBACK = "mongodb+srv://haithammisape:hrz123@cluster0.quboghr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 
 if (!MONGODB_URI) {
@@ -22,10 +20,10 @@ if (!MONGODB_URI) {
   console.warn(`[${timestamp}] [tradeService] Attempting to use a hardcoded fallback URI (THIS IS A TEMPORARY WORKAROUND): ${MONGODB_URI_FALLBACK.substring(0, MONGODB_URI_FALLBACK.indexOf('@') + 1)}...`);
   console.warn(`[${timestamp}] [tradeService] PLEASE RESOLVE YOUR .env.local CONFIGURATION OR ENVIRONMENT SETUP.`);
   console.warn(`[${timestamp}] [tradeService] **************************************************************************************`);
-  MONGODB_URI = MONGODB_URI_FALLBACK; // Using the fallback
+  MONGODB_URI = MONGODB_URI_FALLBACK;
 } else {
   const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] [tradeService] MONGODB_URI successfully loaded from environment variables.`);
+  console.log(`[${timestamp}] [tradeService] MONGODB_URI successfully loaded from environment variables or using fallback.`);
 }
 
 
@@ -71,7 +69,7 @@ async function getTradesCollection(): Promise<Collection<Trade>> {
 
 /**
  * Creates a new trade for a specific user and saves it to MongoDB.
- * @param tradeInput - The details of the trade to create, including userId and initialStopLossPrice.
+ * @param tradeInput - The details of the trade to create, including userId, tradeDirection, and initialStopLossPrice.
  * @returns The created trade object.
  */
 export async function createTrade(tradeInput: NewTradeInput): Promise<Trade> {
@@ -80,14 +78,14 @@ export async function createTrade(tradeInput: NewTradeInput): Promise<Trade> {
     console.error(`[${logTimestamp}] tradeService (MongoDB): Attempted to create trade without userId for symbol: ${tradeInput.symbol}`);
     throw new Error('userId is required to create a trade.');
   }
-  console.log(`[${logTimestamp}] tradeService.createTrade (MongoDB) called for user: ${tradeInput.userId}, symbol: ${tradeInput.symbol}, SL: ${tradeInput.initialStopLossPrice}`);
+  console.log(`[${logTimestamp}] tradeService.createTrade (MongoDB) called for user: ${tradeInput.userId}, symbol: ${tradeInput.symbol}, direction: ${tradeInput.tradeDirection}, SL: ${tradeInput.initialStopLossPrice}`);
   const tradesCollection = await getTradesCollection();
   
   const newTrade: Trade = {
     id: uuidv4(), 
-    buyTimestamp: Date.now(),
-    status: 'ACTIVE_BOUGHT',
-    ...tradeInput, // Spreads userId, symbol, baseAsset, quoteAsset, buyPrice, quantity, initialStopLossPrice
+    entryTimestamp: Date.now(),
+    status: tradeInput.tradeDirection === 'LONG' ? 'ACTIVE_LONG_ENTRY' : 'ACTIVE_SHORT_ENTRY',
+    ...tradeInput, 
   };
 
   const result = await tradesCollection.insertOne(newTrade);
@@ -96,7 +94,7 @@ export async function createTrade(tradeInput: NewTradeInput): Promise<Trade> {
     throw new Error('Failed to create trade in database.');
   }
   
-  console.log(`[${logTimestamp}] tradeService (MongoDB): Trade created with ID ${newTrade.id} for user ${tradeInput.userId}`);
+  console.log(`[${logTimestamp}] tradeService (MongoDB): Trade created with ID ${newTrade.id} for user ${tradeInput.userId}, direction ${newTrade.tradeDirection}`);
   return newTrade; 
 }
 
@@ -116,7 +114,7 @@ export async function getActiveTrades(userId: string): Promise<Trade[]> {
   
   const activeTrades = await tradesCollection.find({
     userId: userId,
-    status: { $in: ['ACTIVE_BOUGHT', 'ACTIVE_TRAILING'] }
+    status: { $in: ['ACTIVE_LONG_ENTRY', 'ACTIVE_TRAILING_LONG', 'ACTIVE_SHORT_ENTRY', 'ACTIVE_TRAILING_SHORT'] }
   }).toArray();
 
   return activeTrades.map(tradeDoc => {
@@ -141,7 +139,7 @@ export async function getClosedTrades(userId: string): Promise<Trade[]> {
 
   const closedTradeDocs = await tradesCollection.find({
     userId: userId,
-    status: { $in: ['CLOSED_SOLD', 'CLOSED_ERROR'] }
+    status: { $in: ['CLOSED_EXITED', 'CLOSED_ERROR'] }
   }).toArray();
   
   console.log(`[${logTimestamp}] tradeService.getClosedTrades (MongoDB): Found ${closedTradeDocs.length} closed trade documents for user ${userId} from DB.`);
@@ -160,7 +158,11 @@ export async function getClosedTrades(userId: string): Promise<Trade[]> {
  * @returns The updated trade object.
  * @throws Error if the trade is not found or update fails.
  */
-export async function updateTrade(userId: string, tradeId: string, updates: Partial<Omit<Trade, 'id' | 'userId' | 'symbol' | 'buyPrice' | 'quantity' | 'buyTimestamp' | 'baseAsset' | 'quoteAsset' | 'initialStopLossPrice'>>): Promise<Trade> {
+export async function updateTrade(
+    userId: string, 
+    tradeId: string, 
+    updates: Partial<Omit<Trade, 'id' | 'userId' | 'symbol' | 'entryPrice' | 'quantity' | 'entryTimestamp' | 'baseAsset' | 'quoteAsset' | 'initialStopLossPrice' | 'tradeDirection'>>
+): Promise<Trade> {
   const logTimestamp = new Date().toISOString();
   if (!userId) {
     console.error(`[${logTimestamp}] tradeService (MongoDB): Attempted to update trade ID ${tradeId} without userId.`);
@@ -169,10 +171,10 @@ export async function updateTrade(userId: string, tradeId: string, updates: Part
   console.log(`[${logTimestamp}] tradeService.updateTrade (MongoDB) called for user: ${userId}, ID: ${tradeId} with updates:`, JSON.stringify(updates));
   const tradesCollection = await getTradesCollection();
 
-  const finalUpdates = { ...updates };
-  if (finalUpdates.status === 'CLOSED_SOLD' || finalUpdates.status === 'CLOSED_ERROR') {
-    if (!finalUpdates.sellTimestamp) {
-      finalUpdates.sellTimestamp = Date.now();
+  const finalUpdates: Partial<Document> = { ...updates }; // Use Document type for $set
+  if (finalUpdates.status === 'CLOSED_EXITED' || finalUpdates.status === 'CLOSED_ERROR') {
+    if (!finalUpdates.exitTimestamp) {
+      finalUpdates.exitTimestamp = Date.now();
     }
   }
 
@@ -240,4 +242,3 @@ export async function clearUserTradesFromDb(userId: string): Promise<void> {
   const deleteResult = await tradesCollection.deleteMany({ userId: userId });
   console.log(`[${logTimestamp}] tradeService.clearUserTradesFromDb (MongoDB) - Successfully deleted ${deleteResult.deletedCount} trades for user ${userId}.`);
 }
-

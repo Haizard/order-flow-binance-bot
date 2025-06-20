@@ -1,28 +1,44 @@
 
 export interface Trade {
   id: string;
-  userId: string; // Added for multi-user support
+  userId: string;
   symbol: string;
   baseAsset: string;
   quoteAsset: string;
-  buyPrice: number;
+  entryPrice: number;         // Renamed from buyPrice
   quantity: number;
-  buyTimestamp: number;
-  status: 'ACTIVE_BOUGHT' | 'ACTIVE_TRAILING' | 'CLOSED_SOLD' | 'CLOSED_ERROR';
-  sellPrice?: number;
-  sellTimestamp?: number;
+  entryTimestamp: number;     // Renamed from buyTimestamp
+  tradeDirection: 'LONG' | 'SHORT'; // Added to specify trade direction
+  status:
+    | 'ACTIVE_LONG_ENTRY'
+    | 'ACTIVE_TRAILING_LONG'
+    | 'ACTIVE_SHORT_ENTRY'
+    | 'ACTIVE_TRAILING_SHORT'
+    | 'CLOSED_EXITED'         // Generalized from CLOSED_SOLD
+    | 'CLOSED_ERROR';
+  exitPrice?: number;          // Renamed from sellPrice
+  exitTimestamp?: number;      // Renamed from sellTimestamp
   pnl?: number;
   pnlPercentage?: number;
-  initialStopLossPrice?: number; // Added for initial stop-loss
-  // For trailing stop: the highest price reached since trailing was activated
-  trailingHighPrice?: number; 
-  // For logging any errors during automated sell attempts
-  sellError?: string; 
+  initialStopLossPrice?: number;
+  trailingHighPrice?: number;  // For trailing stop of LONG trades (highest price reached)
+  trailingLowPrice?: number;   // For trailing stop of SHORT trades (lowest price reached)
+  sellError?: string;          // Kept for logging specific sell/exit errors
 }
 
 // Input type for creating a new trade
-export type NewTradeInput = Pick<Trade, 'userId' | 'symbol' | 'baseAsset' | 'quoteAsset' | 'buyPrice' | 'quantity' | 'initialStopLossPrice'>;
+export type NewTradeInput = Pick<
+  Trade,
+  | 'userId'
+  | 'symbol'
+  | 'baseAsset'
+  | 'quoteAsset'
+  | 'entryPrice'
+  | 'quantity'
+  | 'initialStopLossPrice'
+  | 'tradeDirection'
+  // entryTimestamp will be set by the service
+>;
 
-// Input type for updating a trade to a sold status
-export type SellTradeInput = Pick<Trade, 'sellPrice' | 'pnl' | 'pnlPercentage'>;
-
+// Input type for updating a trade to an exited status
+export type ExitTradeInput = Pick<Trade, 'exitPrice' | 'pnl' | 'pnlPercentage'>;
