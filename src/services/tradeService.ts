@@ -71,7 +71,7 @@ async function getTradesCollection(): Promise<Collection<Trade>> {
 
 /**
  * Creates a new trade for a specific user and saves it to MongoDB.
- * @param tradeInput - The details of the trade to create, including userId.
+ * @param tradeInput - The details of the trade to create, including userId and initialStopLossPrice.
  * @returns The created trade object.
  */
 export async function createTrade(tradeInput: NewTradeInput): Promise<Trade> {
@@ -80,14 +80,14 @@ export async function createTrade(tradeInput: NewTradeInput): Promise<Trade> {
     console.error(`[${logTimestamp}] tradeService (MongoDB): Attempted to create trade without userId for symbol: ${tradeInput.symbol}`);
     throw new Error('userId is required to create a trade.');
   }
-  console.log(`[${logTimestamp}] tradeService.createTrade (MongoDB) called for user: ${tradeInput.userId}, symbol: ${tradeInput.symbol}`);
+  console.log(`[${logTimestamp}] tradeService.createTrade (MongoDB) called for user: ${tradeInput.userId}, symbol: ${tradeInput.symbol}, SL: ${tradeInput.initialStopLossPrice}`);
   const tradesCollection = await getTradesCollection();
   
   const newTrade: Trade = {
-    ...tradeInput,
     id: uuidv4(), 
     buyTimestamp: Date.now(),
     status: 'ACTIVE_BOUGHT',
+    ...tradeInput, // Spreads userId, symbol, baseAsset, quoteAsset, buyPrice, quantity, initialStopLossPrice
   };
 
   const result = await tradesCollection.insertOne(newTrade);
@@ -160,7 +160,7 @@ export async function getClosedTrades(userId: string): Promise<Trade[]> {
  * @returns The updated trade object.
  * @throws Error if the trade is not found or update fails.
  */
-export async function updateTrade(userId: string, tradeId: string, updates: Partial<Omit<Trade, 'id' | 'userId' | 'symbol' | 'buyPrice' | 'quantity' | 'buyTimestamp' | 'baseAsset' | 'quoteAsset'>>): Promise<Trade> {
+export async function updateTrade(userId: string, tradeId: string, updates: Partial<Omit<Trade, 'id' | 'userId' | 'symbol' | 'buyPrice' | 'quantity' | 'buyTimestamp' | 'baseAsset' | 'quoteAsset' | 'initialStopLossPrice'>>): Promise<Trade> {
   const logTimestamp = new Date().toISOString();
   if (!userId) {
     console.error(`[${logTimestamp}] tradeService (MongoDB): Attempted to update trade ID ${tradeId} without userId.`);

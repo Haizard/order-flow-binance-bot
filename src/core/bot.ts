@@ -19,8 +19,9 @@ import { calculateAllBotMetrics, type BotOrderFlowMetrics } from './botMetricCal
 
 
 const DEMO_USER_ID_BOT_FALLBACK = "bot_fallback_user";
-const FOOTPRINT_BARS_FOR_METRICS = 20; // Number of completed bars to fetch for metric calculation
-const MIN_FOOTPRINT_BARS_FOR_ACTION = 5; // Minimum bars needed to consider metrics reliable
+const FOOTPRINT_BARS_FOR_METRICS = 20; 
+const MIN_FOOTPRINT_BARS_FOR_ACTION = 5; 
+const INITIAL_STOP_LOSS_PERCENTAGE = 1.5; // e.g., 1.5% initial stop loss
 
 function getAssetsFromSymbol(symbol: string): { baseAsset: string, quoteAsset: string } {
     const commonQuoteAssets = ['USDT', 'BUSD', 'TUSD', 'FDUSD'];
@@ -67,8 +68,10 @@ export async function runBotCycle(
   const buyAmountUsdToUse = typeof userSettings.buyAmountUsd === 'number' && userSettings.buyAmountUsd > 0 ? userSettings.buyAmountUsd : defaultSettingsValues.buyAmountUsd;
   const trailActivationProfitToUse = typeof userSettings.trailActivationProfit === 'number' && userSettings.trailActivationProfit > 0 ? userSettings.trailActivationProfit : defaultSettingsValues.trailActivationProfit;
   const trailDeltaToUse = typeof userSettings.trailDelta === 'number' && userSettings.trailDelta > 0 ? userSettings.trailDelta : defaultSettingsValues.trailDelta;
+  // const dipPercentageToUse = typeof userSettings.dipPercentage === 'number' ? userSettings.dipPercentage : defaultSettingsValues.dipPercentage;
 
-  console.log(`[${botRunTimestamp}] Bot cycle STARTED for user ${userId}. Strategy (General Params): BuyAmt: $${buyAmountUsdToUse}, TrailProfit: ${trailActivationProfitToUse}%, TrailDelta: ${trailDeltaToUse}%`);
+
+  console.log(`[${botRunTimestamp}] Bot cycle STARTED for user ${userId}. Strategy (General Params): BuyAmt: $${buyAmountUsdToUse}, TrailProfit: ${trailActivationProfitToUse}%, TrailDelta: ${trailDeltaToUse}%, InitStopLoss: ${INITIAL_STOP_LOSS_PERCENTAGE}%`);
 
   let liveMarketData: Ticker24hr[];
   if (marketData) {
@@ -98,7 +101,6 @@ export async function runBotCycle(
   for (const symbol of MONITORED_MARKET_SYMBOLS) {
     const currentTicker = liveMarketData.find(t => t.symbol === symbol);
     if (!currentTicker) {
-      // console.warn(`[${botRunTimestamp}] Bot (User ${userId}): No live ticker data found for ${symbol} in fetched market data. Skipping.`);
       continue;
     }
     const currentPrice = parseFloat(currentTicker.lastPrice);
@@ -111,22 +113,18 @@ export async function runBotCycle(
     const currentAggregatingBar = getCurrentAggregatingBar(symbol);
 
     if (completedFootprintBars.length < MIN_FOOTPRINT_BARS_FOR_ACTION) { 
-      console.log(`[${botRunTimestamp}] Bot (User ${userId}) [${symbol}]: Not enough completed footprint bars (${completedFootprintBars.length}) for metric-based decisions. Min required: ${MIN_FOOTPRINT_BARS_FOR_ACTION}.`);
+      // console.log(`[${botRunTimestamp}] Bot (User ${userId}) [${symbol}]: Not enough completed footprint bars (${completedFootprintBars.length}) for metric-based decisions. Min required: ${MIN_FOOTPRINT_BARS_FOR_ACTION}.`);
       continue;
     }
     
     const metrics: BotOrderFlowMetrics = await calculateAllBotMetrics(completedFootprintBars, currentAggregatingBar);
-    // console.log(`[${botRunTimestamp}] Bot (User ${userId}) [${symbol}]: Metrics: Price=${currentPrice.toFixed(4)}, VAL=${metrics.sessionVal?.toFixed(4)}, POC=${metrics.sessionPoc?.toFixed(4)}, BarChar='${metrics.latestBarCharacter}', Divergence='${metrics.divergenceSignals.join(', ') || 'None'}'`);
-
     const existingTradeForSymbol = activeTradeSymbols.includes(symbol);
 
     if (!existingTradeForSymbol) {
-      // === NEW ENTRY LOGIC ===
       let shouldBuy = false;
       let entryReason = "";
       const isBullishBarCharacter = metrics.latestBarCharacter === "Price Buy" || metrics.latestBarCharacter === "Delta Buy";
       
-      // Condition 1: Price near Session VAL & Bullish Bar Character
       const val = metrics.sessionVal;
       let priceNearVal = false;
       if (val !== null) {
@@ -134,7 +132,7 @@ export async function runBotCycle(
         priceNearVal = (currentPrice >= val && currentPrice <= valThresholdUpper);
         if (!priceNearVal && currentAggregatingBar?.low) priceNearVal = currentAggregatingBar.low <= val;
         if (!priceNearVal && completedFootprintBars.length > 0) {
-            const lastCompletedBar = completedFootprintBars[completedFootprintBars.length -1]; // Newest completed bar
+            const lastCompletedBar = completedFootprintBars[completedFootprintBars.length -1]; 
             if(lastCompletedBar.low <= val) priceNearVal = true;
         }
       }
@@ -144,15 +142,16 @@ export async function runBotCycle(
         entryReason = `Price near VAL (${val?.toFixed(4)}) & Bullish Bar Character ('${metrics.latestBarCharacter}')`;
       }
 
-      // Condition 2 (Alternative): Bullish Divergence + Bullish Bar Character
       if (!shouldBuy && metrics.divergenceSignals.includes("Bullish Delta Divergence") && isBullishBarCharacter) {
         shouldBuy = true;
         entryReason = `Bullish Delta Divergence & Bullish Bar Character ('${metrics.latestBarCharacter}')`;
       }
 
       if (shouldBuy) {
-           console.log(`[${botRunTimestamp}] Bot (User ${userId}): METRICS-BASED BUY SIGNAL for ${symbol} at ${currentPrice.toFixed(4)}. Reason: ${entryReason}. Amount: $${buyAmountUsdToUse}`);
-           const quantityToBuy = buyAmountUsdToUse / currentPrice;
+           const entryPrice = currentPrice;
+           const initialStopLossPrice = entryPrice * (1 - INITIAL_STOP_LOSS_PERCENTAGE / 100);
+           console.log(`[${botRunTimestamp}] Bot (User ${userId}): METRICS-BASED BUY SIGNAL for ${symbol} at ${entryPrice.toFixed(4)}. Reason: ${entryReason}. Amount: $${buyAmountUsdToUse}. Initial SL: $${initialStopLossPrice.toFixed(4)}`);
+           const quantityToBuy = buyAmountUsdToUse / entryPrice;
            const { baseAsset, quoteAsset } = getAssetsFromSymbol(symbol);
            try {
              await tradeService.createTrade({
@@ -160,10 +159,11 @@ export async function runBotCycle(
                symbol: symbol,
                baseAsset,
                quoteAsset,
-               buyPrice: currentPrice,
+               buyPrice: entryPrice,
                quantity: quantityToBuy,
+               initialStopLossPrice: initialStopLossPrice,
              });
-             console.log(`[${botRunTimestamp}] Bot (User ${userId}): DB TRADE RECORD CREATED for BUY of ${quantityToBuy.toFixed(6)} ${baseAsset} (${symbol}) at $${currentPrice.toFixed(4)}.`);
+             console.log(`[${botRunTimestamp}] Bot (User ${userId}): DB TRADE RECORD CREATED for BUY of ${quantityToBuy.toFixed(6)} ${baseAsset} (${symbol}) at $${entryPrice.toFixed(4)}.`);
              activeTradeSymbols.push(symbol); 
            } catch (error) {
              console.error(`[${botRunTimestamp}] Bot (User ${userId}): Error creating trade record for ${symbol}:`, error);
@@ -189,10 +189,39 @@ export async function runBotCycle(
       continue;
     }
 
-    // --- Proactive Exit Logic ---
+    // --- Initial Stop-Loss Check (for ACTIVE_BOUGHT trades only) ---
+    if (trade.status === 'ACTIVE_BOUGHT' && trade.initialStopLossPrice && currentPriceForTrade <= trade.initialStopLossPrice) {
+        const sellPrice = trade.initialStopLossPrice; // Or currentPriceForTrade if simulating slippage beyond SL
+        const pnlValue = (sellPrice - trade.buyPrice) * trade.quantity;
+        const pnlPercentageValue = (trade.buyPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.buyPrice * trade.quantity)) * 100;
+        
+        console.log(`[${botRunTimestamp}] Bot (User ${userId}): INITIAL STOP-LOSS HIT for ${trade.symbol} ID ${trade.id} at $${currentPriceForTrade.toFixed(4)} (SL: $${trade.initialStopLossPrice.toFixed(4)}). Selling at $${sellPrice.toFixed(4)}.`);
+        try {
+          await tradeService.updateTrade(userId, trade.id, {
+            status: 'CLOSED_SOLD',
+            sellPrice: sellPrice,
+            sellTimestamp: Date.now(),
+            pnl: pnlValue,
+            pnlPercentage: pnlPercentageValue,
+          });
+          console.log(`[${botRunTimestamp}] Bot (User ${userId}): SOLD (Initial SL) ${trade.quantity.toFixed(6)} ${trade.baseAsset} (${trade.symbol}) ID ${trade.id}. P&L: $${pnlValue.toFixed(2)} (${pnlPercentageValue.toFixed(2)}%).`);
+        } catch (error) {
+          console.error(`[${botRunTimestamp}] Bot (User ${userId}): Error closing trade ${trade.id} via initial stop-loss:`, error);
+          try {
+            await tradeService.updateTrade(userId, trade.id, { status: 'CLOSED_ERROR', sellError: error instanceof Error ? error.message : String(error) });
+          } catch (dbError) {
+            console.error(`[${botRunTimestamp}] Bot (User ${userId}): CRITICAL - Failed to mark trade ${trade.id} as error after initial SL sell failure:`, dbError);
+          }
+        }
+        continue; // Trade closed, move to next active trade
+    }
+
+
+    // --- Proactive Exit Logic (if not stopped by initial SL) ---
     const activeTradeFootprintBars = getLatestFootprintBars(trade.symbol, FOOTPRINT_BARS_FOR_METRICS);
     const activeTradeAggregatingBar = getCurrentAggregatingBar(trade.symbol);
 
+    let proactiveExitTriggered = false;
     if (activeTradeFootprintBars.length >= MIN_FOOTPRINT_BARS_FOR_ACTION) {
         const activeTradeMetrics = await calculateAllBotMetrics(activeTradeFootprintBars, activeTradeAggregatingBar);
         const isBearishBarCharacterForExit = activeTradeMetrics.latestBarCharacter === "Price Sell" || activeTradeMetrics.latestBarCharacter === "Delta Sell";
@@ -204,7 +233,7 @@ export async function runBotCycle(
             priceNearVah = (currentPriceForTrade >= vahThresholdLower && currentPriceForTrade <= vah);
             if (!priceNearVah && activeTradeAggregatingBar?.high) priceNearVah = activeTradeAggregatingBar.high >= vah;
             if (!priceNearVah && activeTradeFootprintBars.length > 0) {
-                const lastCompleted = activeTradeFootprintBars[activeTradeFootprintBars.length - 1]; // Newest completed
+                const lastCompleted = activeTradeFootprintBars[activeTradeFootprintBars.length - 1]; 
                 if (lastCompleted.high >= vah) priceNearVah = true;
             }
         }
@@ -224,7 +253,7 @@ export async function runBotCycle(
                 pnlPercentage: pnlPercentageValue,
               });
               console.log(`[${botRunTimestamp}] Bot (User ${userId}): SOLD (Proactive Exit) ${trade.quantity.toFixed(6)} ${trade.baseAsset} (${trade.symbol}) ID ${trade.id}. P&L: $${pnlValue.toFixed(2)} (${pnlPercentageValue.toFixed(2)}%).`);
-              continue; // Trade closed, move to next active trade
+              proactiveExitTriggered = true;
             } catch (error) {
               console.error(`[${botRunTimestamp}] Bot (User ${userId}): Error closing trade ${trade.id} via proactive exit:`, error);
               try {
@@ -232,14 +261,16 @@ export async function runBotCycle(
               } catch (dbError) {
                 console.error(`[${botRunTimestamp}] Bot (User ${userId}): CRITICAL - Failed to mark trade ${trade.id} as error after proactive sell failure:`, dbError);
               }
-              continue; // Move to next trade even if error marking occurred
+              proactiveExitTriggered = true; // Still consider it handled to avoid trailing stop logic this cycle if error occurred
             }
         }
-    } else {
-        // console.log(`[${botRunTimestamp}] Bot (User ${userId}) [${trade.symbol}]: Not enough footprint data for proactive exit for active trade. Relying on trailing stop.`);
+    }
+    
+    if (proactiveExitTriggered) {
+        continue; // Trade was handled by proactive exit, move to next.
     }
 
-    // --- Trailing Stop Logic (if not proactively exited) ---
+    // --- Trailing Stop Logic (if not proactively exited and not hit by initial SL) ---
     const profitPercentage = ((currentPriceForTrade - trade.buyPrice) / trade.buyPrice) * 100;
 
     if (trade.status === 'ACTIVE_BOUGHT') {
@@ -270,7 +301,6 @@ export async function runBotCycle(
         newHighPrice = currentPriceForTrade;
         try {
             await tradeService.updateTrade(userId, trade.id, { trailingHighPrice: newHighPrice });
-            // console.log(`[${botRunTimestamp}] Bot (User ${userId}): Trade ${trade.symbol} (ID: ${trade.id}) new high for trailing: $${newHighPrice.toFixed(4)}.`);
         } catch (error) {
             console.error(`[${botRunTimestamp}] Bot (User ${userId}): Error updating new trailingHighPrice for ${trade.id}:`, error);
         }
@@ -303,4 +333,3 @@ export async function runBotCycle(
   }
   console.log(`[${botRunTimestamp}] Bot cycle ENDED for user ${userId}.`);
 }
-

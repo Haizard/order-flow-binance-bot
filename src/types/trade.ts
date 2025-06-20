@@ -13,6 +13,7 @@ export interface Trade {
   sellTimestamp?: number;
   pnl?: number;
   pnlPercentage?: number;
+  initialStopLossPrice?: number; // Added for initial stop-loss
   // For trailing stop: the highest price reached since trailing was activated
   trailingHighPrice?: number; 
   // For logging any errors during automated sell attempts
@@ -20,7 +21,8 @@ export interface Trade {
 }
 
 // Input type for creating a new trade
-export type NewTradeInput = Pick<Trade, 'userId' | 'symbol' | 'baseAsset' | 'quoteAsset' | 'buyPrice' | 'quantity'>;
+export type NewTradeInput = Pick<Trade, 'userId' | 'symbol' | 'baseAsset' | 'quoteAsset' | 'buyPrice' | 'quantity' | 'initialStopLossPrice'>;
 
 // Input type for updating a trade to a sold status
 export type SellTradeInput = Pick<Trade, 'sellPrice' | 'pnl' | 'pnlPercentage'>;
+
