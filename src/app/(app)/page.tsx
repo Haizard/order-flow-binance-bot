@@ -197,8 +197,14 @@ export default async function DashboardPage() {
                  <TrendingDown className="mr-3 h-6 w-6 text-primary" />
                  Potential Dip Buys (24hr ≤ {dipPercentageToUse}%)
             </CardTitle>
-            <CardDescription className="flex items-center text-sm text-muted-foreground">
-                <Info className="h-4 w-4 mr-1.5 flex-shrink-0" /> Based on live market data & your strategy. Auto-refreshes. Excludes active bot trades.
+            <CardDescription className="space-y-1 text-sm text-muted-foreground">
+                <span className="flex items-center">
+                    <Info className="h-4 w-4 mr-1.5 flex-shrink-0" />
+                    Shows symbols meeting your set dip percentage from Settings. Excludes active bot trades.
+                </span>
+                <span className="block text-xs pl-0 leading-relaxed">
+                    Note: The bot's actual entries use advanced order flow metrics (VAH/VAL, Bar Character, Divergence) for precision, not just this percentage dip. This list offers a general market scan.
+                </span>
             </CardDescription>
         </CardHeader>
         {liveMarketData.length > 0 ? ( potentialDipBuys.length > 0 ? (
@@ -239,3 +245,4 @@ export default async function DashboardPage() {
     </div>
   );
 }
+
