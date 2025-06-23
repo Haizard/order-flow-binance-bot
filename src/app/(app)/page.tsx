@@ -11,7 +11,6 @@ import type { Ticker24hr } from '@/types/binance';
 import type { SettingsFormValues } from '@/components/settings/settings-form';
 import { getSettings } from '@/services/settingsService';
 import { runBotCycle } from '@/core/bot';
-import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy';
 import * as tradeService from '@/services/tradeService';
 import { defaultSettingsValues } from '@/config/settings-defaults';
 
@@ -22,6 +21,10 @@ const DEMO_USER_ID = "user123";
 
 async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
   console.log(`[${new Date().toISOString()}] DashboardPage: getMarketData called for symbols:`, symbols);
+  if (!symbols || symbols.length === 0) {
+    console.warn(`[${new Date().toISOString()}] DashboardPage: getMarketData called with no symbols.`);
+    return [];
+  }
   const tickerPromises = symbols.map(async (symbol) => {
     try {
       const tickerData = await get24hrTicker(symbol.toUpperCase());
@@ -101,13 +104,17 @@ export default async function DashboardPage() {
   let userSettings: SettingsFormValues;
   try {
     userSettings = await getSettings(DEMO_USER_ID);
-    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded user settings for ${DEMO_USER_ID}. API Key Present: ${!!userSettings.binanceApiKey}, Dip Percentage: ${userSettings.dipPercentage}`);
+    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded user settings for ${DEMO_USER_ID}. API Key Present: ${!!userSettings.binanceApiKey}, Dip Percentage: ${userSettings.dipPercentage}, Monitored Symbols: ${userSettings.monitoredSymbols.join(',')}`);
   } catch (error) {
     console.error(`[${new Date().toISOString()}] DashboardPage: Failed to load user settings for ${DEMO_USER_ID}, using defaults for bot cycle and display:`, error);
     userSettings = { ...defaultSettingsValues, userId: DEMO_USER_ID };
   }
   
-  const liveMarketData = await getMarketData(MONITORED_MARKET_SYMBOLS);
+  const monitoredSymbolsToUse = userSettings.monitoredSymbols && userSettings.monitoredSymbols.length > 0
+    ? userSettings.monitoredSymbols
+    : defaultSettingsValues.monitoredSymbols;
+
+  const liveMarketData = await getMarketData(monitoredSymbolsToUse);
 
   const userApiSettingsForBot = {
       binanceApiKey: userSettings.binanceApiKey,
@@ -173,7 +180,7 @@ export default async function DashboardPage() {
             Market Overview
           </CardTitle>
           <CardDescription className="flex items-center text-sm text-muted-foreground">
-            <Info className="h-4 w-4 mr-1.5 flex-shrink-0" /> Live market data. Auto-refreshes. Some symbols may be unavailable on Testnet.
+            <Info className="h-4 w-4 mr-1.5 flex-shrink-0" /> Live market data for your monitored symbols. Auto-refreshes.
           </CardDescription>
         </CardHeader>
         {liveMarketData.length > 0 ? (
@@ -187,8 +194,8 @@ export default async function DashboardPage() {
             <CardContent className="pt-6">
               <div className="flex flex-col items-center justify-center py-10 text-center">
                 <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
-                <p className="text-muted-foreground">Could not load live market data for some symbols.</p>
-                <p className="text-xs text-muted-foreground mt-1">Please check your connection or symbol list. Some symbols might be unavailable.</p>
+                <p className="text-muted-foreground">Could not load live market data.</p>
+                <p className="text-xs text-muted-foreground mt-1">Please check your connection or the symbols in your settings.</p>
               </div>
             </CardContent>
           </Card>
@@ -204,7 +211,7 @@ export default async function DashboardPage() {
             <CardDescription className="space-y-1 text-sm text-muted-foreground">
                 <span className="flex items-center">
                     <Info className="h-4 w-4 mr-1.5 flex-shrink-0" />
-                    Shows symbols meeting your set dip percentage from Settings. Excludes active bot trades.
+                    Shows symbols from your monitored list meeting the dip %. Excludes active bot trades.
                 </span>
                 <span className="block text-xs pl-0 leading-relaxed">
                     Note: The bot's actual entries use advanced order flow metrics (VAH/VAL, Bar Character, Divergence) for precision, not just this percentage dip. This list offers a general market scan.

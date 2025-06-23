@@ -117,14 +117,16 @@ export async function saveSettings(userId: string, settings: SettingsFormValues)
       const defaultValue = defaultSettingsValues[typedKey];
       
       // Use the provided value if it's not undefined or an empty string, otherwise use the default.
-      // Coerce to number if the default value is a number.
       if (typeof defaultValue === 'number') {
         (acc as any)[typedKey] = value !== undefined && value !== '' ? Number(value) : defaultValue;
-      } else {
+      } else if (Array.isArray(defaultValue)) {
+         (acc as any)[typedKey] = Array.isArray(value) && value.length > 0 ? value : defaultValue;
+      }
+      else {
         (acc as any)[typedKey] = value ?? defaultValue;
       }
       return acc;
-  }, {} as Omit<SettingsFormValues, 'userId' | 'binanceApiKey' | 'binanceSecretKey'> & { binanceApiKey?: string; binanceSecretKey?: string });
+  }, {} as Omit<SettingsFormValues, 'userId' | 'binanceApiKey' | 'binanceSecretKey'> & { binanceApiKey?: string; binanceSecretKey?: string; monitoredSymbols: string[] });
   
   // Handle API keys separately as they are optional strings and should be saved even if empty.
   settingsDataToSet.binanceApiKey = settings.binanceApiKey || "";

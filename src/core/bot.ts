@@ -6,11 +6,9 @@
 import type { SettingsFormValues } from '@/components/settings/settings-form';
 import { getSettings } from '@/services/settingsService';
 import type { Ticker24hr } from '@/types/binance';
-import type { Trade } from '@/types/trade';
 import * as tradeService from '@/services/tradeService';
 import { get24hrTicker } from '@/services/binance';
 import { defaultSettingsValues } from '@/config/settings-defaults';
-import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy';
 import { 
     getLatestFootprintBars,
     getCurrentAggregatingBar,
@@ -72,17 +70,23 @@ export async function runBotCycle(
     valueAreaPercentage,
     imbalanceRatioThreshold,
     stackedImbalanceCount,
-    swingLookaroundWindow
+    swingLookaroundWindow,
+    monitoredSymbols,
   } = userSettings;
   
+  const monitoredSymbolsToUse = monitoredSymbols && monitoredSymbols.length > 0 
+    ? monitoredSymbols
+    : defaultSettingsValues.monitoredSymbols;
+
   console.log(`[${botRunTimestamp}] Bot cycle STARTED for user ${userId}. Strategy Params: BuyAmt: $${buyAmountUsd}, TrailProfit: ${trailActivationProfit}%, TrailDelta: ${trailDelta}%, InitStopLoss: ${initialStopLossPercentage}%, MaxTrades: ${maxActiveTrades}`);
+  console.log(`[${botRunTimestamp}] Bot (User ${userId}): Monitoring symbols: ${monitoredSymbolsToUse.join(',')}`);
 
   let liveMarketData: Ticker24hr[];
   if (marketData) {
     liveMarketData = marketData;
   } else {
     try {
-      const tickerPromises = MONITORED_MARKET_SYMBOLS.map(symbol => get24hrTicker(symbol).catch(e => {
+      const tickerPromises = monitoredSymbolsToUse.map(symbol => get24hrTicker(symbol).catch(e => {
           console.error(`[${botRunTimestamp}] Bot (User ${userId}): Failed to fetch ticker for ${symbol} during market data gathering:`, e instanceof Error ? e.message : String(e));
           return null;
       }));
@@ -100,7 +104,7 @@ export async function runBotCycle(
   const canOpenNewTrade = activeTradesFromDb.length < maxActiveTrades;
 
   if (canOpenNewTrade) {
-    for (const symbol of MONITORED_MARKET_SYMBOLS) {
+    for (const symbol of monitoredSymbolsToUse) {
         if (activeTradeSymbols.includes(symbol)) continue;
 
         const currentTicker = liveMarketData.find(t => t.symbol === symbol);

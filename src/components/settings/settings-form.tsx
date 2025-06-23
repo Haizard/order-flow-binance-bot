@@ -16,6 +16,7 @@ import {
   FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, KeyRound, CheckCircle, Loader2, Save, Zap, ShieldAlert, Trash2, TriangleAlert, SlidersHorizontal } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -33,7 +34,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { getAccountInformation } from "@/services/binance";
 import { getSettings, saveSettings } from "@/services/settingsService";
-import { defaultSettingsValues } from "@/config/settings-defaults";
+import { defaultSettingsValues, defaultMonitoredSymbols } from "@/config/settings-defaults";
 import { handleClearUserTrades } from "@/app/(app)/settings/actions";
 
 
@@ -44,6 +45,8 @@ const settingsFormSchema = z.object({
   userId: z.string().min(1, "User ID is required."),
   binanceApiKey: z.string().optional(),
   binanceSecretKey: z.string().optional(),
+  // New symbols field
+  monitoredSymbols: z.string().min(1, "At least one symbol is required."),
   // Basic Strategy
   dipPercentage: z.coerce.number()
     .max(0, "Dip percentage should be 0 or negative (e.g., -5 for a 5% dip).")
@@ -90,12 +93,20 @@ const settingsFormSchema = z.object({
     .optional(),
 });
 
-export type SettingsFormValues = z.infer<typeof settingsFormSchema>;
+export type SettingsFormValues = Omit<z.infer<typeof settingsFormSchema>, 'monitoredSymbols'> & {
+  monitoredSymbols: string[];
+};
+type FormSchemaType = z.infer<typeof settingsFormSchema>;
+
 
 export function SettingsForm() {
-  const form = useForm<SettingsFormValues>({
+  const form = useForm<FormSchemaType>({
     resolver: zodResolver(settingsFormSchema),
-    defaultValues: { ...defaultSettingsValues, userId: DEMO_USER_ID },
+    defaultValues: {
+       ...defaultSettingsValues,
+       userId: DEMO_USER_ID,
+       monitoredSymbols: defaultMonitoredSymbols.join(', '),
+     },
     mode: "onChange",
   });
 
@@ -113,8 +124,19 @@ export function SettingsForm() {
       setIsLoadingSettings(true);
       try {
         const savedSettings = await getSettings(DEMO_USER_ID);
-        const fullDefaultsWithUserId = { ...defaultSettingsValues, userId: DEMO_USER_ID };
-        form.reset({ ...fullDefaultsWithUserId, ...savedSettings }); 
+        const fullDefaultsWithUserId = {
+             ...defaultSettingsValues,
+             userId: DEMO_USER_ID,
+             monitoredSymbols: defaultMonitoredSymbols.join(', '),
+        };
+        const settingsForForm = {
+            ...fullDefaultsWithUserId,
+            ...savedSettings,
+            monitoredSymbols: (savedSettings.monitoredSymbols && savedSettings.monitoredSymbols.length > 0)
+              ? savedSettings.monitoredSymbols.join(', ')
+              : defaultMonitoredSymbols.join(', '),
+        };
+        form.reset(settingsForForm);
       } catch (error) {
         console.error(`[${new Date().toISOString()}] SettingsForm: Failed to load settings for user ${DEMO_USER_ID}:`, error);
         toast({
@@ -122,7 +144,11 @@ export function SettingsForm() {
           description: "Could not load your saved settings. Using defaults.",
           variant: "destructive",
         });
-        form.reset({ ...defaultSettingsValues, userId: DEMO_USER_ID });
+        form.reset({
+            ...defaultSettingsValues,
+            userId: DEMO_USER_ID,
+            monitoredSymbols: defaultMonitoredSymbols.join(', '),
+        });
       } finally {
         setIsLoadingSettings(false);
       }
@@ -161,23 +187,28 @@ export function SettingsForm() {
     }
   }
 
-  async function onSubmit(data: SettingsFormValues) {
+  async function onSubmit(data: FormSchemaType) {
     setIsSaving(true);
+
+    const symbolsArray = data.monitoredSymbols.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+
+    const settingsToSave: SettingsFormValues = {
+        ...data,
+        monitoredSymbols: symbolsArray,
+    };
+    
     // Coerce all numeric fields to ensure they are saved as numbers, using defaults as fallbacks.
-    const settingsToSave = Object.keys(defaultSettingsValues).reduce((acc, key) => {
-        const formValue = data[key as keyof SettingsFormValues];
+    Object.keys(defaultSettingsValues).forEach(key => {
+        const formValue = data[key as keyof FormSchemaType];
         const defaultValue = defaultSettingsValues[key as keyof typeof defaultSettingsValues];
         
         if (typeof defaultValue === 'number') {
-            (acc as any)[key] = formValue !== undefined && formValue !== '' ? Number(formValue) : defaultValue;
-        } else {
-            (acc as any)[key] = formValue;
+            (settingsToSave as any)[key] = formValue !== undefined && formValue !== '' ? Number(formValue) : defaultValue;
         }
-        return acc;
-    }, {} as Omit<SettingsFormValues, 'userId'>);
+    });
 
     try {
-      await saveSettings(data.userId, { ...settingsToSave, userId: data.userId });
+      await saveSettings(data.userId, settingsToSave);
       toast({
         title: "Settings Saved!",
         description: "Your API Keys and Bot Strategy have been successfully saved.",
@@ -309,6 +340,26 @@ export function SettingsForm() {
                     Ensure you understand each parameter.
                 </AlertDescription>
             </Alert>
+            <FormField
+              control={form.control}
+              name="monitoredSymbols"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Monitored Symbols</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="e.g., BTCUSDT,ETHUSDT,SOLUSDT"
+                      className="min-h-[80px]"
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Comma-separated list of symbols for the bot to monitor. Ensure they exist on Binance Testnet.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <FormField
                 control={form.control}
