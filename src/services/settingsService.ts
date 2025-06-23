@@ -28,7 +28,7 @@ if (!MONGODB_URI) {
 
 
 const DB_NAME = process.env.MONGODB_DB_NAME || 'binanceTrailblazerDb';
-const COLLECTION_NAME = 'userApiSettings'; // Collection now stores API keys and strategy params
+const COLLECTION_NAME = 'userApiSettings';
 
 interface CustomGlobal extends NodeJS.Global {
   _mongoSettingsClientPromise?: Promise<MongoClient>;
@@ -76,25 +76,18 @@ async function getSettingsCollection(): Promise<Collection<SettingsFormValues>> 
 export async function getSettings(userId: string): Promise<SettingsFormValues> {
   const logTimestamp = new Date().toISOString();
   if (!userId) {
-    console.warn(`[${logTimestamp}] settingsService.getSettings (MongoDB): Called without userId. Returning default settings with a placeholder userId.`);
-    // Ensure all fields from SettingsFormValues are present in the default
     const fullDefaultSettings = { ...defaultSettingsValues, userId: "UNKNOWN_USER_ID_IN_GETSETTINGS" };
     return fullDefaultSettings;
   }
-  console.log(`[${logTimestamp}] settingsService.getSettings (MongoDB) called for user: ${userId}`);
   const settingsCollection = await getSettingsCollection();
-
   const settingsDoc = await settingsCollection.findOne({ userId: userId });
 
   if (settingsDoc) {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { _id, ...settingsWithoutMongoId } = settingsDoc as WithId<SettingsFormValues>;
-    // Merge fetched settings with defaults to ensure all fields are present, especially for users with older settings objects
     const mergedSettings = { ...defaultSettingsValues, ...settingsWithoutMongoId, userId: userId };
-    console.log(`[${logTimestamp}] settingsService.getSettings (MongoDB): Found existing settings for user ${userId}. API Key Present: ${!!mergedSettings.binanceApiKey}, Dip%: ${mergedSettings.dipPercentage}, Buy Amount: ${mergedSettings.buyAmountUsd}`);
     return mergedSettings;
   } else {
-    console.log(`[${logTimestamp}] settingsService.getSettings (MongoDB): No settings found for user ${userId}. Returning new default settings object for this user.`);
     return { ...defaultSettingsValues, userId: userId };
   }
 }
@@ -108,69 +101,48 @@ export async function getSettings(userId: string): Promise<SettingsFormValues> {
 export async function saveSettings(userId: string, settings: SettingsFormValues): Promise<void> {
   const logTimestamp = new Date().toISOString();
    if (!userId) {
-    console.error(`[${logTimestamp}] settingsService.saveSettings (MongoDB): Attempted to save settings without userId.`);
     throw new Error('userId is required to save settings.');
   }
   if (settings.userId !== userId) {
-    console.error(`[${logTimestamp}] settingsService.saveSettings (MongoDB): Mismatch between parameter userId ('${userId}') and settings.userId ('${settings.userId}').`);
     throw new Error('User ID mismatch in saveSettings.');
   }
   
-  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) ATTEMPTING TO SAVE for user: ${userId}. Full settings object:`, JSON.stringify(settings, (key, value) => key === 'binanceSecretKey' && value ? '[REDACTED]' : value));
-  
   const settingsCollection = await getSettingsCollection();
 
-  // Destructure all relevant fields to be saved from the input 'settings' object
-  const { 
-    userId: settingsUserId, // This is used for $setOnInsert
-    binanceApiKey, 
-    binanceSecretKey,
-    dipPercentage,
-    buyAmountUsd,
-    trailActivationProfit,
-    trailDelta,
-    maxActiveTrades
-  } = settings;
+  // Explicitly build the object to be saved from the settings input,
+  // ensuring all parameters defined in defaultSettingsValues are included.
+  const settingsDataToSet = Object.keys(defaultSettingsValues).reduce((acc, key) => {
+      const typedKey = key as keyof typeof defaultSettingsValues;
+      const value = settings[typedKey];
+      const defaultValue = defaultSettingsValues[typedKey];
+      
+      // Use the provided value if it's not undefined or an empty string, otherwise use the default.
+      // Coerce to number if the default value is a number.
+      if (typeof defaultValue === 'number') {
+        (acc as any)[typedKey] = value !== undefined && value !== '' ? Number(value) : defaultValue;
+      } else {
+        (acc as any)[typedKey] = value ?? defaultValue;
+      }
+      return acc;
+  }, {} as Omit<SettingsFormValues, 'userId' | 'binanceApiKey' | 'binanceSecretKey'> & { binanceApiKey?: string; binanceSecretKey?: string });
+  
+  // Handle API keys separately as they are optional strings and should be saved even if empty.
+  settingsDataToSet.binanceApiKey = settings.binanceApiKey || "";
+  settingsDataToSet.binanceSecretKey = settings.binanceSecretKey || "";
 
-  // Ensure that strategy parameters are numbers and fall back to defaults from defaultSettingsValues if undefined in input
-  // This covers cases where form fields might be empty or not submitted
-  const settingsDataToSet = {
-    binanceApiKey: binanceApiKey || "", 
-    binanceSecretKey: binanceSecretKey || "", 
-    dipPercentage: typeof dipPercentage === 'number' ? dipPercentage : defaultSettingsValues.dipPercentage,
-    buyAmountUsd: typeof buyAmountUsd === 'number' && buyAmountUsd > 0 ? buyAmountUsd : defaultSettingsValues.buyAmountUsd,
-    trailActivationProfit: typeof trailActivationProfit === 'number' && trailActivationProfit > 0 ? trailActivationProfit : defaultSettingsValues.trailActivationProfit,
-    trailDelta: typeof trailDelta === 'number' && trailDelta > 0 ? trailDelta : defaultSettingsValues.trailDelta,
-    maxActiveTrades: typeof maxActiveTrades === 'number' && maxActiveTrades > 0 ? maxActiveTrades : defaultSettingsValues.maxActiveTrades,
-  };
 
   const filter = { userId: userId };
   const updateOperation: UpdateFilter<SettingsFormValues> = {
     $set: settingsDataToSet, 
-    $setOnInsert: { userId: settingsUserId } // Ensures userId is set on document creation
+    $setOnInsert: { userId: settings.userId } // Ensures userId is set on document creation
   };
 
-  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) for user: ${userId}. Filter:`, JSON.stringify(filter));
-  console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) for user: ${userId}. Update Operation ($set part):`, JSON.stringify(settingsDataToSet));
-
   try {
-    const result = await settingsCollection.updateOne(
+    await settingsCollection.updateOne(
       filter,
       updateOperation,
       { upsert: true }
     );
-
-    console.log(`[${logTimestamp}] settingsService.saveSettings (MongoDB) for user: ${userId}. MongoDB updateOne RAW result:`, JSON.stringify(result));
-
-    if (result.upsertedCount > 0) {
-      console.log(`[${logTimestamp}] settingsService (MongoDB): Settings for user ${userId} UPSERTED successfully. Upserted ID: ${result.upsertedId}`);
-    } else if (result.modifiedCount > 0) {
-     console.log(`[${logTimestamp}] settingsService (MongoDB): Settings for user ${userId} MODIFIED successfully.`);
-    } else if (result.matchedCount > 0 && result.modifiedCount === 0) {
-      console.log(`[${logTimestamp}] settingsService (MongoDB): Settings for user ${userId} matched but NOT modified (likely same values).`);
-    } else {
-      console.warn(`[${logTimestamp}] settingsService (MongoDB): Settings save operation for user ${userId} resulted in no change or no match. Matched: ${result.matchedCount}, Modified: ${result.modifiedCount}, Upserted: ${result.upsertedCount > 0 ? 'Yes' : 'No'}`);
-    }
   } catch (dbError) {
     console.error(`[${logTimestamp}] settingsService.saveSettings (MongoDB) for user: ${userId}. DATABASE OPERATION FAILED:`, dbError);
     throw dbError;

@@ -6,11 +6,17 @@ import type { SettingsFormValues } from '@/components/settings/settings-form';
 export const defaultSettingsValues: Omit<SettingsFormValues, 'userId'> = {
   binanceApiKey: "",
   binanceSecretKey: "",
-  // Bot strategy defaults - these will be used if a user hasn't configured their own.
-  // Values are taken from the original bot-strategy.ts global constants.
-  dipPercentage: -4, // Default dip percentage to consider for buys
-  buyAmountUsd: 50,    // Default amount in USD for each trade
-  trailActivationProfit: 2.5, // Default profit % to activate trailing stop
-  trailDelta: 0.8,      // Default trailing stop loss delta %
-  maxActiveTrades: 3,     // Default maximum number of concurrent trades
+  // Bot strategy defaults
+  dipPercentage: -4,
+  buyAmountUsd: 50,
+  trailActivationProfit: 2.5,
+  trailDelta: 0.8,
+  maxActiveTrades: 3,
+  // --- New Advanced Parameters ---
+  initialStopLossPercentage: 1.5, // %
+  valueAreaPercentage: 70, // %
+  imbalanceRatioThreshold: 3, // e.g., 3 means 300%
+  stackedImbalanceCount: 2,
+  swingLookaroundWindow: 2,
+  minBarsForDivergence: 10,
 };

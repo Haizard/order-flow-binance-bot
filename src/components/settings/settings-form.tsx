@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, KeyRound, CheckCircle, Loader2, Save, Zap, ShieldAlert, Trash2, TriangleAlert } from "lucide-react";
+import { AlertCircle, KeyRound, CheckCircle, Loader2, Save, Zap, ShieldAlert, Trash2, TriangleAlert, SlidersHorizontal } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -44,6 +44,7 @@ const settingsFormSchema = z.object({
   userId: z.string().min(1, "User ID is required."),
   binanceApiKey: z.string().optional(),
   binanceSecretKey: z.string().optional(),
+  // Basic Strategy
   dipPercentage: z.coerce.number()
     .max(0, "Dip percentage should be 0 or negative (e.g., -5 for a 5% dip).")
     .min(-100, "Dip percentage cannot be less than -100.")
@@ -62,15 +63,34 @@ const settingsFormSchema = z.object({
     .int("Max active trades must be a whole number.")
     .positive("Max active trades must be a positive number.")
     .optional(),
+  // Advanced Strategy
+  initialStopLossPercentage: z.coerce.number()
+    .positive("Initial stop loss must be a positive percentage.")
+    .optional(),
+  valueAreaPercentage: z.coerce.number()
+    .min(1, "Value area must be at least 1%.")
+    .max(99, "Value area cannot exceed 99%.")
+    .int("Value area must be a whole number.")
+    .optional(),
+  imbalanceRatioThreshold: z.coerce.number()
+    .min(1, "Imbalance ratio must be at least 1 (100%).")
+    .positive("Imbalance ratio must be positive.")
+    .optional(),
+  stackedImbalanceCount: z.coerce.number()
+    .min(1, "Stacked imbalance count must be at least 1.")
+    .int("Stacked imbalance count must be a whole number.")
+    .optional(),
+  swingLookaroundWindow: z.coerce.number()
+    .min(1, "Swing lookaround window must be at least 1.")
+    .int("Swing lookaround window must be a whole number.")
+    .optional(),
+  minBarsForDivergence: z.coerce.number()
+    .min(3, "Minimum bars for divergence must be at least 3.")
+    .int("Minimum bars for divergence must be a whole number.")
+    .optional(),
 });
 
 export type SettingsFormValues = z.infer<typeof settingsFormSchema>;
-
-// formDefaultValues will be sourced from settings-defaults.ts via getSettings on load
-// This const is primarily for structure reference here.
-export const formDefaultValuesReference: Omit<SettingsFormValues, 'userId'> = {
-  ...defaultSettingsValues, // This ensures all fields, including new strategy params, have defaults
-};
 
 export function SettingsForm() {
   const form = useForm<SettingsFormValues>({
@@ -87,19 +107,14 @@ export function SettingsForm() {
   const [isDevelopmentEnv, setIsDevelopmentEnv] = useState(false);
 
   useEffect(() => {
-    // This check needs to be client-side as process.env.NODE_ENV is build-time for server,
-    // but runtime accessible on client in Next.js.
     setIsDevelopmentEnv(process.env.NODE_ENV === 'development');
 
     async function loadSettings() {
       setIsLoadingSettings(true);
       try {
-        console.log(`[${new Date().toISOString()}] SettingsForm: Attempting to load settings for user: ${DEMO_USER_ID}...`);
         const savedSettings = await getSettings(DEMO_USER_ID);
-        // Ensure all form fields, including new ones, get default values if not present in savedSettings
         const fullDefaultsWithUserId = { ...defaultSettingsValues, userId: DEMO_USER_ID };
         form.reset({ ...fullDefaultsWithUserId, ...savedSettings }); 
-        console.log(`[${new Date().toISOString()}] SettingsForm: Settings loaded and form reset for user ${DEMO_USER_ID}. API Key present: ${!!savedSettings.binanceApiKey}, Dip Percentage: ${savedSettings.dipPercentage}`);
       } catch (error) {
         console.error(`[${new Date().toISOString()}] SettingsForm: Failed to load settings for user ${DEMO_USER_ID}:`, error);
         toast({
@@ -148,38 +163,28 @@ export function SettingsForm() {
 
   async function onSubmit(data: SettingsFormValues) {
     setIsSaving(true);
-    const settingsToSave = {
-        ...data,
-        // Ensure numeric fields are actually numbers if they came from coerce
-        dipPercentage: data.dipPercentage !== undefined ? Number(data.dipPercentage) : defaultSettingsValues.dipPercentage,
-        buyAmountUsd: data.buyAmountUsd !== undefined ? Number(data.buyAmountUsd) : defaultSettingsValues.buyAmountUsd,
-        trailActivationProfit: data.trailActivationProfit !== undefined ? Number(data.trailActivationProfit) : defaultSettingsValues.trailActivationProfit,
-        trailDelta: data.trailDelta !== undefined ? Number(data.trailDelta) : defaultSettingsValues.trailDelta,
-        maxActiveTrades: data.maxActiveTrades !== undefined ? Number(data.maxActiveTrades) : defaultSettingsValues.maxActiveTrades,
-    };
+    // Coerce all numeric fields to ensure they are saved as numbers, using defaults as fallbacks.
+    const settingsToSave = Object.keys(defaultSettingsValues).reduce((acc, key) => {
+        const formValue = data[key as keyof SettingsFormValues];
+        const defaultValue = defaultSettingsValues[key as keyof typeof defaultSettingsValues];
+        
+        if (typeof defaultValue === 'number') {
+            (acc as any)[key] = formValue !== undefined && formValue !== '' ? Number(formValue) : defaultValue;
+        } else {
+            (acc as any)[key] = formValue;
+        }
+        return acc;
+    }, {} as Omit<SettingsFormValues, 'userId'>);
 
-    console.log(`[${new Date().toISOString()}] SettingsForm: Submitting data to saveSettings:`, JSON.stringify({
-        userId: settingsToSave.userId, 
-        apiKeyLength: settingsToSave.binanceApiKey?.length || 0, 
-        secretKeyLength: settingsToSave.binanceSecretKey?.length || 0,
-        dipPercentage: settingsToSave.dipPercentage,
-        buyAmountUsd: settingsToSave.buyAmountUsd,
-        trailActivationProfit: settingsToSave.trailActivationProfit,
-        trailDelta: settingsToSave.trailDelta,
-        maxActiveTrades: settingsToSave.maxActiveTrades,
-    }));
-    
     try {
-      await saveSettings(settingsToSave.userId, settingsToSave);
+      await saveSettings(data.userId, { ...settingsToSave, userId: data.userId });
       toast({
         title: "Settings Saved!",
         description: "Your API Keys and Bot Strategy have been successfully saved.",
         variant: "default",
         className: "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700 text-green-800 dark:text-green-300",
       });
-       console.log(`[${new Date().toISOString()}] SettingsForm: Settings presumed saved successfully for user ${settingsToSave.userId}.`);
     } catch (error) {
-      console.error(`[${new Date().toISOString()}] SettingsForm: Error saving settings for user ${settingsToSave.userId}:`, error);
       const errorMessage = error instanceof Error ? error.message : "An unknown error occurred while saving.";
       toast({
         title: "Save Failed",
@@ -210,7 +215,6 @@ export function SettingsForm() {
     }
     setIsClearingTrades(false);
   }
-
 
   if (isLoadingSettings) {
     return (
@@ -290,10 +294,10 @@ export function SettingsForm() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-headline">
               <Zap className="h-6 w-6 text-primary" />
-              Bot Trading Strategy
+              Core Trading Strategy
             </CardTitle>
             <CardDescription>
-              Configure the core parameters for your trading bot. These settings define when the bot buys and sells.
+              Configure the primary risk and trade management parameters for your trading bot.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -302,89 +306,181 @@ export function SettingsForm() {
                 <AlertTitle className="text-amber-700 dark:text-amber-300 font-semibold">Strategy Impact</AlertTitle>
                 <AlertDescription>
                     These settings directly control trading decisions. Incorrect values can lead to unintended trades or losses.
-                    Ensure you understand each parameter. Values are saved per user.
+                    Ensure you understand each parameter.
                 </AlertDescription>
             </Alert>
-            <FormField
-              control={form.control}
-              name="dipPercentage"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Dip Percentage for Buy (-1 to -100)</FormLabel>
-                  <FormControl>
-                    <Input type="number" placeholder="-4" {...field} value={field.value ?? ""} step="0.1" />
-                  </FormControl>
-                  <FormDescription>
-                    Bot scan for symbols where 24hr price change is ≤ this value (e.g., -4 for -4%). Note: This is a pre-filter; actual entry uses order flow.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="buyAmountUsd"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Buy Amount (USD)</FormLabel>
-                  <FormControl>
-                    <Input type="number" placeholder="50" {...field} value={field.value ?? ""} step="1" />
-                  </FormControl>
-                  <FormDescription>
-                    Amount in USD for each trade the bot initiates.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="maxActiveTrades"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Max Concurrent Active Trades</FormLabel>
-                  <FormControl>
-                    <Input type="number" placeholder="3" {...field} value={field.value ?? ""} step="1" />
-                  </FormControl>
-                  <FormDescription>
-                    The maximum number of trades the bot can have open at the same time to manage risk.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="trailActivationProfit"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Trailing Stop Activation Profit (%)</FormLabel>
-                  <FormControl>
-                    <Input type="number" placeholder="2.5" {...field} value={field.value ?? ""} step="0.1" />
-                  </FormControl>
-                  <FormDescription>
-                    Trailing stop activates when profit reaches this percentage (e.g., 2.5 for 2.5%).
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="trailDelta"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Trailing Stop Delta (%)</FormLabel>
-                  <FormControl>
-                    <Input type="number" placeholder="0.8" {...field} value={field.value ?? ""} step="0.1" />
-                  </FormControl>
-                  <FormDescription>
-                    Trailing stop loss distance from high (for longs) or low (for shorts) price (e.g., 0.8 for 0.8%).
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <FormField
+                control={form.control}
+                name="buyAmountUsd"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Trade Size (USD)</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="50" {...field} value={field.value ?? ""} step="1" />
+                    </FormControl>
+                    <FormDescription>Amount in USD for each new trade.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="maxActiveTrades"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Max Concurrent Trades</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="3" {...field} value={field.value ?? ""} step="1" />
+                    </FormControl>
+                    <FormDescription>Max number of trades open at once.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="initialStopLossPercentage"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Initial Stop Loss (%)</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="1.5" {...field} value={field.value ?? ""} step="0.1" />
+                    </FormControl>
+                    <FormDescription>Initial risk limit for new trades.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="dipPercentage"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Dip % Pre-filter (≤ 0)</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="-4" {...field} value={field.value ?? ""} step="0.1" />
+                    </FormControl>
+                    <FormDescription>Pre-scan filter for potential buys.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="trailActivationProfit"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Trail Activation Profit (%)</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="2.5" {...field} value={field.value ?? ""} step="0.1" />
+                    </FormControl>
+                    <FormDescription>Profit % to start trailing stop.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="trailDelta"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Trailing Stop Delta (%)</FormLabel>
+                    <FormControl>
+                      <Input type="number" placeholder="0.8" {...field} value={field.value ?? ""} step="0.1" />
+                    </FormControl>
+                    <FormDescription>Distance from peak for trailing stop.</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-lg">
+           <CardHeader>
+            <CardTitle className="flex items-center gap-2 font-headline">
+              <SlidersHorizontal className="h-6 w-6 text-primary" />
+              Advanced Order Flow Parameters
+            </CardTitle>
+            <CardDescription>
+              Fine-tune the technical parameters used for order flow analysis. Adjust with care.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <FormField
+                  control={form.control}
+                  name="valueAreaPercentage"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Value Area Percentage</FormLabel>
+                      <FormControl>
+                        <Input type="number" placeholder="70" {...field} value={field.value ?? ""} step="1" />
+                      </FormControl>
+                      <FormDescription>The volume % used to calculate VAH/VAL.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="imbalanceRatioThreshold"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Imbalance Ratio (e.g., 3 for 300%)</FormLabel>
+                      <FormControl>
+                        <Input type="number" placeholder="3" {...field} value={field.value ?? ""} step="0.1" />
+                      </FormControl>
+                      <FormDescription>Bid vs. Ask volume ratio to flag imbalance.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="stackedImbalanceCount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Stacked Imbalance Count</FormLabel>
+                      <FormControl>
+                        <Input type="number" placeholder="2" {...field} value={field.value ?? ""} step="1" />
+                      </FormControl>
+                      <FormDescription>Number of stacked levels for reversal signal.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="swingLookaroundWindow"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Divergence Swing Window</FormLabel>
+                      <FormControl>
+                        <Input type="number" placeholder="2" {...field} value={field.value ?? ""} step="1" />
+                      </FormControl>
+                      <FormDescription>Bars to look left/right for swing points.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                 <FormField
+                  control={form.control}
+                  name="minBarsForDivergence"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Min Bars for Divergence Calc</FormLabel>
+                      <FormControl>
+                        <Input type="number" placeholder="10" {...field} value={field.value ?? ""} step="1" />
+                      </FormControl>
+                      <FormDescription>Minimum bars required for divergence signal.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+            </div>
           </CardContent>
         </Card>
 
