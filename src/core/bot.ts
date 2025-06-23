@@ -65,9 +65,10 @@ export async function runBotCycle(
     return;
   }
 
-  const buyAmountUsdToUse = typeof userSettings.buyAmountUsd === 'number' && userSettings.buyAmountUsd > 0 ? userSettings.buyAmountUsd : defaultSettingsValues.buyAmountUsd;
-  const trailActivationProfitToUse = typeof userSettings.trailActivationProfit === 'number' && userSettings.trailActivationProfit > 0 ? userSettings.trailActivationProfit : defaultSettingsValues.trailActivationProfit;
-  const trailDeltaToUse = typeof userSettings.trailDelta === 'number' && userSettings.trailDelta > 0 ? userSettings.trailDelta : defaultSettingsValues.trailDelta;
+  // Use user-configured settings with fallbacks to defaults
+  const buyAmountUsdToUse = userSettings.buyAmountUsd ?? defaultSettingsValues.buyAmountUsd;
+  const trailActivationProfitToUse = userSettings.trailActivationProfit ?? defaultSettingsValues.trailActivationProfit;
+  const trailDeltaToUse = userSettings.trailDelta ?? defaultSettingsValues.trailDelta;
   
   console.log(`[${botRunTimestamp}] Bot cycle STARTED for user ${userId}. Strategy (General Params): BuyAmt: $${buyAmountUsdToUse}, TrailProfit: ${trailActivationProfitToUse}%, TrailDelta: ${trailDeltaToUse}%, InitStopLoss: ${INITIAL_STOP_LOSS_PERCENTAGE}%`);
 
@@ -391,4 +392,3 @@ export async function runBotCycle(
   }
   console.log(`[${botRunTimestamp}] Bot cycle ENDED for user ${userId}.`);
 }
-

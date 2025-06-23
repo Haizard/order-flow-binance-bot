@@ -13,4 +13,3 @@ export const defaultSettingsValues: Omit<SettingsFormValues, 'userId'> = {
   trailActivationProfit: 2.5, // Default profit % to activate trailing stop
   trailDelta: 0.8,      // Default trailing stop loss delta %
 };
-

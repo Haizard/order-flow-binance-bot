@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, KeyRound, CheckCircle, Loader2, Save, TrendingDown, DollarSign, Zap, ShieldAlert, Trash2, TriangleAlert } from "lucide-react";
+import { AlertCircle, KeyRound, CheckCircle, Loader2, Save, Zap, ShieldAlert, Trash2, TriangleAlert } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -309,7 +309,7 @@ export function SettingsForm() {
                     <Input type="number" placeholder="-4" {...field} value={field.value ?? ""} step="0.1" />
                   </FormControl>
                   <FormDescription>
-                    Bot buys if 24hr price change is ≤ this value (e.g., -4 for -4%).
+                    Bot scan for symbols where 24hr price change is ≤ this value (e.g., -4 for -4%). Note: This is a pre-filter; actual entry uses order flow.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -357,7 +357,7 @@ export function SettingsForm() {
                     <Input type="number" placeholder="0.8" {...field} value={field.value ?? ""} step="0.1" />
                   </FormControl>
                   <FormDescription>
-                    Trailing stop loss distance from high price (e.g., 0.8 for 0.8%).
+                    Trailing stop loss distance from high (for longs) or low (for shorts) price (e.g., 0.8 for 0.8%).
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

@@ -147,7 +147,7 @@ export default async function DashboardPage() {
             value={`${totalPnl >= 0 ? '+' : ''}$${totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             icon={DollarSign}
             description="P&L from bot-managed trades. Live prices. Auto-refreshes."
-            className={`shadow-card hover:shadow-card-hover ${totalPnl >=0 ? 'text-accent-foreground bg-accent/10 dark:bg-accent/20' : 'text-destructive bg-destructive/10 dark:bg-destructive/20'}`}
+            className={`shadow-card hover:shadow-card-hover ${totalPnl >= 0 ? 'text-accent-foreground bg-accent/10 dark:bg-accent/20' : 'text-destructive bg-destructive/10 dark:bg-destructive/20'}`}
           />
           <MetricCard
             title="Active Bot Trades"
@@ -249,4 +249,3 @@ export default async function DashboardPage() {
     </div>
   );
 }
-
