@@ -221,6 +221,46 @@ async function detectImbalanceReversal(completedBars: FootprintBar[], params: Bo
     return null;
 }
 
+async function detectBreakout(completedBars: FootprintBar[]): Promise<'BULLISH' | 'BEARISH' | null> {
+    const LOOKBACK_PERIOD = 5;
+    const RANGE_MULTIPLIER = 1.5;
+    const DELTA_MULTIPLIER = 2.0;
+
+    if (completedBars.length < LOOKBACK_PERIOD + 1) {
+        return null;
+    }
+
+    const consolidationBars = completedBars.slice(-(LOOKBACK_PERIOD + 1), -1);
+    const breakoutCandidateBar = completedBars[completedBars.length - 1];
+
+    if (consolidationBars.length === 0 || !breakoutCandidateBar) {
+        return null;
+    }
+
+    const consolidationHigh = Math.max(...consolidationBars.map(b => b.high));
+    const consolidationLow = Math.min(...consolidationBars.map(b => b.low));
+    
+    const avgRange = consolidationBars.reduce((sum, b) => sum + (b.high - b.low), 0) / consolidationBars.length;
+    const avgAbsDelta = consolidationBars.reduce((sum, b) => sum + Math.abs(b.delta || 0), 0) / consolidationBars.length;
+
+    const candidateRange = breakoutCandidateBar.high - breakoutCandidateBar.low;
+    const candidateAbsDelta = Math.abs(breakoutCandidateBar.delta || 0);
+
+    const isRangeExpanded = avgRange > 0 ? candidateRange > avgRange * RANGE_MULTIPLIER : candidateRange > 0;
+    const isDeltaStrong = avgAbsDelta > 0 ? candidateAbsDelta > avgAbsDelta * DELTA_MULTIPLIER : candidateAbsDelta > 0;
+    
+    if (isRangeExpanded && isDeltaStrong) {
+        if (breakoutCandidateBar.close > consolidationHigh && (breakoutCandidateBar.delta || 0) > 0) {
+            return 'BULLISH';
+        }
+        if (breakoutCandidateBar.close < consolidationLow && (breakoutCandidateBar.delta || 0) < 0) {
+            return 'BEARISH';
+        }
+    }
+
+    return null;
+}
+
 export interface BotOrderFlowMetrics {
     sessionPoc: number | null;
     sessionVah: number | null;
@@ -229,6 +269,7 @@ export interface BotOrderFlowMetrics {
     latestBarCharacter: string;
     divergenceSignals: string[];
     imbalanceReversalSignal: string | null;
+    breakoutSignal: 'BULLISH' | 'BEARISH' | null;
 }
 
 export async function calculateAllBotMetrics(
@@ -249,6 +290,7 @@ export async function calculateAllBotMetrics(
     const barCharacterResult = await getBarCharacterForBot(barForCharacterAnalysis);
     const divergenceSignals = await calculateDivergencesForBot(completedFootprintBars, params);
     const imbalanceReversalSignal = await detectImbalanceReversal(completedFootprintBars, params);
+    const breakoutSignal = await detectBreakout(completedFootprintBars);
 
     return {
         sessionPoc: sessionMetrics.sessionPocPrice,
@@ -257,6 +299,7 @@ export async function calculateAllBotMetrics(
         sessionVwap: sessionVwap,
         latestBarCharacter: barCharacterResult.character,
         divergenceSignals: divergenceSignals,
-        imbalanceReversalSignal: imbalanceReversalSignal
+        imbalanceReversalSignal: imbalanceReversalSignal,
+        breakoutSignal: breakoutSignal,
     };
 }

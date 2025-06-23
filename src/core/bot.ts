@@ -120,7 +120,7 @@ export async function runBotCycle(
             { valueAreaPercentage, imbalanceRatioThreshold, stackedImbalanceCount, swingLookaroundWindow, minBarsForDivergence }
         );
 
-        const { sessionVal, sessionVah, latestBarCharacter, divergenceSignals, imbalanceReversalSignal } = metrics;
+        const { sessionVal, sessionVah, latestBarCharacter, divergenceSignals, imbalanceReversalSignal, breakoutSignal } = metrics;
         
         // --- LONG ENTRY LOGIC ---
         const isBullishBarCharacter = latestBarCharacter === "Price Buy" || latestBarCharacter === "Delta Buy";
@@ -142,6 +142,9 @@ export async function runBotCycle(
         } else if (imbalanceReversalSignal === 'BULLISH_IMBALANCE_REVERSAL') {
             shouldBuyLong = true;
             longEntryReason = 'Bullish Imbalance Reversal Detected';
+        } else if (breakoutSignal === 'BULLISH') {
+            shouldBuyLong = true;
+            longEntryReason = 'Bullish Breakout Detected';
         }
         
         if (shouldBuyLong) {
@@ -188,6 +191,9 @@ export async function runBotCycle(
         } else if (imbalanceReversalSignal === 'BEARISH_IMBALANCE_REVERSAL') {
             shouldSellShort = true;
             shortEntryReason = 'Bearish Imbalance Reversal Detected';
+        } else if (breakoutSignal === 'BEARISH') {
+            shouldSellShort = true;
+            shortEntryReason = 'Bearish Breakout Detected';
         }
 
         if (shouldSellShort) {
