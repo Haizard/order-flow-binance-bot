@@ -52,7 +52,11 @@ async function calculateTotalPnlFromBotTrades(userId: string): Promise<number> {
       const tickerData = await get24hrTicker(trade.symbol) as Ticker24hr | null;
       if (tickerData && !Array.isArray(tickerData)) {
         const currentPrice = parseFloat(tickerData.lastPrice);
-        totalPnl += (currentPrice - trade.buyPrice) * trade.quantity;
+        if (trade.tradeDirection === 'SHORT') {
+            totalPnl += (trade.entryPrice - currentPrice) * trade.quantity;
+        } else { // 'LONG'
+            totalPnl += (currentPrice - trade.entryPrice) * trade.quantity;
+        }
       } else {
         console.warn(`[${logTimestamp}] DashboardPage: No ticker data for P&L calculation (bot trade ${trade.symbol}, user ${userId})`);
       }
@@ -70,23 +74,23 @@ async function calculateOverallPerformance(userId: string): Promise<string> {
   const closedTrades = await tradeService.getClosedTrades(userId);
   console.log(`[${logTimestamp}] DashboardPage: calculateOverallPerformance (user ${userId}): Total closed trades: ${closedTrades.length}`);
   
-  const soldTrades = closedTrades.filter(
-    trade => trade.status === 'CLOSED_SOLD' && typeof trade.pnl === 'number'
+  const exitedTrades = closedTrades.filter(
+    trade => trade.status === 'CLOSED_EXITED' && typeof trade.pnl === 'number'
   );
-  console.log(`[${logTimestamp}] DashboardPage: calculateOverallPerformance (user ${userId}): Filtered 'CLOSED_SOLD' trades with P&L: ${soldTrades.length}`);
+  console.log(`[${logTimestamp}] DashboardPage: calculateOverallPerformance (user ${userId}): Filtered 'CLOSED_EXITED' trades with P&L: ${exitedTrades.length}`);
 
 
-  if (soldTrades.length === 0) {
-    console.log(`[${logTimestamp}] DashboardPage: No CLOSED_SOLD trades found for performance calculation for user ${userId}.`);
+  if (exitedTrades.length === 0) {
+    console.log(`[${logTimestamp}] DashboardPage: No CLOSED_EXITED trades found for performance calculation for user ${userId}.`);
     return "0.0";
   }
 
-  const profitableTrades = soldTrades.filter(trade => trade.pnl! > 0).length;
-  console.log(`[${logTimestamp}] DashboardPage: calculateOverallPerformance (user ${userId}): Profitable 'CLOSED_SOLD' trades: ${profitableTrades}`);
+  const profitableTrades = exitedTrades.filter(trade => trade.pnl! > 0).length;
+  console.log(`[${logTimestamp}] DashboardPage: calculateOverallPerformance (user ${userId}): Profitable 'CLOSED_EXITED' trades: ${profitableTrades}`);
   
-  const winRate = (profitableTrades / soldTrades.length) * 100;
+  const winRate = (profitableTrades / exitedTrades.length) * 100;
   const formattedWinRate = winRate.toFixed(1);
-  console.log(`[${logTimestamp}] DashboardPage: Overall performance for user ${userId}: Calculated winRate: ${winRate}, Returning: "${formattedWinRate}" (will become "${formattedWinRate}%") (${profitableTrades}/${soldTrades.length})`);
+  console.log(`[${logTimestamp}] DashboardPage: Overall performance for user ${userId}: Calculated winRate: ${winRate}, Returning: "${formattedWinRate}" (will become "${formattedWinRate}%") (${profitableTrades}/${exitedTrades.length})`);
   return formattedWinRate;
 }
 

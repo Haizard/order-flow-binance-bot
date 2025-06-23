@@ -37,22 +37,22 @@ async function getChartData(userId: string): Promise<ChartDataPoint[]> {
   const closedTrades = await tradeService.getClosedTrades(userId);
   console.log(`[${new Date().toISOString()}] BotPerformanceChart.getChartData: Raw closed trades fetched: ${closedTrades.length}`);
 
-  const soldTrades = closedTrades
+  const exitedTrades = closedTrades
     .filter(trade => {
-      const isValidSoldTrade = trade.status === 'CLOSED_SOLD' && typeof trade.pnl === 'number' && typeof trade.sellTimestamp === 'number';
-      if (trade.status === 'CLOSED_SOLD' && (!isValidSoldTrade)) {
-          console.warn(`[${new Date().toISOString()}] BotPerformanceChart.getChartData: Filtered out CLOSED_SOLD trade ${trade.symbol} (ID: ${trade.id}) due to missing pnl/sellTimestamp. PNL: ${trade.pnl}, Timestamp: ${trade.sellTimestamp}`);
+      const isValidExitedTrade = trade.status === 'CLOSED_EXITED' && typeof trade.pnl === 'number' && typeof trade.exitTimestamp === 'number';
+      if (trade.status === 'CLOSED_EXITED' && (!isValidExitedTrade)) {
+          console.warn(`[${new Date().toISOString()}] BotPerformanceChart.getChartData: Filtered out CLOSED_EXITED trade ${trade.symbol} (ID: ${trade.id}) due to missing pnl/exitTimestamp. PNL: ${trade.pnl}, Timestamp: ${trade.exitTimestamp}`);
       }
-      return isValidSoldTrade;
+      return isValidExitedTrade;
     })
-    .sort((a, b) => (a.sellTimestamp || 0) - (b.sellTimestamp || 0));
-  console.log(`[${new Date().toISOString()}] BotPerformanceChart.getChartData: Filtered 'CLOSED_SOLD' trades with valid P&L/Timestamp: ${soldTrades.length}`);
+    .sort((a, b) => (a.exitTimestamp || 0) - (b.exitTimestamp || 0));
+  console.log(`[${new Date().toISOString()}] BotPerformanceChart.getChartData: Filtered 'CLOSED_EXITED' trades with valid P&L/Timestamp: ${exitedTrades.length}`);
 
   let cumulativePnl = 0;
-  const dataPoints = soldTrades.map(trade => {
+  const dataPoints = exitedTrades.map(trade => {
     cumulativePnl += trade.pnl || 0;
     return {
-      date: format(new Date(trade.sellTimestamp!), "MMM d, HH:mm"),
+      date: format(new Date(trade.exitTimestamp!), "MMM d, HH:mm"),
       cumulativePnl: parseFloat(cumulativePnl.toFixed(2)),
       tradePnl: parseFloat((trade.pnl || 0).toFixed(2)),
       symbol: trade.symbol,
@@ -118,8 +118,8 @@ export function BotPerformanceChart({ userId }: BotPerformanceChartProps) {
       return (
         <div className="aspect-[16/9] w-full bg-muted/30 rounded-lg flex flex-col items-center justify-center text-center p-4 border border-dashed">
           <Activity className="h-10 w-10 text-muted-foreground mb-2" />
-          <p className="text-sm text-muted-foreground">No <code className="bg-muted-foreground/10 px-1 py-0.5 rounded text-xs">CLOSED_SOLD</code> trades with P&amp;L data.</p>
-          <p className="text-xs text-muted-foreground mt-1">Chart appears after bot completes profitable sales.</p>
+          <p className="text-sm text-muted-foreground">No <code className="bg-muted-foreground/10 px-1 py-0.5 rounded text-xs">CLOSED_EXITED</code> trades with P&amp;L data.</p>
+          <p className="text-xs text-muted-foreground mt-1">Chart appears after bot completes profitable trades.</p>
         </div>
       );
     }
@@ -217,7 +217,7 @@ export function BotPerformanceChart({ userId }: BotPerformanceChartProps) {
         </CardTitle>
         <CardDescription className="text-sm flex items-center text-muted-foreground">
          <Info className="h-4 w-4 mr-1.5 flex-shrink-0" />
-         Cumulative P&L from <code className="bg-muted-foreground/10 px-1.5 py-0.5 rounded text-xs mx-1">CLOSED_SOLD</code> trades. Auto-refreshes.
+         Cumulative P&L from <code className="bg-muted-foreground/10 px-1.5 py-0.5 rounded text-xs mx-1">CLOSED_EXITED</code> trades. Auto-refreshes.
         </CardDescription>
       </CardHeader>
       <CardContent className="px-3 sm:px-5 pb-5">

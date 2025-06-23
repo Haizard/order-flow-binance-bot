@@ -35,8 +35,14 @@ async function fetchAndProcessActiveBotTrades(userId: string): Promise<Processed
             console.warn(`[${new Date().toISOString()}] ActiveTradesList (user ${userId}): Parsed currentPrice is NaN for ${trade.symbol}. Ticker lastPrice: ${tickerData.lastPrice}`);
             processedTrades.push({ ...trade, currentPrice: null, pnl: null, pnlPercentage: null, fetchError: true });
         } else {
-            const pnlValue = (currentPrice - trade.buyPrice) * trade.quantity;
-            const pnlPercentageValue = (trade.buyPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.buyPrice * trade.quantity)) * 100;
+            let pnlValue;
+            if (trade.tradeDirection === 'SHORT') {
+                pnlValue = (trade.entryPrice - currentPrice) * trade.quantity;
+            } else { // LONG
+                pnlValue = (currentPrice - trade.entryPrice) * trade.quantity;
+            }
+            const pnlPercentageValue = (trade.entryPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.entryPrice * trade.quantity)) * 100;
+            
             processedTrades.push({
               ...trade,
               currentPrice,
@@ -114,7 +120,7 @@ export async function ActiveTradesList({ userId }: ActiveTradesListProps) {
             <TableHeader>
               <TableRow>
                 <TableHead className="font-semibold bg-muted/50 h-11 px-3">Symbol</TableHead>
-                <TableHead className="text-right font-semibold bg-muted/50 h-11 px-3">Buy Price</TableHead>
+                <TableHead className="text-right font-semibold bg-muted/50 h-11 px-3">Entry Price</TableHead>
                 <TableHead className="text-right font-semibold bg-muted/50 h-11 px-3">Current Price</TableHead>
                 <TableHead className="text-right font-semibold bg-muted/50 h-11 px-3">P&amp;L ({activeBotTrades.find(t=>t.quoteAsset)?.quoteAsset || 'USD'})</TableHead>
                 <TableHead className="font-semibold bg-muted/50 h-11 px-3">Status</TableHead>
@@ -125,14 +131,11 @@ export async function ActiveTradesList({ userId }: ActiveTradesListProps) {
                 <TableRow key={trade.id} className="hover:bg-muted/30">
                   <TableCell className="p-3">
                     <div className="flex items-center gap-2">
-                      {trade.baseAsset === 'BTC' ? <Bitcoin className="h-5 w-5 text-orange-400" /> :
-                      trade.baseAsset === 'ETH' ? <svg className="h-5 w-5 text-gray-500 dark:text-gray-400" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" fill="currentColor"><path d="M15.922 2l-.39 1.12L9.95 17.502l5.972 3.63L21.902 17.5l-5.59-14.38zm.078 21.807l-5.938-3.598 5.938 8.753 5.945-8.753zM22.36 16.97L16 20.178l-6.36-3.208 6.36-6.09z"/></svg> :
-                      trade.baseAsset === 'SOL' ? <svg className="h-5 w-5 text-purple-500" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M4.75 2.75a.75.75 0 0 0-.75.75v12.04a.75.75 0 0 0 .75.75h14.5a.75.75 0 0 0 .75-.75V7.543a.75.75 0 0 0-.75-.75H9.295a.75.75 0 0 1-.53-.22L7.046 4.854a.75.75 0 0 0-.53-.22H4.75zm4.545 4.545h10.205V15.H9.295V7.295zM2.75 18.54v-1.75h18.5v1.75a.75.75 0 0 1-.75.75H3.5a.75.75 0 0 1-.75-.75z"/></svg> :
-                      <BarChartBig className="h-5 w-5 text-primary" />}
+                       {trade.tradeDirection === 'LONG' ? <TrendingUp className="h-5 w-5 text-accent" /> : <TrendingDown className="h-5 w-5 text-destructive" />}
                       <span className="font-medium">{trade.baseAsset}/{trade.quoteAsset}</span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-right p-3">${trade.buyPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: trade.buyPrice < 1 ? 8 : 4})}</TableCell>
+                  <TableCell className="text-right p-3">${trade.entryPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: trade.entryPrice < 1 ? 8 : 4})}</TableCell>
                   <TableCell className="text-right p-3">
                     {trade.currentPrice !== null ? 
                       `$${trade.currentPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: trade.currentPrice < 1 ? 8 : 4})}` : 
@@ -151,10 +154,8 @@ export async function ActiveTradesList({ userId }: ActiveTradesListProps) {
                     </TableCell>
                   )}
                   <TableCell className="p-3">
-                    <Badge variant={trade.status === 'ACTIVE_TRAILING' ? 'default' : (trade.status === 'ACTIVE_BOUGHT' ? 'secondary' : 'outline')} 
-                           className={cn(trade.status === 'ACTIVE_TRAILING' && "bg-primary/80 hover:bg-primary", 
-                                        trade.status === 'ACTIVE_BOUGHT' && "bg-secondary/80 hover:bg-secondary")}>
-                      {trade.status.replace('ACTIVE_', '')}
+                    <Badge variant={trade.status.includes('TRAILING') ? 'default' : 'secondary'}>
+                      {trade.status.replace('ACTIVE_', '').replace('_', ' ')}
                     </Badge>
                   </TableCell>
                 </TableRow>
