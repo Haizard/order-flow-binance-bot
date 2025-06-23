@@ -58,6 +58,10 @@ const settingsFormSchema = z.object({
     .positive("Trail delta must be a positive percentage.")
     .max(100, "Trail delta cannot exceed 100%.")
     .optional(),
+  maxActiveTrades: z.coerce.number()
+    .int("Max active trades must be a whole number.")
+    .positive("Max active trades must be a positive number.")
+    .optional(),
 });
 
 export type SettingsFormValues = z.infer<typeof settingsFormSchema>;
@@ -151,6 +155,7 @@ export function SettingsForm() {
         buyAmountUsd: data.buyAmountUsd !== undefined ? Number(data.buyAmountUsd) : defaultSettingsValues.buyAmountUsd,
         trailActivationProfit: data.trailActivationProfit !== undefined ? Number(data.trailActivationProfit) : defaultSettingsValues.trailActivationProfit,
         trailDelta: data.trailDelta !== undefined ? Number(data.trailDelta) : defaultSettingsValues.trailDelta,
+        maxActiveTrades: data.maxActiveTrades !== undefined ? Number(data.maxActiveTrades) : defaultSettingsValues.maxActiveTrades,
     };
 
     console.log(`[${new Date().toISOString()}] SettingsForm: Submitting data to saveSettings:`, JSON.stringify({
@@ -161,6 +166,7 @@ export function SettingsForm() {
         buyAmountUsd: settingsToSave.buyAmountUsd,
         trailActivationProfit: settingsToSave.trailActivationProfit,
         trailDelta: settingsToSave.trailDelta,
+        maxActiveTrades: settingsToSave.maxActiveTrades,
     }));
     
     try {
@@ -326,6 +332,22 @@ export function SettingsForm() {
                   </FormControl>
                   <FormDescription>
                     Amount in USD for each trade the bot initiates.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="maxActiveTrades"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Max Concurrent Active Trades</FormLabel>
+                  <FormControl>
+                    <Input type="number" placeholder="3" {...field} value={field.value ?? ""} step="1" />
+                  </FormControl>
+                  <FormDescription>
+                    The maximum number of trades the bot can have open at the same time to manage risk.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

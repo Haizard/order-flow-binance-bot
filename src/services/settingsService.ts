@@ -128,7 +128,8 @@ export async function saveSettings(userId: string, settings: SettingsFormValues)
     dipPercentage,
     buyAmountUsd,
     trailActivationProfit,
-    trailDelta
+    trailDelta,
+    maxActiveTrades
   } = settings;
 
   // Ensure that strategy parameters are numbers and fall back to defaults from defaultSettingsValues if undefined in input
@@ -140,6 +141,7 @@ export async function saveSettings(userId: string, settings: SettingsFormValues)
     buyAmountUsd: typeof buyAmountUsd === 'number' && buyAmountUsd > 0 ? buyAmountUsd : defaultSettingsValues.buyAmountUsd,
     trailActivationProfit: typeof trailActivationProfit === 'number' && trailActivationProfit > 0 ? trailActivationProfit : defaultSettingsValues.trailActivationProfit,
     trailDelta: typeof trailDelta === 'number' && trailDelta > 0 ? trailDelta : defaultSettingsValues.trailDelta,
+    maxActiveTrades: typeof maxActiveTrades === 'number' && maxActiveTrades > 0 ? maxActiveTrades : defaultSettingsValues.maxActiveTrades,
   };
 
   const filter = { userId: userId };

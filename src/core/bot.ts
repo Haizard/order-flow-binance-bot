@@ -69,8 +69,9 @@ export async function runBotCycle(
   const buyAmountUsdToUse = userSettings.buyAmountUsd ?? defaultSettingsValues.buyAmountUsd;
   const trailActivationProfitToUse = userSettings.trailActivationProfit ?? defaultSettingsValues.trailActivationProfit;
   const trailDeltaToUse = userSettings.trailDelta ?? defaultSettingsValues.trailDelta;
+  const maxActiveTradesToUse = userSettings.maxActiveTrades ?? defaultSettingsValues.maxActiveTrades;
   
-  console.log(`[${botRunTimestamp}] Bot cycle STARTED for user ${userId}. Strategy (General Params): BuyAmt: $${buyAmountUsdToUse}, TrailProfit: ${trailActivationProfitToUse}%, TrailDelta: ${trailDeltaToUse}%, InitStopLoss: ${INITIAL_STOP_LOSS_PERCENTAGE}%`);
+  console.log(`[${botRunTimestamp}] Bot cycle STARTED for user ${userId}. Strategy Params: BuyAmt: $${buyAmountUsdToUse}, TrailProfit: ${trailActivationProfitToUse}%, TrailDelta: ${trailDeltaToUse}%, InitStopLoss: ${INITIAL_STOP_LOSS_PERCENTAGE}%, MaxTrades: ${maxActiveTradesToUse}`);
 
   let liveMarketData: Ticker24hr[];
   if (marketData) {
@@ -94,135 +95,145 @@ export async function runBotCycle(
 
   const activeTradesFromDb = await tradeService.getActiveTrades(userId);
   const activeTradeSymbols = activeTradesFromDb.map(t => t.symbol);
+  
+  console.log(`[${botRunTimestamp}] Bot (User ${userId}): Found ${activeTradesFromDb.length} active trade(s). Max allowed: ${maxActiveTradesToUse}.`);
 
-  console.log(`[${botRunTimestamp}] Bot (User ${userId}): Analyzing ${MONITORED_MARKET_SYMBOLS.length} monitored symbols for new entries.`);
+  const canOpenNewTrade = activeTradesFromDb.length < maxActiveTradesToUse;
 
-  for (const symbol of MONITORED_MARKET_SYMBOLS) {
-    const currentTicker = liveMarketData.find(t => t.symbol === symbol);
-    if (!currentTicker) {
-      continue;
-    }
-    const currentPrice = parseFloat(currentTicker.lastPrice);
-    if (isNaN(currentPrice) || currentPrice <= 0) {
-      console.warn(`[${botRunTimestamp}] Bot (User ${userId}): Invalid current price (${currentTicker.lastPrice}) for ${symbol}. Skipping.`);
-      continue;
-    }
+  if (canOpenNewTrade) {
+    console.log(`[${botRunTimestamp}] Bot (User ${userId}): Analyzing ${MONITORED_MARKET_SYMBOLS.length} monitored symbols for new entries.`);
 
-    const completedFootprintBars = getLatestFootprintBars(symbol, FOOTPRINT_BARS_FOR_METRICS);
-    const currentAggregatingBar = getCurrentAggregatingBar(symbol);
-
-    if (completedFootprintBars.length < MIN_FOOTPRINT_BARS_FOR_ACTION) { 
-      continue;
-    }
-    
-    const metrics: BotOrderFlowMetrics = await calculateAllBotMetrics(completedFootprintBars, currentAggregatingBar);
-    const existingTradeForSymbol = activeTradeSymbols.includes(symbol);
-
-    if (!existingTradeForSymbol) {
-      // --- LONG ENTRY LOGIC ---
-      const isBullishBarCharacter = metrics.latestBarCharacter === "Price Buy" || metrics.latestBarCharacter === "Delta Buy";
-      const val = metrics.sessionVal;
-      let priceNearVal = false;
-      if (val !== null) {
-        const valThresholdUpper = val * (1 + 0.002);
-        priceNearVal = (currentPrice >= val && currentPrice <= valThresholdUpper);
-        if (!priceNearVal && currentAggregatingBar?.low) priceNearVal = currentAggregatingBar.low <= val;
-        if (!priceNearVal && completedFootprintBars.length > 0) {
-            const lastCompletedBar = completedFootprintBars[completedFootprintBars.length - 1]; 
-            if(lastCompletedBar.low <= val) priceNearVal = true;
+    for (const symbol of MONITORED_MARKET_SYMBOLS) {
+        if (activeTradeSymbols.includes(symbol)) {
+            continue; // Skip if there's already an active trade for this symbol
         }
-      }
 
-      let shouldBuyLong = false;
-      let longEntryReason = "";
-      if (priceNearVal && isBullishBarCharacter) {
-        shouldBuyLong = true;
-        longEntryReason = `Price near VAL (${val?.toFixed(4)}) & Bullish Bar Character ('${metrics.latestBarCharacter}')`;
-      } else if (metrics.divergenceSignals.includes("Bullish Delta Divergence") && isBullishBarCharacter) {
-        shouldBuyLong = true;
-        longEntryReason = `Bullish Delta Divergence & Bullish Bar Character ('${metrics.latestBarCharacter}')`;
-      }
-      
-      if (shouldBuyLong) {
-           const entryPrice = currentPrice;
-           const initialStopLossPrice = entryPrice * (1 - INITIAL_STOP_LOSS_PERCENTAGE / 100);
-           console.log(`[${botRunTimestamp}] Bot (User ${userId}): LONG ENTRY SIGNAL for ${symbol} at ${entryPrice.toFixed(4)}. Reason: ${longEntryReason}.`);
-           const quantityToBuy = buyAmountUsdToUse / entryPrice;
-           const { baseAsset, quoteAsset } = getAssetsFromSymbol(symbol);
-           try {
-             await tradeService.createTrade({
-               userId: userId,
-               symbol: symbol,
-               baseAsset,
-               quoteAsset,
-               entryPrice,
-               quantity: quantityToBuy,
-               initialStopLossPrice: initialStopLossPrice,
-               tradeDirection: 'LONG',
-             });
-             console.log(`[${botRunTimestamp}] Bot (User ${userId}): DB TRADE RECORD CREATED for LONG of ${quantityToBuy.toFixed(6)} ${baseAsset} (${symbol}).`);
-             activeTradeSymbols.push(symbol); 
-           } catch (error) {
-             console.error(`[${botRunTimestamp}] Bot (User ${userId}): Error creating LONG trade record for ${symbol}:`, error);
-           }
-      }
+        const currentTicker = liveMarketData.find(t => t.symbol === symbol);
+        if (!currentTicker) {
+        continue;
+        }
+        const currentPrice = parseFloat(currentTicker.lastPrice);
+        if (isNaN(currentPrice) || currentPrice <= 0) {
+        console.warn(`[${botRunTimestamp}] Bot (User ${userId}): Invalid current price (${currentTicker.lastPrice}) for ${symbol}. Skipping.`);
+        continue;
+        }
 
-      // --- SHORT ENTRY LOGIC ---
-      const isBearishBarCharacter = metrics.latestBarCharacter === "Price Sell" || metrics.latestBarCharacter === "Delta Sell";
-      const vah = metrics.sessionVah;
-      let priceNearVah = false;
-      if (vah !== null) {
-          const vahThresholdLower = vah * (1 - 0.002);
-          priceNearVah = (currentPrice >= vahThresholdLower && currentPrice <= vah);
-          if (!priceNearVah && currentAggregatingBar?.high) priceNearVah = currentAggregatingBar.high >= vah;
-          if (!priceNearVah && completedFootprintBars.length > 0) {
-              const lastCompleted = completedFootprintBars[completedFootprintBars.length - 1]; 
-              if (lastCompleted.high >= vah) priceNearVah = true;
-          }
-      }
+        const completedFootprintBars = getLatestFootprintBars(symbol, FOOTPRINT_BARS_FOR_METRICS);
+        const currentAggregatingBar = getCurrentAggregatingBar(symbol);
 
-      let shouldSellShort = false;
-      let shortEntryReason = "";
-      if (priceNearVah && isBearishBarCharacter) {
-        shouldSellShort = true;
-        shortEntryReason = `Price near VAH (${vah?.toFixed(4)}) & Bearish Bar Character ('${metrics.latestBarCharacter}')`;
-      } else if (metrics.divergenceSignals.includes("Bearish Delta Divergence") && isBearishBarCharacter) {
-        shouldSellShort = true;
-        shortEntryReason = `Bearish Delta Divergence & Bearish Bar Character ('${metrics.latestBarCharacter}')`;
-      }
+        if (completedFootprintBars.length < MIN_FOOTPRINT_BARS_FOR_ACTION) { 
+        continue;
+        }
+        
+        const metrics: BotOrderFlowMetrics = await calculateAllBotMetrics(completedFootprintBars, currentAggregatingBar);
+        
+        // --- LONG ENTRY LOGIC ---
+        const isBullishBarCharacter = metrics.latestBarCharacter === "Price Buy" || metrics.latestBarCharacter === "Delta Buy";
+        const val = metrics.sessionVal;
+        let priceNearVal = false;
+        if (val !== null) {
+            const valThresholdUpper = val * (1 + 0.002);
+            priceNearVal = (currentPrice >= val && currentPrice <= valThresholdUpper);
+            if (!priceNearVal && currentAggregatingBar?.low) priceNearVal = currentAggregatingBar.low <= val;
+            if (!priceNearVal && completedFootprintBars.length > 0) {
+                const lastCompletedBar = completedFootprintBars[completedFootprintBars.length - 1]; 
+                if(lastCompletedBar.low <= val) priceNearVal = true;
+            }
+        }
 
-      if (shouldSellShort) {
-          const entryPrice = currentPrice;
-          const initialStopLossPrice = entryPrice * (1 + INITIAL_STOP_LOSS_PERCENTAGE / 100);
-          console.log(`[${botRunTimestamp}] Bot (User ${userId}): SHORT ENTRY SIGNAL for ${symbol} at ${entryPrice.toFixed(4)}. Reason: ${shortEntryReason}.`);
-          const quantityToSell = buyAmountUsdToUse / entryPrice;
-          const { baseAsset, quoteAsset } = getAssetsFromSymbol(symbol);
-          try {
-            await tradeService.createTrade({
-              userId: userId,
-              symbol: symbol,
-              baseAsset,
-              quoteAsset,
-              entryPrice,
-              quantity: quantityToSell,
-              initialStopLossPrice: initialStopLossPrice,
-              tradeDirection: 'SHORT',
-            });
-            console.log(`[${botRunTimestamp}] Bot (User ${userId}): DB TRADE RECORD CREATED for SHORT of ${quantityToSell.toFixed(6)} ${baseAsset} (${symbol}).`);
-            activeTradeSymbols.push(symbol); 
-          } catch (error) {
-            console.error(`[${botRunTimestamp}] Bot (User ${userId}): Error creating SHORT trade record for ${symbol}:`, error);
-          }
-      }
+        let shouldBuyLong = false;
+        let longEntryReason = "";
+        if (priceNearVal && isBullishBarCharacter) {
+            shouldBuyLong = true;
+            longEntryReason = `Price near VAL (${val?.toFixed(4)}) & Bullish Bar Character ('${metrics.latestBarCharacter}')`;
+        } else if (metrics.divergenceSignals.includes("Bullish Delta Divergence") && isBullishBarCharacter) {
+            shouldBuyLong = true;
+            longEntryReason = `Bullish Delta Divergence & Bullish Bar Character ('${metrics.latestBarCharacter}')`;
+        }
+        
+        if (shouldBuyLong) {
+            const entryPrice = currentPrice;
+            const initialStopLossPrice = entryPrice * (1 - INITIAL_STOP_LOSS_PERCENTAGE / 100);
+            console.log(`[${botRunTimestamp}] Bot (User ${userId}): LONG ENTRY SIGNAL for ${symbol} at ${entryPrice.toFixed(4)}. Reason: ${longEntryReason}.`);
+            const quantityToBuy = buyAmountUsdToUse / entryPrice;
+            const { baseAsset, quoteAsset } = getAssetsFromSymbol(symbol);
+            try {
+                await tradeService.createTrade({
+                userId: userId,
+                symbol: symbol,
+                baseAsset,
+                quoteAsset,
+                entryPrice,
+                quantity: quantityToBuy,
+                initialStopLossPrice: initialStopLossPrice,
+                tradeDirection: 'LONG',
+                });
+                console.log(`[${botRunTimestamp}] Bot (User ${userId}): DB TRADE RECORD CREATED for LONG of ${quantityToBuy.toFixed(6)} ${baseAsset} (${symbol}).`);
+                activeTradeSymbols.push(symbol); 
+                if (activeTradeSymbols.length >= maxActiveTradesToUse) break; // Stop looking for new trades if limit is hit mid-cycle
+            } catch (error) {
+                console.error(`[${botRunTimestamp}] Bot (User ${userId}): Error creating LONG trade record for ${symbol}:`, error);
+            }
+        }
+
+        // --- SHORT ENTRY LOGIC ---
+        const isBearishBarCharacter = metrics.latestBarCharacter === "Price Sell" || metrics.latestBarCharacter === "Delta Sell";
+        const vah = metrics.sessionVah;
+        let priceNearVah = false;
+        if (vah !== null) {
+            const vahThresholdLower = vah * (1 - 0.002);
+            priceNearVah = (currentPrice >= vahThresholdLower && currentPrice <= vah);
+            if (!priceNearVah && currentAggregatingBar?.high) priceNearVah = currentAggregatingBar.high >= vah;
+            if (!priceNearVah && completedFootprintBars.length > 0) {
+                const lastCompleted = completedFootprintBars[completedFootprintBars.length - 1]; 
+                if (lastCompleted.high >= vah) priceNearVah = true;
+            }
+        }
+
+        let shouldSellShort = false;
+        let shortEntryReason = "";
+        if (priceNearVah && isBearishBarCharacter) {
+            shouldSellShort = true;
+            shortEntryReason = `Price near VAH (${vah?.toFixed(4)}) & Bearish Bar Character ('${metrics.latestBarCharacter}')`;
+        } else if (metrics.divergenceSignals.includes("Bearish Delta Divergence") && isBearishBarCharacter) {
+            shouldSellShort = true;
+            shortEntryReason = `Bearish Delta Divergence & Bearish Bar Character ('${metrics.latestBarCharacter}')`;
+        }
+
+        if (shouldSellShort) {
+            const entryPrice = currentPrice;
+            const initialStopLossPrice = entryPrice * (1 + INITIAL_STOP_LOSS_PERCENTAGE / 100);
+            console.log(`[${botRunTimestamp}] Bot (User ${userId}): SHORT ENTRY SIGNAL for ${symbol} at ${entryPrice.toFixed(4)}. Reason: ${shortEntryReason}.`);
+            const quantityToSell = buyAmountUsdToUse / entryPrice;
+            const { baseAsset, quoteAsset } = getAssetsFromSymbol(symbol);
+            try {
+                await tradeService.createTrade({
+                userId: userId,
+                symbol: symbol,
+                baseAsset,
+                quoteAsset,
+                entryPrice,
+                quantity: quantityToSell,
+                initialStopLossPrice: initialStopLossPrice,
+                tradeDirection: 'SHORT',
+                });
+                console.log(`[${botRunTimestamp}] Bot (User ${userId}): DB TRADE RECORD CREATED for SHORT of ${quantityToSell.toFixed(6)} ${baseAsset} (${symbol}).`);
+                activeTradeSymbols.push(symbol); 
+                if (activeTradeSymbols.length >= maxActiveTradesToUse) break; // Stop looking for new trades if limit is hit mid-cycle
+            } catch (error) {
+                console.error(`[${botRunTimestamp}] Bot (User ${userId}): Error creating SHORT trade record for ${symbol}:`, error);
+            }
+        }
     }
+  } else if (activeTradesFromDb.length > 0) {
+      console.log(`[${botRunTimestamp}] Bot (User ${userId}): Max active trades limit reached. Skipping new entry analysis for this cycle.`);
   }
 
-  const currentActiveTradesForManagement = await tradeService.getActiveTrades(userId);
-  if (currentActiveTradesForManagement.length > 0) {
-      console.log(`[${botRunTimestamp}] Bot (User ${userId}): Managing ${currentActiveTradesForManagement.length} active bot trades for exits/trailing...`);
+  if (activeTradesFromDb.length > 0) {
+      console.log(`[${botRunTimestamp}] Bot (User ${userId}): Managing ${activeTradesFromDb.length} active bot trades for exits/trailing...`);
   }
 
-  for (const trade of currentActiveTradesForManagement) {
+  for (const trade of activeTradesFromDb) {
     const activeTradeTickerData = liveMarketData.find(t => t.symbol === trade.symbol);
     if (!activeTradeTickerData) {
       console.warn(`[${botRunTimestamp}] Bot (User ${userId}): No live ticker data for active trade ${trade.symbol} during management. Skipping this trade.`);
