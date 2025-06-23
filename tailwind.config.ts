@@ -1,3 +1,4 @@
+
 import type {Config} from 'tailwindcss';
 
 export default {
@@ -68,6 +69,9 @@ export default {
         orange: { // Added orange palette
           '400': '#fb923c', // Tailwind's orange-400
           '500': '#f97316', // Tailwind's orange-500
+        },
+        teal: {
+          '500': '#14b8a6',
         }
       },
       borderRadius: { // Updated border radius based on globals.css change

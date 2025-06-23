@@ -10,6 +10,7 @@ interface GraphicalFootprintBarProps {
   sessionVah?: number | null;
   sessionVal?: number | null;
   sessionPocPrice?: number | null;
+  sessionVwap?: number | null;
 }
 
 interface ProcessedPriceLevel {
@@ -26,11 +27,12 @@ interface ProcessedPriceLevel {
   isSessionPoc?: boolean;
   isSessionVahLine?: boolean;
   isSessionValLine?: boolean;
+  isSessionVwap?: boolean;
 }
 
 const IMBALANCE_RATIO = 3.0; 
 
-const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar, sessionVah, sessionVal, sessionPocPrice }) => {
+const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar, sessionVah, sessionVal, sessionPocPrice, sessionVwap }) => {
   const [processedData, setProcessedData] = useState<ProcessedPriceLevel[]>([]);
   const [pocInfo, setPocInfo] = useState<{ priceDisplay: string; totalVolume: number } | null>(null);
 
@@ -60,7 +62,7 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar, sess
 
     const { open, high, low, close } = bar;
 
-    const sortedLevels: Omit<ProcessedPriceLevel, 'isPoc' | 'buyImbalance' | 'sellImbalance' | 'ohlcMarkers' | 'isInSessionValueArea' | 'isSessionPoc' | 'isSessionVahLine' | 'isSessionValLine'>[] = Array.from(priceLevelsMap.entries())
+    const sortedLevels: Omit<ProcessedPriceLevel, 'isPoc' | 'buyImbalance' | 'sellImbalance' | 'ohlcMarkers' | 'isInSessionValueArea' | 'isSessionPoc' | 'isSessionVahLine' | 'isSessionValLine' | 'isSessionVwap'>[] = Array.from(priceLevelsMap.entries())
       .map(([priceStr, levelData]) => {
         const price = parseFloat(priceStr);
         const sellVol = levelData.sellVolume || 0;
@@ -100,6 +102,13 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar, sess
       setPocInfo({ priceDisplay: currentPocDisplay, totalVolume: currentPocTotalVolume });
     } else {
       setPocInfo(null);
+    }
+
+    let vwapClosestPriceValue: number | null = null;
+    if (sessionVwap !== null && sessionVwap !== undefined && sortedLevels.length > 0) {
+      vwapClosestPriceValue = sortedLevels.reduce((prev, curr) => {
+        return (Math.abs(curr.priceValue - sessionVwap) < Math.abs(prev.priceValue - sessionVwap) ? curr : prev);
+      }).priceValue;
     }
 
     const finalProcessedData: ProcessedPriceLevel[] = sortedLevels.map((level, index, arr) => {
@@ -151,6 +160,8 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar, sess
         isCurrentSessionPoc = true;
       }
       
+      const isCurrentSessionVwap = vwapClosestPriceValue !== null && level.priceValue === vwapClosestPriceValue;
+
       return {
         ...level,
         isPoc: level.priceDisplay === currentPocDisplay,
@@ -161,12 +172,13 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar, sess
         isSessionPoc: isCurrentSessionPoc,
         isSessionVahLine: isCurrentSessionVahLine,
         isSessionValLine: isCurrentSessionValLine,
+        isSessionVwap: isCurrentSessionVwap,
       };
     });
     
     setProcessedData(finalProcessedData);
 
-  }, [bar, sessionVah, sessionVal, sessionPocPrice]);
+  }, [bar, sessionVah, sessionVal, sessionPocPrice, sessionVwap]);
 
   const getVolumeDisplay = (volume: number) => {
     if (volume === 0) return <span className="text-muted-foreground/60">-</span>;
@@ -210,6 +222,7 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar, sess
             className={cn(
               "flex justify-between items-center border-b border-dotted border-border/30 py-[1px] min-h-[18px]", 
               level.isPoc ? 'bg-primary/20 dark:bg-primary/30' : 
+              level.isSessionVwap ? 'bg-teal-500/20 dark:bg-teal-700/30' :
               level.isInSessionValueArea ? 'bg-blue-500/10 dark:bg-blue-700/20' : '',
               level.isSessionVahLine && 'border-t-2 border-sky-500',
               level.isSessionValLine && 'border-b-2 border-sky-500'
@@ -258,4 +271,3 @@ const GraphicalFootprintBar: React.FC<GraphicalFootprintBarProps> = ({ bar, sess
 };
 
 export default GraphicalFootprintBar;
-

@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Loader2, PlayCircle, StopCircle, BarChartHorizontalBig, Info, TrendingUp, TrendingDown, Maximize, Minimize, Activity, Target, ArrowUpCircle, ArrowDownCircle, GitCompareArrows } from 'lucide-react';
+import { Loader2, PlayCircle, StopCircle, BarChartHorizontalBig, Info, TrendingUp, TrendingDown, Maximize, Minimize, Activity, Target, ArrowUpCircle, ArrowDownCircle, GitCompareArrows, Waves } from 'lucide-react';
 import type { FootprintBar, PriceLevelData } from '@/types/footprint';
 import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; // Default symbols
 import { useToast } from "@/hooks/use-toast";
@@ -173,6 +173,26 @@ function calculateSessionVolumeProfileAndVA(bars: FootprintBar[]): SessionProfil
     vahNum,
     valNum,
   };
+}
+
+function calculateSessionVwap(bars: FootprintBar[]): number | null {
+    if (!bars || bars.length === 0) {
+        return null;
+    }
+    let cumulativeTypicalPriceVolume = 0;
+    let cumulativeVolume = 0;
+    const chronologicalBars = [...bars].sort((a, b) => a.timestamp - b.timestamp);
+    for (const bar of chronologicalBars) {
+        if (bar.totalVolume > 0) {
+            const typicalPrice = (bar.high + bar.low + bar.close) / 3;
+            cumulativeTypicalPriceVolume += typicalPrice * bar.totalVolume;
+            cumulativeVolume += bar.totalVolume;
+        }
+    }
+    if (cumulativeVolume === 0) {
+        return null;
+    }
+    return cumulativeTypicalPriceVolume / cumulativeVolume;
 }
 
 
@@ -543,6 +563,7 @@ export default function FootprintChartsPage() {
 
           const { sessionPocPriceStr, sessionPocVolumeStr, vahStr, valStr, sessionPocPriceNum, vahNum, valNum } = calculateSessionVolumeProfileAndVA(currentSymbolFootprintBars);
           const divergenceSignals = calculateDivergences(currentSymbolFootprintBars);
+          const sessionVwapNum = calculateSessionVwap(currentSymbolFootprintBars);
 
 
           return (
@@ -578,7 +599,7 @@ export default function FootprintChartsPage() {
                         <h4 className="font-medium text-xs mb-1 text-center">
                           {formatTimeFromTimestamp(bar.timestamp, false)}
                         </h4>
-                        <GraphicalFootprintBar bar={bar} sessionVah={vahNum} sessionVal={valNum} sessionPocPrice={sessionPocPriceNum} />
+                        <GraphicalFootprintBar bar={bar} sessionVah={vahNum} sessionVal={valNum} sessionPocPrice={sessionPocPriceNum} sessionVwap={sessionVwapNum} />
                       </div>
                     ))}
                   </div>
@@ -626,6 +647,10 @@ export default function FootprintChartsPage() {
                         <div className="flex justify-between items-center">
                             <span className="text-muted-foreground flex items-center"><ArrowDownCircle className="h-3.5 w-3.5 mr-1.5 text-blue-500"/>Value Area Low:</span>
                             <span className="font-semibold">{valStr || 'N/A'}</span>
+                        </div>
+                         <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground flex items-center"><Waves className="h-3.5 w-3.5 mr-1.5 text-teal-500"/>Session VWAP:</span>
+                            <span className="font-semibold">{formatPrice(sessionVwapNum) || 'N/A'}</span>
                         </div>
                         {divergenceSignals.length > 0 && (
                             <div className="sm:col-span-2 mt-1 text-center">
@@ -703,4 +728,3 @@ export default function FootprintChartsPage() {
     </div>
   );
 }
-

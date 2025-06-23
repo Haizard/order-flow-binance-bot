@@ -126,10 +126,15 @@ export async function runBotCycle(
         }
         
         const metrics: BotOrderFlowMetrics = await calculateAllBotMetrics(completedFootprintBars, currentAggregatingBar);
+        if (metrics.sessionVwap) { // Check if VWAP was calculated
+            console.log(`[${botRunTimestamp}] Bot (User ${userId}): [${symbol}] Calculated Session VWAP: ${metrics.sessionVwap.toFixed(4)}`);
+        }
+
+        const { sessionVal, sessionVah, latestBarCharacter, divergenceSignals } = metrics;
         
         // --- LONG ENTRY LOGIC ---
-        const isBullishBarCharacter = metrics.latestBarCharacter === "Price Buy" || metrics.latestBarCharacter === "Delta Buy";
-        const val = metrics.sessionVal;
+        const isBullishBarCharacter = latestBarCharacter === "Price Buy" || latestBarCharacter === "Delta Buy";
+        const val = sessionVal;
         let priceNearVal = false;
         if (val !== null) {
             const valThresholdUpper = val * (1 + 0.002);
@@ -145,10 +150,10 @@ export async function runBotCycle(
         let longEntryReason = "";
         if (priceNearVal && isBullishBarCharacter) {
             shouldBuyLong = true;
-            longEntryReason = `Price near VAL (${val?.toFixed(4)}) & Bullish Bar Character ('${metrics.latestBarCharacter}')`;
-        } else if (metrics.divergenceSignals.includes("Bullish Delta Divergence") && isBullishBarCharacter) {
+            longEntryReason = `Price near VAL (${val?.toFixed(4)}) & Bullish Bar Character ('${latestBarCharacter}')`;
+        } else if (divergenceSignals.includes("Bullish Delta Divergence") && isBullishBarCharacter) {
             shouldBuyLong = true;
-            longEntryReason = `Bullish Delta Divergence & Bullish Bar Character ('${metrics.latestBarCharacter}')`;
+            longEntryReason = `Bullish Delta Divergence & Bullish Bar Character ('${latestBarCharacter}')`;
         }
         
         if (shouldBuyLong) {
@@ -177,8 +182,8 @@ export async function runBotCycle(
         }
 
         // --- SHORT ENTRY LOGIC ---
-        const isBearishBarCharacter = metrics.latestBarCharacter === "Price Sell" || metrics.latestBarCharacter === "Delta Sell";
-        const vah = metrics.sessionVah;
+        const isBearishBarCharacter = latestBarCharacter === "Price Sell" || latestBarCharacter === "Delta Sell";
+        const vah = sessionVah;
         let priceNearVah = false;
         if (vah !== null) {
             const vahThresholdLower = vah * (1 - 0.002);
@@ -194,10 +199,10 @@ export async function runBotCycle(
         let shortEntryReason = "";
         if (priceNearVah && isBearishBarCharacter) {
             shouldSellShort = true;
-            shortEntryReason = `Price near VAH (${vah?.toFixed(4)}) & Bearish Bar Character ('${metrics.latestBarCharacter}')`;
-        } else if (metrics.divergenceSignals.includes("Bearish Delta Divergence") && isBearishBarCharacter) {
+            shortEntryReason = `Price near VAH (${vah?.toFixed(4)}) & Bearish Bar Character ('${latestBarCharacter}')`;
+        } else if (divergenceSignals.includes("Bearish Delta Divergence") && isBearishBarCharacter) {
             shouldSellShort = true;
-            shortEntryReason = `Bearish Delta Divergence & Bearish Bar Character ('${metrics.latestBarCharacter}')`;
+            shortEntryReason = `Bearish Delta Divergence & Bearish Bar Character ('${latestBarCharacter}')`;
         }
 
         if (shouldSellShort) {

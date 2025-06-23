@@ -195,10 +195,37 @@ export async function calculateDivergencesForBot(completedBars: FootprintBar[]):
   return divergenceSignals;
 }
 
+export async function calculateSessionVwapForBot(bars: FootprintBar[]): Promise<number | null> {
+    if (!bars || bars.length === 0) {
+        return null;
+    }
+
+    let cumulativeTypicalPriceVolume = 0;
+    let cumulativeVolume = 0;
+
+    // Chronological order is important for VWAP
+    const chronologicalBars = [...bars].sort((a, b) => a.timestamp - b.timestamp);
+
+    for (const bar of chronologicalBars) {
+        if (bar.totalVolume > 0) {
+            const typicalPrice = (bar.high + bar.low + bar.close) / 3;
+            cumulativeTypicalPriceVolume += typicalPrice * bar.totalVolume;
+            cumulativeVolume += bar.totalVolume;
+        }
+    }
+
+    if (cumulativeVolume === 0) {
+        return null;
+    }
+
+    return cumulativeTypicalPriceVolume / cumulativeVolume;
+}
+
 export interface BotOrderFlowMetrics {
     sessionPoc: number | null;
     sessionVah: number | null;
     sessionVal: number | null;
+    sessionVwap: number | null;
     latestBarCharacter: string;
     divergenceSignals: string[];
 }
@@ -209,6 +236,7 @@ export async function calculateAllBotMetrics(
 ) : Promise<BotOrderFlowMetrics> {
 
     const sessionMetrics = await calculateSessionVolumeProfileAndVAForBot(completedFootprintBars);
+    const sessionVwap = await calculateSessionVwapForBot(completedFootprintBars);
     
     let barForCharacterAnalysis: Partial<FootprintBar> | undefined = currentAggregatingBar;
     if (!barForCharacterAnalysis || (barForCharacterAnalysis.totalVolume === 0 || barForCharacterAnalysis.totalVolume === undefined)) {
@@ -224,6 +252,7 @@ export async function calculateAllBotMetrics(
         sessionPoc: sessionMetrics.sessionPocPrice,
         sessionVah: sessionMetrics.vah,
         sessionVal: sessionMetrics.val,
+        sessionVwap: sessionVwap,
         latestBarCharacter: barCharacterResult.character,
         divergenceSignals: divergenceSignals
     };
