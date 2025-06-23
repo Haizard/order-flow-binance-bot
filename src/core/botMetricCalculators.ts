@@ -8,6 +8,8 @@ import type { FootprintBar, PriceLevelData } from '@/types/footprint';
 const VALUE_AREA_PERCENTAGE = 0.7; // 70% for VAH/VAL calculation
 const MIN_BARS_FOR_DIVERGENCE_CALC = 10;
 const SWING_LOOKAROUND_WINDOW_CALC = 2;
+const IMBALANCE_RATIO_THRESHOLD = 3.0; // e.g., 300% imbalance
+const STACKED_IMBALANCE_COUNT = 2; // How many consecutive imbalanced levels to count as significant
 
 interface SessionProfileMetricsBot {
   sessionPocPrice: number | null;
@@ -112,7 +114,6 @@ export async function calculateSessionVolumeProfileAndVAForBot(bars: FootprintBa
 
 interface BarCharacterResult {
     character: string;
-    // Future: Add confidence or other details if needed
 }
 
 export async function getBarCharacterForBot(bar: Partial<FootprintBar> | null | undefined): Promise<BarCharacterResult> {
@@ -122,9 +123,8 @@ export async function getBarCharacterForBot(bar: Partial<FootprintBar> | null | 
 
     if (bar.close > bar.open && bar.delta >= 0) return { character: "Price Buy" };
     if (bar.close < bar.open && bar.delta <= 0) return { character: "Price Sell" };
-    // These need to be after the combined conditions to ensure correct categorization
-    if (bar.delta < 0) return { character: "Delta Sell" }; // Price might be up or down, but delta is selling
-    if (bar.delta > 0) return { character: "Delta Buy" };  // Price might be up or down, but delta is buying
+    if (bar.delta < 0) return { character: "Delta Sell" };
+    if (bar.delta > 0) return { character: "Delta Buy" };  
     
     return { character: "Neutral" };
 }
@@ -202,8 +202,6 @@ export async function calculateSessionVwapForBot(bars: FootprintBar[]): Promise<
 
     let cumulativeTypicalPriceVolume = 0;
     let cumulativeVolume = 0;
-
-    // Chronological order is important for VWAP
     const chronologicalBars = [...bars].sort((a, b) => a.timestamp - b.timestamp);
 
     for (const bar of chronologicalBars) {
@@ -221,6 +219,62 @@ export async function calculateSessionVwapForBot(bars: FootprintBar[]): Promise<
     return cumulativeTypicalPriceVolume / cumulativeVolume;
 }
 
+async function detectImbalanceReversal(completedBars: FootprintBar[]): Promise<string | null> {
+    if (completedBars.length < 2) return null;
+
+    const n_minus_1_bar = completedBars[completedBars.length - 2];
+    const last_bar = completedBars[completedBars.length - 1];
+
+    if (!n_minus_1_bar.priceLevels || n_minus_1_bar.priceLevels.size === 0) return null;
+    
+    const sortedLevels = Array.from(n_minus_1_bar.priceLevels.entries())
+      .map(([priceStr, levelData]) => ({
+        price: parseFloat(priceStr),
+        buyVolume: levelData.buyVolume || 0,
+        sellVolume: levelData.sellVolume || 0,
+      }))
+      .sort((a, b) => b.price - a.price);
+
+    // Check for Bearish Reversal (buy imbalance at top of N-1 bar, followed by down bar)
+    let stackedBuyImbalances = 0;
+    for (let i = 0; i < sortedLevels.length - 1; i++) {
+        const currentLevel = sortedLevels[i];
+        const levelBelow = sortedLevels[i + 1];
+        if (currentLevel.buyVolume >= (levelBelow.sellVolume * IMBALANCE_RATIO_THRESHOLD) && levelBelow.sellVolume > 0) {
+            stackedBuyImbalances++;
+            if (stackedBuyImbalances >= STACKED_IMBALANCE_COUNT && currentLevel.price >= n_minus_1_bar.high) {
+                // Found significant buy imbalance at the high. Now check if the next bar was a reversal.
+                if (last_bar.close < last_bar.open) {
+                    return 'BEARISH_IMBALANCE_REVERSAL';
+                }
+            }
+        } else {
+            stackedBuyImbalances = 0; // Reset if the stack is broken
+        }
+    }
+
+    // Check for Bullish Reversal (sell imbalance at bottom of N-1 bar, followed by up bar)
+    let stackedSellImbalances = 0;
+    for (let i = sortedLevels.length - 1; i > 0; i--) {
+        const currentLevel = sortedLevels[i];
+        const levelAbove = sortedLevels[i - 1];
+        if (currentLevel.sellVolume >= (levelAbove.buyVolume * IMBALANCE_RATIO_THRESHOLD) && levelAbove.buyVolume > 0) {
+            stackedSellImbalances++;
+            if (stackedSellImbalances >= STACKED_IMBALANCE_COUNT && currentLevel.price <= n_minus_1_bar.low) {
+                 // Found significant sell imbalance at the low. Now check if the next bar was a reversal.
+                if (last_bar.close > last_bar.open) {
+                    return 'BULLISH_IMBALANCE_REVERSAL';
+                }
+            }
+        } else {
+            stackedSellImbalances = 0; // Reset if the stack is broken
+        }
+    }
+
+    return null; // No reversal detected
+}
+
+
 export interface BotOrderFlowMetrics {
     sessionPoc: number | null;
     sessionVah: number | null;
@@ -228,6 +282,7 @@ export interface BotOrderFlowMetrics {
     sessionVwap: number | null;
     latestBarCharacter: string;
     divergenceSignals: string[];
+    imbalanceReversalSignal: string | null;
 }
 
 export async function calculateAllBotMetrics(
@@ -241,12 +296,12 @@ export async function calculateAllBotMetrics(
     let barForCharacterAnalysis: Partial<FootprintBar> | undefined = currentAggregatingBar;
     if (!barForCharacterAnalysis || (barForCharacterAnalysis.totalVolume === 0 || barForCharacterAnalysis.totalVolume === undefined)) {
         if(completedFootprintBars.length > 0) {
-            // Use the latest completed bar if current aggregating is empty
             barForCharacterAnalysis = completedFootprintBars[completedFootprintBars.length - 1];
         }
     }
     const barCharacterResult = await getBarCharacterForBot(barForCharacterAnalysis);
     const divergenceSignals = await calculateDivergencesForBot(completedFootprintBars);
+    const imbalanceReversalSignal = await detectImbalanceReversal(completedFootprintBars);
 
     return {
         sessionPoc: sessionMetrics.sessionPocPrice,
@@ -254,6 +309,7 @@ export async function calculateAllBotMetrics(
         sessionVal: sessionMetrics.val,
         sessionVwap: sessionVwap,
         latestBarCharacter: barCharacterResult.character,
-        divergenceSignals: divergenceSignals
+        divergenceSignals: divergenceSignals,
+        imbalanceReversalSignal: imbalanceReversalSignal
     };
 }

@@ -20,7 +20,7 @@ import { calculateAllBotMetrics, type BotOrderFlowMetrics } from './botMetricCal
 
 const DEMO_USER_ID_BOT_FALLBACK = "bot_fallback_user";
 const FOOTPRINT_BARS_FOR_METRICS = 20; 
-const MIN_FOOTPRINT_BARS_FOR_ACTION = 5; 
+const MIN_FOOTPRINT_BARS_FOR_ACTION = 10; // Increased for more reliable reversal/divergence signals
 const INITIAL_STOP_LOSS_PERCENTAGE = 1.5; // e.g., 1.5% initial stop loss
 
 function getAssetsFromSymbol(symbol: string): { baseAsset: string, quoteAsset: string } {
@@ -130,7 +130,7 @@ export async function runBotCycle(
             console.log(`[${botRunTimestamp}] Bot (User ${userId}): [${symbol}] Calculated Session VWAP: ${metrics.sessionVwap.toFixed(4)}`);
         }
 
-        const { sessionVal, sessionVah, latestBarCharacter, divergenceSignals } = metrics;
+        const { sessionVal, sessionVah, latestBarCharacter, divergenceSignals, imbalanceReversalSignal } = metrics;
         
         // --- LONG ENTRY LOGIC ---
         const isBullishBarCharacter = latestBarCharacter === "Price Buy" || latestBarCharacter === "Delta Buy";
@@ -154,6 +154,9 @@ export async function runBotCycle(
         } else if (divergenceSignals.includes("Bullish Delta Divergence") && isBullishBarCharacter) {
             shouldBuyLong = true;
             longEntryReason = `Bullish Delta Divergence & Bullish Bar Character ('${latestBarCharacter}')`;
+        } else if (imbalanceReversalSignal === 'BULLISH_IMBALANCE_REVERSAL') {
+            shouldBuyLong = true;
+            longEntryReason = 'Bullish Imbalance Reversal Detected';
         }
         
         if (shouldBuyLong) {
@@ -203,6 +206,9 @@ export async function runBotCycle(
         } else if (divergenceSignals.includes("Bearish Delta Divergence") && isBearishBarCharacter) {
             shouldSellShort = true;
             shortEntryReason = `Bearish Delta Divergence & Bearish Bar Character ('${latestBarCharacter}')`;
+        } else if (imbalanceReversalSignal === 'BEARISH_IMBALANCE_REVERSAL') {
+            shouldSellShort = true;
+            shortEntryReason = 'Bearish Imbalance Reversal Detected';
         }
 
         if (shouldSellShort) {
@@ -286,11 +292,18 @@ export async function runBotCycle(
                 priceNearVah = (currentPriceForTrade >= vahThresholdLower && currentPriceForTrade <= vah) || (getCurrentAggregatingBar(trade.symbol)?.high ?? 0) >= vah;
             }
 
-            if (priceNearVah && isBearishBarCharacterForExit && (trade.status === 'ACTIVE_LONG_ENTRY' || trade.status === 'ACTIVE_TRAILING_LONG')) {
+            let proactiveExitReason = "";
+            if (priceNearVah && isBearishBarCharacterForExit) {
+                proactiveExitReason = "Price near VAH & Bearish Bar Character";
+            } else if (activeTradeMetrics.imbalanceReversalSignal === 'BEARISH_IMBALANCE_REVERSAL') {
+                proactiveExitReason = "Bearish Imbalance Reversal Detected";
+            }
+
+            if (proactiveExitReason && (trade.status === 'ACTIVE_LONG_ENTRY' || trade.status === 'ACTIVE_TRAILING_LONG')) {
                 const exitPrice = currentPriceForTrade;
                 const pnlValue = (exitPrice - trade.entryPrice) * trade.quantity;
                 const pnlPercentageValue = (trade.entryPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.entryPrice * trade.quantity)) * 100;
-                console.log(`[${botRunTimestamp}] Bot (User ${userId}): LONG PROACTIVE EXIT SIGNAL for ${trade.symbol} ID ${trade.id}. Reason: Price near VAH & Bearish Bar Character.`);
+                console.log(`[${botRunTimestamp}] Bot (User ${userId}): LONG PROACTIVE EXIT SIGNAL for ${trade.symbol} ID ${trade.id}. Reason: ${proactiveExitReason}.`);
                 try {
                   await tradeService.updateTrade(userId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
                   continue; 
@@ -361,11 +374,18 @@ export async function runBotCycle(
                 priceNearVal = (currentPriceForTrade >= val && currentPriceForTrade <= valThresholdUpper) || (getCurrentAggregatingBar(trade.symbol)?.low ?? Infinity) <= val;
             }
 
-            if (priceNearVal && isBullishBarCharacterForExit && (trade.status === 'ACTIVE_SHORT_ENTRY' || trade.status === 'ACTIVE_TRAILING_SHORT')) {
+            let proactiveExitReason = "";
+            if (priceNearVal && isBullishBarCharacterForExit) {
+                proactiveExitReason = "Price near VAL & Bullish Bar Character";
+            } else if (activeTradeMetrics.imbalanceReversalSignal === 'BULLISH_IMBALANCE_REVERSAL') {
+                proactiveExitReason = "Bullish Imbalance Reversal Detected";
+            }
+
+            if (proactiveExitReason && (trade.status === 'ACTIVE_SHORT_ENTRY' || trade.status === 'ACTIVE_TRAILING_SHORT')) {
                 const exitPrice = currentPriceForTrade;
                 const pnlValue = (trade.entryPrice - exitPrice) * trade.quantity;
                 const pnlPercentageValue = (trade.entryPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.entryPrice * trade.quantity)) * 100;
-                console.log(`[${botRunTimestamp}] Bot (User ${userId}): SHORT PROACTIVE EXIT SIGNAL for ${trade.symbol} ID ${trade.id}. Reason: Price near VAL & Bullish Bar Character.`);
+                console.log(`[${botRunTimestamp}] Bot (User ${userId}): SHORT PROACTIVE EXIT SIGNAL for ${trade.symbol} ID ${trade.id}. Reason: ${proactiveExitReason}.`);
                 try {
                   await tradeService.updateTrade(userId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
                   continue; 
