@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { CreditCard, History, LayoutDashboard, Settings as SettingsIcon, BarChartHorizontalBig } from 'lucide-react';
+import { CreditCard, History, LayoutDashboard, Settings as SettingsIcon, BarChartHorizontalBig, Rocket } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   SidebarMenu,
@@ -21,6 +21,7 @@ const menuItems = [
   { href: '/settings', label: 'Settings', icon: SettingsIcon },
   { href: '/trades', label: 'Trade History', icon: History },
   { href: '/subscription', label: 'Subscription', icon: CreditCard },
+  { href: '/invest', label: 'Invest', icon: Rocket },
 ];
 
 export function MainNav() {
