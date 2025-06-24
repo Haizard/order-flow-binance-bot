@@ -10,7 +10,6 @@ import { get24hrTicker } from '@/services/binance';
 import type { Ticker24hr } from '@/types/binance';
 import type { SettingsFormValues } from '@/components/settings/settings-form';
 import { getSettings } from '@/services/settingsService';
-import { runBotCycle } from '@/core/bot';
 import * as tradeService from '@/services/tradeService';
 import { defaultSettingsValues } from '@/config/settings-defaults';
 
@@ -106,7 +105,7 @@ export default async function DashboardPage() {
     userSettings = await getSettings(DEMO_USER_ID);
     console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded user settings for ${DEMO_USER_ID}. API Key Present: ${!!userSettings.binanceApiKey}, Dip Percentage: ${userSettings.dipPercentage}, Monitored Symbols: ${userSettings.monitoredSymbols.join(',')}`);
   } catch (error) {
-    console.error(`[${new Date().toISOString()}] DashboardPage: Failed to load user settings for ${DEMO_USER_ID}, using defaults for bot cycle and display:`, error);
+    console.error(`[${new Date().toISOString()}] DashboardPage: Failed to load user settings for ${DEMO_USER_ID}, using defaults for display:`, error);
     userSettings = { ...defaultSettingsValues, userId: DEMO_USER_ID };
   }
   
@@ -115,19 +114,7 @@ export default async function DashboardPage() {
     : defaultSettingsValues.monitoredSymbols;
 
   const liveMarketData = await getMarketData(monitoredSymbolsToUse);
-
-  const userApiSettingsForBot = {
-      binanceApiKey: userSettings.binanceApiKey,
-      binanceSecretKey: userSettings.binanceSecretKey,
-  };
-
-  console.log(`[${new Date().toISOString()}] DashboardPage (user ${DEMO_USER_ID}): API keys being passed to runBotCycle: API Key Present: ${!!userApiSettingsForBot.binanceApiKey}, Secret Key Present: ${!!userApiSettingsForBot.binanceSecretKey}`);
-  try {
-    await runBotCycle(DEMO_USER_ID, userApiSettingsForBot, liveMarketData);
-  } catch (botError) {
-    console.error(`[${new Date().toISOString()}] DashboardPage: Error running bot cycle for user ${DEMO_USER_ID}:`, botError);
-  }
-
+  
   const totalPnl = await calculateTotalPnlFromBotTrades(DEMO_USER_ID);
   const activeTrades = await tradeService.getActiveTrades(DEMO_USER_ID);
   const activeTradesCount = activeTrades.length;

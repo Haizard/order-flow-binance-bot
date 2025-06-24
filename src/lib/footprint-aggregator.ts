@@ -7,9 +7,11 @@
 import WebSocket from 'ws';
 import type { FootprintTrade, FootprintBar, PriceLevelData, BinanceTradeData, BinanceStreamData } from '@/types/footprint';
 import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy';
+import { runBotCycle } from '@/core/bot';
 
 const BINANCE_FUTURES_WEBSOCKET_URL = 'wss://fstream.binance.com/stream';
 const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute
+const BOT_CYCLE_INTERVAL_MS = 60 * 1000; // Run bot logic every 1 minute
 
 const footprintDataStore = new Map<string, FootprintBar[]>(); // Stores arrays of completed bars
 const currentBarData = new Map<string, Partial<FootprintBar>>(); // Stores the currently aggregating bar
@@ -21,6 +23,7 @@ const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_DELAY_BASE = 1000; // 1 second
 let pingTimeout: NodeJS.Timeout | null = null;
 let keepAliveIntervalId: NodeJS.Timeout | null = null;
+let botIntervalId: NodeJS.Timeout | null = null; // To control the bot execution cycle
 
 
 type ListenerCallback = (data: FootprintBar | Partial<FootprintBar>, eventType: 'footprintUpdate' | 'footprintUpdatePartial') => void;
@@ -168,6 +171,32 @@ function heartbeat() {
   }, 30000 + 1000); // Binance sends pings every 3 minutes. We expect pong within 30s.
 }
 
+function startBotCycle() {
+    if (botIntervalId) {
+        clearInterval(botIntervalId);
+        botIntervalId = null;
+    }
+    console.log(`[${new Date().toISOString()}] FootprintAggregator: Starting continuous bot cycle (every ${BOT_CYCLE_INTERVAL_MS / 1000}s).`);
+    botIntervalId = setInterval(async () => {
+        const DEMO_USER_ID = "user123";
+        console.log(`[${new Date().toISOString()}] FootprintAggregator: Triggering periodic bot cycle for user ${DEMO_USER_ID}.`);
+        try {
+            // runBotCycle is designed to be self-sufficient, fetching its own settings and market data.
+            await runBotCycle(DEMO_USER_ID);
+        } catch (error) {
+            console.error(`[${new Date().toISOString()}] FootprintAggregator: Error during periodic bot cycle execution:`, error);
+        }
+    }, BOT_CYCLE_INTERVAL_MS);
+}
+
+function stopBotCycle() {
+    if (botIntervalId) {
+        clearInterval(botIntervalId);
+        botIntervalId = null;
+        console.log(`[${new Date().toISOString()}] FootprintAggregator: Stopped continuous bot cycle.`);
+    }
+}
+
 
 function connect() {
   if (wsInstance && (wsInstance.readyState === WebSocket.OPEN || wsInstance.readyState === WebSocket.CONNECTING)) {
@@ -198,6 +227,9 @@ function connect() {
         wsInstance.ping();
       }
     }, 3 * 60 * 1000); // Send a ping every 3 minutes
+    
+    // Start the bot cycle once the data stream is confirmed to be open.
+    startBotCycle();
   });
 
   wsInstance.on('message', (data: WebSocket.Data) => {
@@ -239,6 +271,7 @@ function connect() {
     console.log(`[${new Date().toISOString()}] FootprintAggregator: WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}.`);
     if (pingTimeout) clearTimeout(pingTimeout);
     if (keepAliveIntervalId) clearInterval(keepAliveIntervalId);
+    stopBotCycle(); // Stop the bot when the data connection is lost.
     wsInstance = null;
     if (activeSymbols.length > 0 && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) { // Only reconnect if intended
         attemptReconnect();
@@ -310,6 +343,7 @@ export function startFootprintStream(symbols: string[] = MONITORED_MARKET_SYMBOL
 
 export function stopFootprintStream() {
   console.log(`[${new Date().toISOString()}] FootprintAggregator: stopFootprintStream called.`);
+  stopBotCycle(); // Stop the bot cycle.
   const oldActiveSymbols = [...activeSymbols];
   activeSymbols = []; // Clear active symbols first
   if (wsInstance) {
