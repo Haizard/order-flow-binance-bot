@@ -19,9 +19,10 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { MailCheck } from "lucide-react";
+import { MailCheck, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import React from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const verifyFormSchema = z.object({
   code: z.string().min(6, "Verification code must be 6 characters.").max(6, "Verification code must be 6 characters."),
@@ -46,17 +47,20 @@ export default function VerifyPage() {
     // Simulate API call to verify the code
     console.log("Verifying code:", data.code, "for email:", email);
     
-    // On success:
-    toast({ 
-        title: "Account Verified!", 
-        description: "Your account has been successfully verified. Please log in.",
-        variant: "default",
-        className: "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700 text-green-800 dark:text-green-300",
-    });
-    router.push('/login');
-    
-    // On failure, you would show an error message
-    // form.setError("code", { type: "manual", message: "Invalid verification code." });
+    // In our demo, we'll check for the hardcoded code
+    if (data.code === "123456") {
+      // On success:
+      toast({ 
+          title: "Account Verified!", 
+          description: "Your account has been successfully verified. Please log in.",
+          variant: "default",
+          className: "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700 text-green-800 dark:text-green-300",
+      });
+      router.push('/login');
+    } else {
+      // On failure:
+      form.setError("code", { type: "manual", message: "Invalid verification code. Please use 123456." });
+    }
   }
 
   if (!email) {
@@ -86,6 +90,14 @@ export default function VerifyPage() {
         </CardDescription>
       </CardHeader>
       <CardContent>
+        <Alert variant="default" className="mb-6 bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
+          <Info className="h-4 w-4 text-primary" />
+          <AlertTitle className="font-semibold text-primary">Demo Mode</AlertTitle>
+          <AlertDescription>
+            This is a demo. Use the verification code <code className="font-bold bg-muted px-1.5 py-0.5 rounded">123456</code> to proceed.
+          </AlertDescription>
+        </Alert>
+
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
             <FormField
