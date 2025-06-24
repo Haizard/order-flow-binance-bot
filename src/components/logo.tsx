@@ -4,12 +4,14 @@ import Link from 'next/link';
 import type { HTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
-interface LogoProps extends HTMLAttributes<HTMLAnchorElement> {}
+interface LogoProps extends HTMLAttributes<HTMLAnchorElement> {
+    href?: string;
+}
 
-export function Logo({ className, ...props }: LogoProps) {
+export function Logo({ className, href = "/dashboard", ...props }: LogoProps) {
   return (
     <Link
-      href="/"
+      href={href}
       className={cn(
         "flex items-center gap-2 text-xl font-semibold tracking-tight text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className

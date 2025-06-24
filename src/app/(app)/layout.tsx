@@ -79,7 +79,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     <SidebarProvider defaultOpen>
       <Sidebar variant="sidebar" collapsible="icon" className="border-r border-sidebar-border">
         <SidebarHeader className="p-3">
-          <Logo />
+          <Logo href="/dashboard" />
         </SidebarHeader>
         <SidebarContent className="p-2 flex-grow">
           <MainNav />

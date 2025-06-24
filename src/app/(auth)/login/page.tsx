@@ -1,9 +1,11 @@
+
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { LogIn } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const loginFormSchema = z.object({
   email: z.string().email("Invalid email address.").min(1, "Email is required."),
@@ -26,6 +29,9 @@ const loginFormSchema = z.object({
 type LoginFormValues = z.infer<typeof loginFormSchema>;
 
 export default function LoginPage() {
+  const router = useRouter();
+  const { toast } = useToast();
+  
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginFormSchema),
     defaultValues: {
@@ -35,10 +41,12 @@ export default function LoginPage() {
   });
 
   function onSubmit(data: LoginFormValues) {
-    // Handle login logic (e.g., API call)
+    // Simulate API call and successful login
     console.log("Login data:", data);
-    // On success, redirect to dashboard, e.g., router.push('/');
-    // toast({ title: "Login Successful", description: "Welcome back!" });
+    toast({ title: "Login Successful", description: "Welcome back! Redirecting to your dashboard..." });
+    
+    // Redirect to the main application dashboard
+    router.push('/dashboard');
   }
 
   return (

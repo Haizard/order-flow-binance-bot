@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/sidebar';
 
 const menuItems = [
-  { href: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/footprint-charts', label: 'Footprint Charts', icon: BarChartHorizontalBig },
   { href: '/settings', label: 'Settings', icon: SettingsIcon },
   { href: '/trades', label: 'Trade History', icon: History },
@@ -33,7 +33,7 @@ export function MainNav() {
         <SidebarMenuItem key={item.href}>
           <Link href={item.href}>
             <SidebarMenuButton
-              isActive={pathname === item.href}
+              isActive={pathname.startsWith(item.href) && (item.href !== '/' || pathname === '/')}
               tooltip={open ? undefined : item.label}
               aria-label={item.label}
             >

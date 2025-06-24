@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { UserPlus } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 const registerFormSchema = z.object({
   email: z.string().email("Invalid email address.").min(1,"Email is required."),
@@ -31,6 +33,9 @@ const registerFormSchema = z.object({
 type RegisterFormValues = z.infer<typeof registerFormSchema>;
 
 export default function RegisterPage() {
+  const router = useRouter();
+  const { toast } = useToast();
+
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerFormSchema),
     defaultValues: {
@@ -41,10 +46,17 @@ export default function RegisterPage() {
   });
 
   function onSubmit(data: RegisterFormValues) {
-    // Handle registration logic (e.g., API call)
+    // Simulate API call to register user and send verification code
     console.log("Register data:", data);
-    // On success, redirect to login or dashboard, e.g., router.push('/login');
-    // toast({ title: "Registration Successful", description: "Please login to continue." });
+    toast({ 
+      title: "Registration Submitted", 
+      description: "A verification code has been sent to your email. Please check your inbox.",
+      variant: "default",
+      className: "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700 text-green-800 dark:text-green-300",
+    });
+
+    // Redirect to the verification page, passing the email as a query param
+    router.push(`/verify?email=${encodeURIComponent(data.email)}`);
   }
 
   return (
