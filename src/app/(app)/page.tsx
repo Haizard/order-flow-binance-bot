@@ -1,3 +1,4 @@
+
 import { DollarSign, ListChecks, Percent, TrendingDown, SearchX, AlertTriangle, Info, Activity, Lock, CreditCard } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/metric-card';
 import { ActiveTradesList } from '@/components/dashboard/active-trades-list';
@@ -18,7 +19,8 @@ import Link from 'next/link';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const DEMO_USER_ID = "user123";
+const CLIENT_USER_ID = "user123";
+const ADMIN_USER_ID = "admin001"; // The user who controls the strategy
 
 async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
   console.log(`[${new Date().toISOString()}] DashboardPage: getMarketData called for symbols:`, symbols);
@@ -123,32 +125,37 @@ function SubscriptionGate({ featureName, children }: { featureName: string, chil
 
 
 export default async function DashboardPage() {
-  console.log(`[${new Date().toISOString()}] DashboardPage: Component rendering started for user ${DEMO_USER_ID}.`);
+  console.log(`[${new Date().toISOString()}] DashboardPage: Component rendering started for user ${CLIENT_USER_ID}.`);
 
-  let userSettings: SettingsFormValues;
+  let clientSettings: SettingsFormValues;
+  let adminSettings: SettingsFormValues;
   try {
-    userSettings = await getSettings(DEMO_USER_ID);
-    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded user settings for ${DEMO_USER_ID}. Subscription Active: ${userSettings.hasActiveSubscription}`);
+    clientSettings = await getSettings(CLIENT_USER_ID);
+    adminSettings = await getSettings(ADMIN_USER_ID);
+    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded settings for client ${CLIENT_USER_ID} and admin ${ADMIN_USER_ID}.`);
   } catch (error) {
-    console.error(`[${new Date().toISOString()}] DashboardPage: Failed to load user settings for ${DEMO_USER_ID}, using defaults for display:`, error);
-    userSettings = { ...defaultSettingsValues, userId: DEMO_USER_ID };
+    console.error(`[${new Date().toISOString()}] DashboardPage: Failed to load settings, using defaults for display:`, error);
+    clientSettings = { ...defaultSettingsValues, userId: CLIENT_USER_ID };
+    adminSettings = { ...defaultSettingsValues, userId: ADMIN_USER_ID };
   }
   
-  const isSubscribed = userSettings.hasActiveSubscription;
+  const isSubscribed = clientSettings.hasActiveSubscription;
 
-  const monitoredSymbolsToUse = userSettings.monitoredSymbols && userSettings.monitoredSymbols.length > 0
-    ? userSettings.monitoredSymbols
+  // The bot uses the admin's monitored symbols for analysis.
+  const monitoredSymbolsToUse = adminSettings.monitoredSymbols && adminSettings.monitoredSymbols.length > 0
+    ? adminSettings.monitoredSymbols
     : defaultSettingsValues.monitoredSymbols;
 
   const liveMarketData = await getMarketData(monitoredSymbolsToUse);
   
-  const totalPnl = await calculateTotalPnlFromBotTrades(DEMO_USER_ID);
-  const activeTrades = await tradeService.getActiveTrades(DEMO_USER_ID);
+  const totalPnl = await calculateTotalPnlFromBotTrades(CLIENT_USER_ID);
+  const activeTrades = await tradeService.getActiveTrades(CLIENT_USER_ID);
   const activeTradesCount = activeTrades.length;
-  const overallPerformancePercent = await calculateOverallPerformance(DEMO_USER_ID);
+  const overallPerformancePercent = await calculateOverallPerformance(CLIENT_USER_ID);
 
-  const dipPercentageToUse = typeof userSettings.dipPercentage === 'number' 
-    ? userSettings.dipPercentage 
+  // The bot uses the admin's dip percentage for its logic.
+  const dipPercentageToUse = typeof adminSettings.dipPercentage === 'number' 
+    ? adminSettings.dipPercentage 
     : defaultSettingsValues.dipPercentage;
 
   const potentialDipBuys = liveMarketData.filter(
@@ -156,7 +163,7 @@ export default async function DashboardPage() {
                  !activeTrades.some(at => at.symbol === ticker.symbol)
   );
 
-  console.log(`[${new Date().toISOString()}] DashboardPage PRE-RENDER: User: ${DEMO_USER_ID}, Subscribed: ${isSubscribed}, Total P&L: ${totalPnl}, Active Trades: ${activeTradesCount}`);
+  console.log(`[${new Date().toISOString()}] DashboardPage PRE-RENDER: User: ${CLIENT_USER_ID}, Subscribed: ${isSubscribed}, Total P&L: ${totalPnl}, Active Trades: ${activeTradesCount}`);
 
   return (
     <div className="flex flex-col gap-8">
@@ -236,8 +243,8 @@ export default async function DashboardPage() {
                 <span className="flex items-center">
                     <Info className="h-4 w-4 mr-1.5 flex-shrink-0" />
                     {isSubscribed 
-                      ? "Shows symbols from your monitored list meeting the dip %. Excludes active bot trades." 
-                      : "Subscribe to see potential trading opportunities based on your settings."
+                      ? "Shows symbols from the admin-monitored list meeting the dip %. Excludes active bot trades." 
+                      : "Subscribe to see potential trading opportunities based on the admin's settings."
                     }
                 </span>
                 <span className="block text-xs pl-0 leading-relaxed">
@@ -257,8 +264,8 @@ export default async function DashboardPage() {
               <CardContent className="pt-6">
                 <div className="flex flex-col items-center justify-center py-10 text-center">
                   <SearchX className="h-12 w-12 text-muted-foreground mb-4" />
-                  <p className="text-muted-foreground">No new coins from the monitored list meet your dip criteria (≤ {dipPercentageToUse}%).</p>
-                  <p className="text-xs text-muted-foreground mt-1">Market conditions may change, or adjust your "Dip Percentage" in Settings.</p>
+                  <p className="text-muted-foreground">No new coins from the monitored list meet the admin's dip criteria (≤ {dipPercentageToUse}%).</p>
+                  <p className="text-xs text-muted-foreground mt-1">Market conditions may change. The admin controls the "Dip Percentage" setting.</p>
                 </div>
               </CardContent>
             </Card>
@@ -282,15 +289,15 @@ export default async function DashboardPage() {
 
       <section className="grid grid-cols-1 gap-8 xl:grid-cols-3">
         <div className="xl:col-span-2">
-           {isSubscribed ? <ActiveTradesList userId={DEMO_USER_ID} /> : (
+           {isSubscribed ? <ActiveTradesList userId={CLIENT_USER_ID} /> : (
             <SubscriptionGate featureName="Active Trades List">
                <ActiveTradesList userId="DUMMY_FOR_LAYOUT" />
             </SubscriptionGate>
            )}
         </div>
         <div className="space-y-8">
-          <AccountBalances userId={DEMO_USER_ID} />
-          <BotPerformanceChart userId={DEMO_USER_ID} />
+          <AccountBalances userId={CLIENT_USER_ID} />
+          <BotPerformanceChart userId={CLIENT_USER_ID} />
         </div>
       </section>
     </div>

@@ -1,7 +1,9 @@
 
 'use server';
 /**
- * @fileOverview Core bot logic for making trading decisions using user-configurable or global strategy.
+ * @fileOverview Core bot logic for making trading decisions.
+ * Implements an admin/client model where the admin's settings define the strategy,
+ * and the client's API keys are used for trade execution on their account.
  */
 import type { SettingsFormValues } from '@/components/settings/settings-form';
 import { getSettings } from '@/services/settingsService';
@@ -15,8 +17,7 @@ import {
 } from '@/lib/footprint-aggregator';
 import { calculateAllBotMetrics, type BotOrderFlowMetrics } from './botMetricCalculators';
 
-
-const DEMO_USER_ID_BOT_FALLBACK = "bot_fallback_user";
+const ADMIN_USER_ID = "admin001"; // The user whose settings define the global strategy.
 const FOOTPRINT_BARS_FOR_METRICS = 20;
 
 function getAssetsFromSymbol(symbol: string): { baseAsset: string, quoteAsset: string } {
@@ -36,30 +37,43 @@ function getAssetsFromSymbol(symbol: string): { baseAsset: string, quoteAsset: s
 }
 
 export async function runBotCycle(
-  userIdInput: string,
-  userApiSettings?: Pick<SettingsFormValues, 'binanceApiKey' | 'binanceSecretKey'>,
+  clientUserId: string,
   marketData?: Ticker24hr[]
 ): Promise<void> {
   const botRunTimestamp = new Date().toISOString();
-  const userId = userIdInput || DEMO_USER_ID_BOT_FALLBACK;
-
-  let userSettings: SettingsFormValues;
-  try {
-    userSettings = await getSettings(userId);
-  } catch (error) {
-    console.error(`[${botRunTimestamp}] Bot (User ${userId}): CRITICAL - Error loading user settings. Error:`, error instanceof Error ? error.message : String(error));
+  
+  if (!clientUserId) {
+    console.error(`[${botRunTimestamp}] Bot: CRITICAL - runBotCycle called without a clientUserId.`);
     return;
   }
 
-  const apiKeyToUse = userApiSettings?.binanceApiKey || userSettings.binanceApiKey;
-  const secretKeyToUse = userApiSettings?.binanceSecretKey || userSettings.binanceSecretKey;
+  let adminSettings: SettingsFormValues;
+  let clientSettings: SettingsFormValues;
+  try {
+    // Fetch settings for both admin (strategy) and client (API keys, subscription)
+    adminSettings = await getSettings(ADMIN_USER_ID);
+    clientSettings = await getSettings(clientUserId);
+  } catch (error) {
+    console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): CRITICAL - Error loading settings. Error:`, error instanceof Error ? error.message : String(error));
+    return;
+  }
+
+  // Use client's API keys for execution
+  const apiKeyToUse = clientSettings.binanceApiKey;
+  const secretKeyToUse = clientSettings.binanceSecretKey;
 
   if (!apiKeyToUse || !secretKeyToUse) {
-    console.warn(`[${botRunTimestamp}] Bot (User ${userId}): Missing API keys. Skipping trading actions.`);
+    console.warn(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Missing API keys. Skipping trading actions.`);
     return;
   }
+  
+  // Use client's subscription status to determine if bot should run for them
+  if (!clientSettings.hasActiveSubscription) {
+      // This check is redundant if the caller (footprint-aggregator) already checks, but good for safety.
+      return;
+  }
 
-  // All strategy parameters are now from userSettings, with fallbacks to defaults handled by getSettings.
+  // All strategy parameters are from adminSettings.
   const {
     buyAmountUsd,
     trailActivationProfit,
@@ -72,14 +86,15 @@ export async function runBotCycle(
     stackedImbalanceCount,
     swingLookaroundWindow,
     monitoredSymbols,
-  } = userSettings;
+  } = adminSettings;
   
+  // Use admin's monitored symbols for market analysis
   const monitoredSymbolsToUse = monitoredSymbols && monitoredSymbols.length > 0 
     ? monitoredSymbols
     : defaultSettingsValues.monitoredSymbols;
 
-  console.log(`[${botRunTimestamp}] Bot cycle STARTED for user ${userId}. Strategy Params: BuyAmt: $${buyAmountUsd}, TrailProfit: ${trailActivationProfit}%, TrailDelta: ${trailDelta}%, InitStopLoss: ${initialStopLossPercentage}%, MaxTrades: ${maxActiveTrades}`);
-  console.log(`[${botRunTimestamp}] Bot (User ${userId}): Monitoring symbols: ${monitoredSymbolsToUse.join(',')}`);
+  console.log(`[${botRunTimestamp}] Bot cycle STARTED for client ${clientUserId}. Using strategy from admin ${ADMIN_USER_ID}.`);
+  console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Monitoring symbols: ${monitoredSymbolsToUse.join(',')}`);
 
   let liveMarketData: Ticker24hr[];
   if (marketData) {
@@ -87,18 +102,18 @@ export async function runBotCycle(
   } else {
     try {
       const tickerPromises = monitoredSymbolsToUse.map(symbol => get24hrTicker(symbol).catch(e => {
-          console.error(`[${botRunTimestamp}] Bot (User ${userId}): Failed to fetch ticker for ${symbol} during market data gathering:`, e instanceof Error ? e.message : String(e));
+          console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Failed to fetch ticker for ${symbol}:`, e instanceof Error ? e.message : String(e));
           return null;
       }));
       const results = await Promise.all(tickerPromises);
       liveMarketData = results.filter(item => item !== null && !Array.isArray(item)) as Ticker24hr[];
     } catch (error) {
-      console.error(`[${botRunTimestamp}] Bot (User ${userId}): Overall failure to fetch live market data:`, error);
+      console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Overall failure to fetch live market data:`, error);
       return;
     }
   }
 
-  const activeTradesFromDb = await tradeService.getActiveTrades(userId);
+  const activeTradesFromDb = await tradeService.getActiveTrades(clientUserId);
   const activeTradeSymbols = activeTradesFromDb.map(t => t.symbol);
   
   const canOpenNewTrade = activeTradesFromDb.length < maxActiveTrades;
@@ -154,12 +169,12 @@ export async function runBotCycle(
         if (shouldBuyLong) {
             const entryPrice = currentPrice;
             const initialStopLossPrice = entryPrice * (1 - initialStopLossPercentage / 100);
-            console.log(`[${botRunTimestamp}] Bot (User ${userId}): LONG ENTRY SIGNAL for ${symbol} at ${entryPrice.toFixed(4)}. Reason: ${longEntryReason}.`);
+            console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): LONG ENTRY SIGNAL for ${symbol} at ${entryPrice.toFixed(4)}. Reason: ${longEntryReason}.`);
             const quantityToBuy = buyAmountUsd / entryPrice;
             const { baseAsset, quoteAsset } = getAssetsFromSymbol(symbol);
             try {
                 await tradeService.createTrade({
-                    userId: userId,
+                    userId: clientUserId,
                     symbol: symbol,
                     baseAsset,
                     quoteAsset,
@@ -171,7 +186,7 @@ export async function runBotCycle(
                 activeTradeSymbols.push(symbol); 
                 if (activeTradeSymbols.length >= maxActiveTrades) break;
             } catch (error) {
-                console.error(`[${botRunTimestamp}] Bot (User ${userId}): Error creating LONG trade record for ${symbol}:`, error);
+                console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Error creating LONG trade record for ${symbol}:`, error);
             }
         }
 
@@ -203,12 +218,12 @@ export async function runBotCycle(
         if (shouldSellShort) {
             const entryPrice = currentPrice;
             const initialStopLossPrice = entryPrice * (1 + initialStopLossPercentage / 100);
-            console.log(`[${botRunTimestamp}] Bot (User ${userId}): SHORT ENTRY SIGNAL for ${symbol} at ${entryPrice.toFixed(4)}. Reason: ${shortEntryReason}.`);
+            console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): SHORT ENTRY SIGNAL for ${symbol} at ${entryPrice.toFixed(4)}. Reason: ${shortEntryReason}.`);
             const quantityToSell = buyAmountUsd / entryPrice;
             const { baseAsset, quoteAsset } = getAssetsFromSymbol(symbol);
             try {
                 await tradeService.createTrade({
-                    userId: userId,
+                    userId: clientUserId,
                     symbol: symbol,
                     baseAsset,
                     quoteAsset,
@@ -220,7 +235,7 @@ export async function runBotCycle(
                 activeTradeSymbols.push(symbol); 
                 if (activeTradeSymbols.length >= maxActiveTrades) break;
             } catch (error) {
-                console.error(`[${botRunTimestamp}] Bot (User ${userId}): Error creating SHORT trade record for ${symbol}:`, error);
+                console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Error creating SHORT trade record for ${symbol}:`, error);
             }
         }
     }
@@ -239,8 +254,8 @@ export async function runBotCycle(
             const exitPrice = trade.initialStopLossPrice;
             const pnlValue = (exitPrice - trade.entryPrice) * trade.quantity;
             const pnlPercentageValue = (trade.entryPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.entryPrice * trade.quantity)) * 100;
-            console.log(`[${botRunTimestamp}] Bot (User ${userId}): LONG INITIAL STOP-LOSS HIT for ${trade.symbol} ID ${trade.id}. Selling at $${exitPrice.toFixed(4)}.`);
-            await tradeService.updateTrade(userId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
+            console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): LONG INITIAL STOP-LOSS HIT for ${trade.symbol} ID ${trade.id}. Selling at $${exitPrice.toFixed(4)}.`);
+            await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
             continue;
         }
 
@@ -267,25 +282,25 @@ export async function runBotCycle(
                 const exitPrice = currentPriceForTrade;
                 const pnlValue = (exitPrice - trade.entryPrice) * trade.quantity;
                 const pnlPercentageValue = (trade.entryPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.entryPrice * trade.quantity)) * 100;
-                console.log(`[${botRunTimestamp}] Bot (User ${userId}): LONG PROACTIVE EXIT SIGNAL for ${trade.symbol} ID ${trade.id}. Reason: ${proactiveExitReason}.`);
-                await tradeService.updateTrade(userId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
+                console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): LONG PROACTIVE EXIT SIGNAL for ${trade.symbol} ID ${trade.id}. Reason: ${proactiveExitReason}.`);
+                await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
                 continue; 
             }
         }
         
         const profitPercentage = ((currentPriceForTrade - trade.entryPrice) / trade.entryPrice) * 100;
         if (trade.status === 'ACTIVE_LONG_ENTRY' && profitPercentage >= trailActivationProfit) {
-          await tradeService.updateTrade(userId, trade.id, { status: 'ACTIVE_TRAILING_LONG', trailingHighPrice: currentPriceForTrade });
+          await tradeService.updateTrade(clientUserId, trade.id, { status: 'ACTIVE_TRAILING_LONG', trailingHighPrice: currentPriceForTrade });
         } else if (trade.status === 'ACTIVE_TRAILING_LONG') {
             const highPrice = Math.max(trade.trailingHighPrice || 0, currentPriceForTrade);
-            if (highPrice > (trade.trailingHighPrice || 0)) await tradeService.updateTrade(userId, trade.id, { trailingHighPrice: highPrice });
+            if (highPrice > (trade.trailingHighPrice || 0)) await tradeService.updateTrade(clientUserId, trade.id, { trailingHighPrice: highPrice });
             
             const trailStopPrice = highPrice * (1 - trailDelta / 100);
             if (currentPriceForTrade <= trailStopPrice) {
                 const exitPrice = currentPriceForTrade;
                 const pnlValue = (exitPrice - trade.entryPrice) * trade.quantity;
                 const pnlPercentageValue = (trade.entryPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.entryPrice * trade.quantity)) * 100;
-                await tradeService.updateTrade(userId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
+                await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
             }
         }
     } 
@@ -295,8 +310,8 @@ export async function runBotCycle(
             const exitPrice = trade.initialStopLossPrice;
             const pnlValue = (trade.entryPrice - exitPrice) * trade.quantity;
             const pnlPercentageValue = (trade.entryPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.entryPrice * trade.quantity)) * 100;
-            console.log(`[${botRunTimestamp}] Bot (User ${userId}): SHORT INITIAL STOP-LOSS HIT for ${trade.symbol} ID ${trade.id}. Covering at $${exitPrice.toFixed(4)}.`);
-            await tradeService.updateTrade(userId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
+            console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): SHORT INITIAL STOP-LOSS HIT for ${trade.symbol} ID ${trade.id}. Covering at $${exitPrice.toFixed(4)}.`);
+            await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
             continue;
         }
 
@@ -323,25 +338,25 @@ export async function runBotCycle(
                 const exitPrice = currentPriceForTrade;
                 const pnlValue = (trade.entryPrice - exitPrice) * trade.quantity;
                 const pnlPercentageValue = (trade.entryPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.entryPrice * trade.quantity)) * 100;
-                console.log(`[${botRunTimestamp}] Bot (User ${userId}): SHORT PROACTIVE EXIT SIGNAL for ${trade.symbol} ID ${trade.id}. Reason: ${proactiveExitReason}.`);
-                await tradeService.updateTrade(userId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
+                console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): SHORT PROACTIVE EXIT SIGNAL for ${trade.symbol} ID ${trade.id}. Reason: ${proactiveExitReason}.`);
+                await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
                 continue;
             }
         }
 
         const profitPercentage = ((trade.entryPrice - currentPriceForTrade) / trade.entryPrice) * 100;
         if (trade.status === 'ACTIVE_SHORT_ENTRY' && profitPercentage >= trailActivationProfit) {
-          await tradeService.updateTrade(userId, trade.id, { status: 'ACTIVE_TRAILING_SHORT', trailingLowPrice: currentPriceForTrade });
+          await tradeService.updateTrade(clientUserId, trade.id, { status: 'ACTIVE_TRAILING_SHORT', trailingLowPrice: currentPriceForTrade });
         } else if (trade.status === 'ACTIVE_TRAILING_SHORT') {
             const lowPrice = Math.min(trade.trailingLowPrice || Infinity, currentPriceForTrade);
-            if (lowPrice < (trade.trailingLowPrice || Infinity)) await tradeService.updateTrade(userId, trade.id, { trailingLowPrice: lowPrice });
+            if (lowPrice < (trade.trailingLowPrice || Infinity)) await tradeService.updateTrade(clientUserId, trade.id, { trailingLowPrice: lowPrice });
             
             const trailStopPrice = lowPrice * (1 + trailDelta / 100);
             if (currentPriceForTrade >= trailStopPrice) {
                 const exitPrice = currentPriceForTrade;
                 const pnlValue = (trade.entryPrice - exitPrice) * trade.quantity;
                 const pnlPercentageValue = (trade.entryPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.entryPrice * trade.quantity)) * 100;
-                await tradeService.updateTrade(userId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
+                await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
             }
         }
     }
