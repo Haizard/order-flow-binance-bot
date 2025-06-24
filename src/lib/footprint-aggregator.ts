@@ -1,4 +1,3 @@
-
 /**
  * @fileOverview Handles WebSocket connection to Binance for trade streams
  * and aggregates data into FootprintBar structures.
@@ -8,10 +7,12 @@ import WebSocket from 'ws';
 import type { FootprintTrade, FootprintBar, PriceLevelData, BinanceTradeData, BinanceStreamData } from '@/types/footprint';
 import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy';
 import { runBotCycle } from '@/core/bot';
+import { getSettings } from '@/services/settingsService';
 
 const BINANCE_FUTURES_WEBSOCKET_URL = 'wss://fstream.binance.com/stream';
 const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute
 const BOT_CYCLE_INTERVAL_MS = 60 * 1000; // Run bot logic every 1 minute
+const DEMO_USER_ID = "user123";
 
 const footprintDataStore = new Map<string, FootprintBar[]>(); // Stores arrays of completed bars
 const currentBarData = new Map<string, Partial<FootprintBar>>(); // Stores the currently aggregating bar
@@ -41,14 +42,11 @@ function notifyListeners(data: FootprintBar | Partial<FootprintBar>, eventType: 
   const priceLevelsSize = data.priceLevels instanceof Map ? data.priceLevels.size : (typeof data.priceLevels === 'object' ? Object.keys(data.priceLevels).length : 'N/A');
   const priceLevelKeys = data.priceLevels instanceof Map && data.priceLevels.size > 0 ? Array.from(data.priceLevels.keys()).join(', ') : "None";
   
-  // console.log(`[${logTimestamp}] FootprintAggregator [${symbol}]: NOTIFYING '${eventType}'. Bar TS: ${data.timestamp}, PriceLevels Size: ${priceLevelsSize}, Keys: ${priceLevelKeys}`);
-  
   listeners.forEach(listener => listener(data, eventType));
 }
 
 
 function initializeNewBar(symbol: string, timestamp: number): Partial<FootprintBar> {
-  // console.log(`[${new Date().toISOString()}] FootprintAggregator [${symbol}]: Initializing new partial bar at ${timestamp}.`);
   return {
     symbol: symbol,
     timestamp: timestamp,
@@ -129,8 +127,6 @@ function processTrade(symbol: string, tradeData: BinanceTradeData) {
     priceLevelData.sellVolume += currentTrade.volume;
   }
   bar.priceLevels.set(priceLevelStr, priceLevelData);
-  // const processTradeLogTs = new Date().toISOString();
-  // console.log(`[${processTradeLogTs}] FootprintAggregator [${symbol}]: processTrade updated priceLevels. Size: ${bar.priceLevels.size}, Last Key: ${priceLevelStr}, Value: ${JSON.stringify(priceLevelData)}, Side: ${currentTrade.side}, Vol: ${currentTrade.volume}`);
 
   bar.delta = (bar.askVolume ?? 0) - (bar.bidVolume ?? 0);
   currentBarData.set(symbol, bar);
@@ -138,13 +134,6 @@ function processTrade(symbol: string, tradeData: BinanceTradeData) {
 }
 
 function finalizeBar(barToFinalize: Partial<FootprintBar>): FootprintBar {
-  // const logTimestamp = new Date().toISOString();
-  // if (barToFinalize.priceLevels && barToFinalize.priceLevels.size > 0) {
-  //   console.log(`[${logTimestamp}] FootprintAggregator [${barToFinalize.symbol}]: Finalizing bar for ${new Date(barToFinalize.timestamp!).toISOString()}. priceLevels size: ${barToFinalize.priceLevels.size}. Keys: ${Array.from(barToFinalize.priceLevels.keys()).join(', ')}`);
-  // } else {
-  //   console.log(`[${logTimestamp}] FootprintAggregator [${barToFinalize.symbol}]: Finalizing bar for ${new Date(barToFinalize.timestamp!).toISOString()}. priceLevels is empty.`);
-  // }
-  
   return {
     symbol: barToFinalize.symbol!,
     timestamp: barToFinalize.timestamp!,
@@ -171,20 +160,24 @@ function heartbeat() {
   }, 30000 + 1000); // Binance sends pings every 3 minutes. We expect pong within 30s.
 }
 
-function startBotCycle() {
+async function startBotCycle() {
     if (botIntervalId) {
         clearInterval(botIntervalId);
         botIntervalId = null;
     }
     console.log(`[${new Date().toISOString()}] FootprintAggregator: Starting continuous bot cycle (every ${BOT_CYCLE_INTERVAL_MS / 1000}s).`);
     botIntervalId = setInterval(async () => {
-        const DEMO_USER_ID = "user123";
-        console.log(`[${new Date().toISOString()}] FootprintAggregator: Triggering periodic bot cycle for user ${DEMO_USER_ID}.`);
+        const logTimestamp = new Date().toISOString();
         try {
-            // runBotCycle is designed to be self-sufficient, fetching its own settings and market data.
+            const settings = await getSettings(DEMO_USER_ID);
+            if (!settings.hasActiveSubscription) {
+                console.log(`[${logTimestamp}] FootprintAggregator: Skipping bot cycle for user ${DEMO_USER_ID} (no active subscription).`);
+                return;
+            }
+            console.log(`[${logTimestamp}] FootprintAggregator: Triggering periodic bot cycle for subscribed user ${DEMO_USER_ID}.`);
             await runBotCycle(DEMO_USER_ID);
         } catch (error) {
-            console.error(`[${new Date().toISOString()}] FootprintAggregator: Error during periodic bot cycle execution:`, error);
+            console.error(`[${logTimestamp}] FootprintAggregator: Error during periodic bot cycle execution:`, error);
         }
     }, BOT_CYCLE_INTERVAL_MS);
 }
@@ -200,7 +193,6 @@ function stopBotCycle() {
 
 function connect() {
   if (wsInstance && (wsInstance.readyState === WebSocket.OPEN || wsInstance.readyState === WebSocket.CONNECTING)) {
-    // console.log(`[${new Date().toISOString()}] FootprintAggregator: WebSocket already open or connecting.`);
     return;
   }
 
@@ -223,12 +215,10 @@ function connect() {
     if (keepAliveIntervalId) clearInterval(keepAliveIntervalId);
     keepAliveIntervalId = setInterval(() => {
       if (wsInstance && wsInstance.readyState === WebSocket.OPEN) {
-        // console.log(`[${new Date().toISOString()}] FootprintAggregator: Sending ping to WebSocket.`);
         wsInstance.ping();
       }
     }, 3 * 60 * 1000); // Send a ping every 3 minutes
     
-    // Start the bot cycle once the data stream is confirmed to be open.
     startBotCycle();
   });
 
@@ -238,13 +228,10 @@ function connect() {
       if (message.stream && message.data && message.data.s) {
         const symbolFromStream = message.stream.split('@')[0].toUpperCase();
         processTrade(symbolFromStream, message.data);
-      } else if (data.toString().includes("ping")) { // Handle textual ping if any
+      } else if (data.toString().includes("ping")) {
         wsInstance?.pong();
-      } else if (data.toString().includes("pong")) { // Handle textual pong if any
-         heartbeat(); // Reset heartbeat on pong
-      }
-      else {
-        // console.warn(`[${new Date().toISOString()}] FootprintAggregator: Received unexpected message format:`, data.toString().substring(0, 100));
+      } else if (data.toString().includes("pong")) {
+         heartbeat();
       }
     } catch (error) {
       console.error(`[${new Date().toISOString()}] FootprintAggregator: Error processing message:`, error, data.toString());
@@ -252,28 +239,25 @@ function connect() {
   });
 
   wsInstance.on('ping', () => {
-    // console.log(`[${new Date().toISOString()}] FootprintAggregator: Received ping from server.`);
-    heartbeat(); // Reset heartbeat on server ping
+    heartbeat();
     wsInstance?.pong();
   });
 
   wsInstance.on('pong', () => {
-    // console.log(`[${new Date().toISOString()}] FootprintAggregator: Received pong from server.`);
-    heartbeat(); // Reset heartbeat on pong
+    heartbeat();
   });
 
   wsInstance.on('error', (error: Error) => {
     console.error(`[${new Date().toISOString()}] FootprintAggregator: WebSocket error:`, error.message);
-    // The 'close' event will usually follow, triggering reconnection logic
   });
 
   wsInstance.on('close', (code: number, reason: Buffer) => {
     console.log(`[${new Date().toISOString()}] FootprintAggregator: WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}.`);
     if (pingTimeout) clearTimeout(pingTimeout);
     if (keepAliveIntervalId) clearInterval(keepAliveIntervalId);
-    stopBotCycle(); // Stop the bot when the data connection is lost.
+    stopBotCycle();
     wsInstance = null;
-    if (activeSymbols.length > 0 && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) { // Only reconnect if intended
+    if (activeSymbols.length > 0 && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
         attemptReconnect();
     } else if (activeSymbols.length === 0) {
         console.log(`[${new Date().toISOString()}] FootprintAggregator: No active symbols, will not reconnect automatically.`);
@@ -290,7 +274,7 @@ function attemptReconnect() {
     const delay = Math.pow(2, reconnectAttempts - 1) * RECONNECT_DELAY_BASE;
     console.log(`[${new Date().toISOString()}] FootprintAggregator: Reconnect attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${delay / 1000}s.`);
     setTimeout(() => {
-      if (activeSymbols.length > 0) { // Double check if symbols are still active before reconnecting
+      if (activeSymbols.length > 0) {
         connect();
       } else {
         console.log(`[${new Date().toISOString()}] FootprintAggregator: No active symbols, stopping reconnection attempts.`);
@@ -317,50 +301,45 @@ export function startFootprintStream(symbols: string[] = MONITORED_MARKET_SYMBOL
     if (wsInstance) {
       console.log(`[${new Date().toISOString()}] FootprintAggregator: Closing existing WebSocket due to symbol change or restart.`);
       const tempWs = wsInstance;
-      wsInstance = null; // Prevent close handler from immediate auto-reconnect with old symbols
-      reconnectAttempts = MAX_RECONNECT_ATTEMPTS + 1; // Prevent reconnection attempts from this specific close
+      wsInstance = null;
+      reconnectAttempts = MAX_RECONNECT_ATTEMPTS + 1;
       tempWs.close();
-      // Allow a short delay for the close to complete before trying to connect again
       setTimeout(() => {
-        reconnectAttempts = 0; // Reset for the new connection
+        reconnectAttempts = 0;
         if (activeSymbols.length > 0) connect();
       }, 500);
     } else if (activeSymbols.length > 0) {
-      reconnectAttempts = 0; // Reset for a new connection
+      reconnectAttempts = 0;
       connect();
     }
   } else if (activeSymbols.length === 0 && wsInstance) {
     console.log(`[${new Date().toISOString()}] FootprintAggregator: No active symbols. Closing WebSocket.`);
     const tempWs = wsInstance;
     wsInstance = null;
-    reconnectAttempts = MAX_RECONNECT_ATTEMPTS +1; // Prevent auto-reconnect
+    reconnectAttempts = MAX_RECONNECT_ATTEMPTS +1;
     tempWs.close();
-    reconnectAttempts = 0; // Reset for future manual starts
-  } else {
-    // console.log(`[${new Date().toISOString()}] FootprintAggregator: No change in symbols or WebSocket state requiring action. Current symbols: ${activeSymbols.join(',')}`);
+    reconnectAttempts = 0;
   }
 }
 
 export function stopFootprintStream() {
   console.log(`[${new Date().toISOString()}] FootprintAggregator: stopFootprintStream called.`);
-  stopBotCycle(); // Stop the bot cycle.
+  stopBotCycle();
   const oldActiveSymbols = [...activeSymbols];
-  activeSymbols = []; // Clear active symbols first
+  activeSymbols = [];
   if (wsInstance) {
     console.log(`[${new Date().toISOString()}] FootprintAggregator: Closing WebSocket connection explicitly.`);
     const tempWsInstance = wsInstance;
     wsInstance = null;
-    reconnectAttempts = MAX_RECONNECT_ATTEMPTS + 1; // Prevent automatic reconnection
+    reconnectAttempts = MAX_RECONNECT_ATTEMPTS + 1;
     tempWsInstance.close();
     console.log(`[${new Date().toISOString()}] FootprintAggregator: Stopped stream for ${oldActiveSymbols.join(', ')}.`);
     if (pingTimeout) clearTimeout(pingTimeout);
     if (keepAliveIntervalId) clearInterval(keepAliveIntervalId);
-    // Reset reconnectAttempts after a short delay to ensure it's not immediately set back by a rapid close/reconnect cycle
     setTimeout(() => { 
         if (!wsInstance) reconnectAttempts = 0; 
     }, RECONNECT_DELAY_BASE * 2);
   } else {
-    // console.log(`[${new Date().toISOString()}] FootprintAggregator: No active WebSocket stream to stop.`);
     reconnectAttempts = 0;
   }
   currentBarData.clear();
@@ -374,13 +353,4 @@ export function getLatestFootprintBars(symbol: string, count: number): Footprint
 export function getCurrentAggregatingBar(symbol: string): Partial<FootprintBar> | undefined {
   return currentBarData.get(symbol.toUpperCase());
 }
-
-// console.log(`[${new Date().toISOString()}] FootprintAggregator: Module loaded. Call startFootprintStream() via API to begin data aggregation.`);
-// Example: For server-side only testing:
-// if (process.env.NODE_ENV === 'development' && typeof window === 'undefined') {
-//   startFootprintStream(['BTCUSDT', 'ETHUSDT']);
-//   addFootprintListener((data, eventType) => {
-//     console.log(`Listener received ${eventType} for ${data.symbol} at ${data.timestamp}`);
-//   });
-// }
     

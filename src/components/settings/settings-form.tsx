@@ -1,4 +1,3 @@
-
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,8 +16,9 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, KeyRound, CheckCircle, Loader2, Save, Zap, ShieldAlert, Trash2, TriangleAlert, SlidersHorizontal } from "lucide-react";
+import { AlertCircle, KeyRound, CheckCircle, Loader2, Save, Zap, ShieldAlert, Trash2, TriangleAlert, SlidersHorizontal, CreditCard } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -43,11 +43,10 @@ const DEMO_USER_ID = "user123";
 
 const settingsFormSchema = z.object({
   userId: z.string().min(1, "User ID is required."),
+  hasActiveSubscription: z.boolean().optional(),
   binanceApiKey: z.string().optional(),
   binanceSecretKey: z.string().optional(),
-  // New symbols field
   monitoredSymbols: z.string().min(1, "At least one symbol is required."),
-  // Basic Strategy
   dipPercentage: z.coerce.number()
     .max(0, "Dip percentage should be 0 or negative (e.g., -5 for a 5% dip).")
     .min(-100, "Dip percentage cannot be less than -100.")
@@ -66,7 +65,6 @@ const settingsFormSchema = z.object({
     .int("Max active trades must be a whole number.")
     .positive("Max active trades must be a positive number.")
     .optional(),
-  // Advanced Strategy
   initialStopLossPercentage: z.coerce.number()
     .positive("Initial stop loss must be a positive percentage.")
     .optional(),
@@ -116,6 +114,8 @@ export function SettingsForm() {
   const [isSaving, setIsSaving] = useState(false);
   const [isClearingTrades, setIsClearingTrades] = useState(false);
   const [isDevelopmentEnv, setIsDevelopmentEnv] = useState(false);
+
+  const isSubscribed = form.watch("hasActiveSubscription");
 
   useEffect(() => {
     setIsDevelopmentEnv(process.env.NODE_ENV === 'development');
@@ -195,23 +195,32 @@ export function SettingsForm() {
     const settingsToSave: SettingsFormValues = {
         ...data,
         monitoredSymbols: symbolsArray,
+        hasActiveSubscription: data.hasActiveSubscription,
     };
     
-    // Coerce all numeric fields to ensure they are saved as numbers, using defaults as fallbacks.
     Object.keys(defaultSettingsValues).forEach(key => {
         const formValue = data[key as keyof FormSchemaType];
         const defaultValue = defaultSettingsValues[key as keyof typeof defaultSettingsValues];
         
         if (typeof defaultValue === 'number') {
             (settingsToSave as any)[key] = formValue !== undefined && formValue !== '' ? Number(formValue) : defaultValue;
+        } else if (typeof defaultValue === 'boolean') {
+             (settingsToSave as any)[key] = formValue;
+        } else if (Array.isArray(defaultValue)) {
+             (settingsToSave as any)[key] = Array.isArray(value) && value.length > 0 ? value : defaultValue;
+        } else {
+            (settingsToSave as any)[key] = formValue ?? defaultValue;
         }
     });
+    
+    settingsToSave.binanceApiKey = data.binanceApiKey || "";
+    settingsToSave.binanceSecretKey = data.binanceSecretKey || "";
 
     try {
       await saveSettings(data.userId, settingsToSave);
       toast({
         title: "Settings Saved!",
-        description: "Your API Keys and Bot Strategy have been successfully saved.",
+        description: "Your settings have been successfully saved.",
         variant: "default",
         className: "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700 text-green-800 dark:text-green-300",
       });
@@ -259,6 +268,42 @@ export function SettingsForm() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+        <Card className="shadow-lg">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 font-headline">
+              <CreditCard className="h-6 w-6 text-primary" />
+              Subscription Status (Demo)
+            </CardTitle>
+            <CardDescription>
+              Toggle your subscription status to see how the app reacts. In a real app, this would be managed by a payment provider.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+             <FormField
+                control={form.control}
+                name="hasActiveSubscription"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-base">
+                        Pro Subscription
+                      </FormLabel>
+                      <FormDescription>
+                        {field.value ? "Your Pro subscription is active. The bot is running." : "Your subscription is inactive. The bot is paused."}
+                      </FormDescription>
+                    </div>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                  </FormItem>
+                )}
+              />
+          </CardContent>
+        </Card>
+
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-headline">
@@ -320,220 +365,224 @@ export function SettingsForm() {
             </Button>
           </CardContent>
         </Card>
+        
+        <fieldset disabled={!isSubscribed} className="space-y-8 disabled:opacity-60">
+            <Card className="shadow-lg">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 font-headline">
+                  <Zap className="h-6 w-6 text-primary" />
+                  Core Trading Strategy
+                </CardTitle>
+                <CardDescription>
+                  Configure the primary risk and trade management parameters for your trading bot.
+                  {!isSubscribed && <span className="font-semibold text-primary"> (Pro Subscription Required)</span>}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                 <Alert variant="default" className="bg-amber-50 border-amber-200 dark:bg-amber-900/30 dark:border-amber-700">
+                    <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                    <AlertTitle className="text-amber-700 dark:text-amber-300 font-semibold">Strategy Impact</AlertTitle>
+                    <AlertDescription>
+                        These settings directly control trading decisions. Incorrect values can lead to unintended trades or losses.
+                        Ensure you understand each parameter.
+                    </AlertDescription>
+                </Alert>
+                <FormField
+                  control={form.control}
+                  name="monitoredSymbols"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Monitored Symbols</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="e.g., BTCUSDT,ETHUSDT,SOLUSDT"
+                          className="min-h-[80px]"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Comma-separated list of symbols for the bot to monitor. Ensure they exist on Binance Testnet.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <FormField
+                    control={form.control}
+                    name="buyAmountUsd"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Trade Size (USD)</FormLabel>
+                        <FormControl>
+                          <Input type="number" placeholder="50" {...field} value={field.value ?? ""} step="1" />
+                        </FormControl>
+                        <FormDescription>Amount in USD for each new trade.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="maxActiveTrades"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Max Concurrent Trades</FormLabel>
+                        <FormControl>
+                          <Input type="number" placeholder="3" {...field} value={field.value ?? ""} step="1" />
+                        </FormControl>
+                        <FormDescription>Max number of trades open at once.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="initialStopLossPercentage"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Initial Stop Loss (%)</FormLabel>
+                        <FormControl>
+                          <Input type="number" placeholder="1.5" {...field} value={field.value ?? ""} step="0.1" />
+                        </FormControl>
+                        <FormDescription>Initial risk limit for new trades.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="dipPercentage"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Dip % Pre-filter (≤ 0)</FormLabel>
+                        <FormControl>
+                          <Input type="number" placeholder="-4" {...field} value={field.value ?? ""} step="0.1" />
+                        </FormControl>
+                        <FormDescription>Pre-scan filter for potential buys.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="trailActivationProfit"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Trail Activation Profit (%)</FormLabel>
+                        <FormControl>
+                          <Input type="number" placeholder="2.5" {...field} value={field.value ?? ""} step="0.1" />
+                        </FormControl>
+                        <FormDescription>Profit % to start trailing stop.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="trailDelta"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Trailing Stop Delta (%)</FormLabel>
+                        <FormControl>
+                          <Input type="number" placeholder="0.8" {...field} value={field.value ?? ""} step="0.1" />
+                        </FormControl>
+                        <FormDescription>Distance from peak for trailing stop.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </CardContent>
+            </Card>
 
-        <Card className="shadow-lg">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-headline">
-              <Zap className="h-6 w-6 text-primary" />
-              Core Trading Strategy
-            </CardTitle>
-            <CardDescription>
-              Configure the primary risk and trade management parameters for your trading bot.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-             <Alert variant="default" className="bg-amber-50 border-amber-200 dark:bg-amber-900/30 dark:border-amber-700">
-                <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                <AlertTitle className="text-amber-700 dark:text-amber-300 font-semibold">Strategy Impact</AlertTitle>
-                <AlertDescription>
-                    These settings directly control trading decisions. Incorrect values can lead to unintended trades or losses.
-                    Ensure you understand each parameter.
-                </AlertDescription>
-            </Alert>
-            <FormField
-              control={form.control}
-              name="monitoredSymbols"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Monitored Symbols</FormLabel>
-                  <FormControl>
-                    <Textarea
-                      placeholder="e.g., BTCUSDT,ETHUSDT,SOLUSDT"
-                      className="min-h-[80px]"
-                      {...field}
+            <Card className="shadow-lg">
+               <CardHeader>
+                <CardTitle className="flex items-center gap-2 font-headline">
+                  <SlidersHorizontal className="h-6 w-6 text-primary" />
+                  Advanced Order Flow Parameters
+                </CardTitle>
+                <CardDescription>
+                  Fine-tune the technical parameters used for order flow analysis. Adjust with care.
+                  {!isSubscribed && <span className="font-semibold text-primary"> (Pro Subscription Required)</span>}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <FormField
+                      control={form.control}
+                      name="valueAreaPercentage"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Value Area Percentage</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="70" {...field} value={field.value ?? ""} step="1" />
+                          </FormControl>
+                          <FormDescription>The volume % used to calculate VAH/VAL.</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
-                  </FormControl>
-                  <FormDescription>
-                    Comma-separated list of symbols for the bot to monitor. Ensure they exist on Binance Testnet.
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField
-                control={form.control}
-                name="buyAmountUsd"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Trade Size (USD)</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="50" {...field} value={field.value ?? ""} step="1" />
-                    </FormControl>
-                    <FormDescription>Amount in USD for each new trade.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="maxActiveTrades"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Max Concurrent Trades</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="3" {...field} value={field.value ?? ""} step="1" />
-                    </FormControl>
-                    <FormDescription>Max number of trades open at once.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="initialStopLossPercentage"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Initial Stop Loss (%)</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="1.5" {...field} value={field.value ?? ""} step="0.1" />
-                    </FormControl>
-                    <FormDescription>Initial risk limit for new trades.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="dipPercentage"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Dip % Pre-filter (≤ 0)</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="-4" {...field} value={field.value ?? ""} step="0.1" />
-                    </FormControl>
-                    <FormDescription>Pre-scan filter for potential buys.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="trailActivationProfit"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Trail Activation Profit (%)</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="2.5" {...field} value={field.value ?? ""} step="0.1" />
-                    </FormControl>
-                    <FormDescription>Profit % to start trailing stop.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={form.control}
-                name="trailDelta"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Trailing Stop Delta (%)</FormLabel>
-                    <FormControl>
-                      <Input type="number" placeholder="0.8" {...field} value={field.value ?? ""} step="0.1" />
-                    </FormControl>
-                    <FormDescription>Distance from peak for trailing stop.</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-lg">
-           <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-headline">
-              <SlidersHorizontal className="h-6 w-6 text-primary" />
-              Advanced Order Flow Parameters
-            </CardTitle>
-            <CardDescription>
-              Fine-tune the technical parameters used for order flow analysis. Adjust with care.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <FormField
-                  control={form.control}
-                  name="valueAreaPercentage"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Value Area Percentage</FormLabel>
-                      <FormControl>
-                        <Input type="number" placeholder="70" {...field} value={field.value ?? ""} step="1" />
-                      </FormControl>
-                      <FormDescription>The volume % used to calculate VAH/VAL.</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="imbalanceRatioThreshold"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Imbalance Ratio (e.g., 3 for 300%)</FormLabel>
-                      <FormControl>
-                        <Input type="number" placeholder="3" {...field} value={field.value ?? ""} step="0.1" />
-                      </FormControl>
-                      <FormDescription>Bid vs. Ask volume ratio to flag imbalance.</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="stackedImbalanceCount"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Stacked Imbalance Count</FormLabel>
-                      <FormControl>
-                        <Input type="number" placeholder="2" {...field} value={field.value ?? ""} step="1" />
-                      </FormControl>
-                      <FormDescription>Number of stacked levels for reversal signal.</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="swingLookaroundWindow"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Divergence Swing Window</FormLabel>
-                      <FormControl>
-                        <Input type="number" placeholder="2" {...field} value={field.value ?? ""} step="1" />
-                      </FormControl>
-                      <FormDescription>Bars to look left/right for swing points.</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                 <FormField
-                  control={form.control}
-                  name="minBarsForDivergence"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Min Bars for Divergence Calc</FormLabel>
-                      <FormControl>
-                        <Input type="number" placeholder="10" {...field} value={field.value ?? ""} step="1" />
-                      </FormControl>
-                      <FormDescription>Minimum bars required for divergence signal.</FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-            </div>
-          </CardContent>
-        </Card>
+                    <FormField
+                      control={form.control}
+                      name="imbalanceRatioThreshold"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Imbalance Ratio (e.g., 3 for 300%)</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="3" {...field} value={field.value ?? ""} step="0.1" />
+                          </FormControl>
+                          <FormDescription>Bid vs. Ask volume ratio to flag imbalance.</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="stackedImbalanceCount"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Stacked Imbalance Count</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="2" {...field} value={field.value ?? ""} step="1" />
+                          </FormControl>
+                          <FormDescription>Number of stacked levels for reversal signal.</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="swingLookaroundWindow"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Divergence Swing Window</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="2" {...field} value={field.value ?? ""} step="1" />
+                          </FormControl>
+                          <FormDescription>Bars to look left/right for swing points.</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                     <FormField
+                      control={form.control}
+                      name="minBarsForDivergence"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Min Bars for Divergence Calc</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="10" {...field} value={field.value ?? ""} step="1" />
+                          </FormControl>
+                          <FormDescription>Minimum bars required for divergence signal.</FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                </div>
+              </CardContent>
+            </Card>
+        </fieldset>
 
         <Button type="submit" size="lg" className="w-full md:w-auto" disabled={isSaving || isTestingConnection || isLoadingSettings || isClearingTrades}>
           {isSaving ? (

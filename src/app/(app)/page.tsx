@@ -1,5 +1,4 @@
-
-import { DollarSign, ListChecks, Percent, TrendingDown, SearchX, AlertTriangle, Info, Activity } from 'lucide-react';
+import { DollarSign, ListChecks, Percent, TrendingDown, SearchX, AlertTriangle, Info, Activity, Lock, CreditCard } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/metric-card';
 import { ActiveTradesList } from '@/components/dashboard/active-trades-list';
 import { MarketOverviewItem } from '@/components/dashboard/market-overview-item';
@@ -12,6 +11,9 @@ import type { SettingsFormValues } from '@/components/settings/settings-form';
 import { getSettings } from '@/services/settingsService';
 import * as tradeService from '@/services/tradeService';
 import { defaultSettingsValues } from '@/config/settings-defaults';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -96,6 +98,29 @@ async function calculateOverallPerformance(userId: string): Promise<string> {
   return formattedWinRate;
 }
 
+function SubscriptionGate({ featureName, children }: { featureName: string, children: React.ReactNode }) {
+  return (
+    <Card className="shadow-card relative overflow-hidden">
+      <CardContent className="pt-6">
+        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-10 flex flex-col items-center justify-center">
+          <Lock className="h-10 w-10 text-primary mb-4" />
+          <p className="font-semibold text-lg text-center mb-2">Unlock {featureName}</p>
+          <p className="text-muted-foreground text-sm text-center mb-4">This feature is available on our Pro plan.</p>
+          <Button asChild>
+            <Link href="/subscription">
+              <CreditCard className="mr-2 h-4 w-4" />
+              Upgrade Subscription
+            </Link>
+          </Button>
+        </div>
+        <div className="blur-sm pointer-events-none select-none">
+          {children}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 
 export default async function DashboardPage() {
   console.log(`[${new Date().toISOString()}] DashboardPage: Component rendering started for user ${DEMO_USER_ID}.`);
@@ -103,12 +128,14 @@ export default async function DashboardPage() {
   let userSettings: SettingsFormValues;
   try {
     userSettings = await getSettings(DEMO_USER_ID);
-    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded user settings for ${DEMO_USER_ID}. API Key Present: ${!!userSettings.binanceApiKey}, Dip Percentage: ${userSettings.dipPercentage}, Monitored Symbols: ${userSettings.monitoredSymbols.join(',')}`);
+    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded user settings for ${DEMO_USER_ID}. Subscription Active: ${userSettings.hasActiveSubscription}`);
   } catch (error) {
     console.error(`[${new Date().toISOString()}] DashboardPage: Failed to load user settings for ${DEMO_USER_ID}, using defaults for display:`, error);
     userSettings = { ...defaultSettingsValues, userId: DEMO_USER_ID };
   }
   
+  const isSubscribed = userSettings.hasActiveSubscription;
+
   const monitoredSymbolsToUse = userSettings.monitoredSymbols && userSettings.monitoredSymbols.length > 0
     ? userSettings.monitoredSymbols
     : defaultSettingsValues.monitoredSymbols;
@@ -129,30 +156,40 @@ export default async function DashboardPage() {
                  !activeTrades.some(at => at.symbol === ticker.symbol)
   );
 
-  console.log(`[${new Date().toISOString()}] DashboardPage PRE-RENDER: User: ${DEMO_USER_ID}, Total P&L: ${totalPnl}, Active Trades: ${activeTradesCount}, Overall Win Rate: ${overallPerformancePercent}%, User Dip Setting: ${dipPercentageToUse}%, Potential Dips: ${potentialDipBuys.length}`);
+  console.log(`[${new Date().toISOString()}] DashboardPage PRE-RENDER: User: ${DEMO_USER_ID}, Subscribed: ${isSubscribed}, Total P&L: ${totalPnl}, Active Trades: ${activeTradesCount}`);
 
   return (
     <div className="flex flex-col gap-8">
+      {!isSubscribed && (
+        <Alert variant="default" className="bg-primary/10 border-primary/30 text-primary-foreground">
+          <CreditCard className="h-5 w-5 text-primary" />
+          <AlertTitle className="font-bold text-primary">Upgrade to Pro!</AlertTitle>
+          <AlertDescription className="text-primary/90">
+            Your bot is currently inactive. Please <Button variant="link" asChild className="p-0 h-auto text-sm text-primary font-bold"><Link href="/subscription">subscribe</Link></Button> to activate the trading bot and unlock all features.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <section>
         <h1 className="text-3xl font-headline mb-6">Bot Performance</h1>
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           <MetricCard
             title="Total P&L (Bot)"
-            value={`${totalPnl >= 0 ? '+' : ''}$${totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            value={isSubscribed ? `${totalPnl >= 0 ? '+' : ''}$${totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N/A'}
             icon={DollarSign}
             description="P&L from bot-managed trades. Live prices. Auto-refreshes."
-            className={`shadow-card hover:shadow-card-hover ${totalPnl >= 0 ? 'text-accent-foreground bg-accent/10 dark:bg-accent/20' : 'text-destructive bg-destructive/10 dark:bg-destructive/20'}`}
+            className={`shadow-card hover:shadow-card-hover ${isSubscribed ? (totalPnl >= 0 ? 'text-accent-foreground bg-accent/10 dark:bg-accent/20' : 'text-destructive bg-destructive/10 dark:bg-destructive/20') : ''}`}
           />
           <MetricCard
             title="Active Bot Trades"
-            value={activeTradesCount.toString()}
+            value={isSubscribed ? activeTradesCount.toString() : 'N/A'}
             icon={ListChecks}
-            description="Open positions managed by the bot. Prices/P&L are live. Auto-refreshes."
+            description="Open positions managed by the bot. Auto-refreshes."
             className="shadow-card hover:shadow-card-hover"
           />
           <MetricCard
             title="Overall Win Rate"
-            value={`${overallPerformancePercent}%`}
+            value={isSubscribed ? `${overallPerformancePercent}%` : 'N/A'}
             icon={Percent}
             description="Profitable closed trades. Auto-refreshes."
             className="shadow-card hover:shadow-card-hover"
@@ -195,45 +232,61 @@ export default async function DashboardPage() {
                  <TrendingDown className="mr-3 h-6 w-6 text-primary" />
                  Potential Dip Buys (24hr ≤ {dipPercentageToUse}%)
             </CardTitle>
-            <CardDescription className="space-y-1 text-sm text-muted-foreground">
+             <CardDescription className="space-y-1 text-sm text-muted-foreground">
                 <span className="flex items-center">
                     <Info className="h-4 w-4 mr-1.5 flex-shrink-0" />
-                    Shows symbols from your monitored list meeting the dip %. Excludes active bot trades.
+                    {isSubscribed 
+                      ? "Shows symbols from your monitored list meeting the dip %. Excludes active bot trades." 
+                      : "Subscribe to see potential trading opportunities based on your settings."
+                    }
                 </span>
                 <span className="block text-xs pl-0 leading-relaxed">
-                    Note: The bot's actual entries use advanced order flow metrics (VAH/VAL, Bar Character, Divergence) for precision, not just this percentage dip. This list offers a general market scan.
+                    Note: The bot's actual entries use advanced order flow metrics for precision.
                 </span>
             </CardDescription>
         </CardHeader>
-        {liveMarketData.length > 0 ? ( potentialDipBuys.length > 0 ? (
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
-            {potentialDipBuys.map(ticker => (
-              <MarketOverviewItem key={`${ticker.symbol}-dip`} ticker={ticker} />
-            ))}
-          </div>
+        {isSubscribed ? (
+          liveMarketData.length > 0 ? ( potentialDipBuys.length > 0 ? (
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+              {potentialDipBuys.map(ticker => (
+                <MarketOverviewItem key={`${ticker.symbol}-dip`} ticker={ticker} />
+              ))}
+            </div>
+          ) : (
+            <Card className="shadow-card">
+              <CardContent className="pt-6">
+                <div className="flex flex-col items-center justify-center py-10 text-center">
+                  <SearchX className="h-12 w-12 text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">No new coins from the monitored list meet your dip criteria (≤ {dipPercentageToUse}%).</p>
+                  <p className="text-xs text-muted-foreground mt-1">Market conditions may change, or adjust your "Dip Percentage" in Settings.</p>
+                </div>
+              </CardContent>
+            </Card>
+          )
+          ) : (
+            <Card className="shadow-card">
+              <CardContent className="pt-6">
+                <p className="text-muted-foreground text-center">Market data unavailable to determine dips.</p>
+              </CardContent>
+            </Card>
+          )
         ) : (
-          <Card className="shadow-card">
-            <CardContent className="pt-6">
-              <div className="flex flex-col items-center justify-center py-10 text-center">
-                <SearchX className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No new coins from the monitored list meet your dip criteria (≤ {dipPercentageToUse}%).</p>
-                <p className="text-xs text-muted-foreground mt-1">Market conditions may change, or adjust your "Dip Percentage" in Settings.</p>
-              </div>
-            </CardContent>
-          </Card>
-        )
-        ) : (
-          <Card className="shadow-card">
-            <CardContent className="pt-6">
-              <p className="text-muted-foreground text-center">Market data unavailable to determine dips.</p>
-            </CardContent>
-          </Card>
+           <SubscriptionGate featureName="Potential Dip Buys">
+             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+                {/* Placeholder content for blurring */}
+                {[...Array(3)].map((_, i) => <MarketOverviewItem key={i} ticker={{ symbol: 'LOCKED', lastPrice: '0', priceChangePercent: '-10.00' }} />)}
+             </div>
+           </SubscriptionGate>
         )}
       </section>
 
       <section className="grid grid-cols-1 gap-8 xl:grid-cols-3">
         <div className="xl:col-span-2">
-          <ActiveTradesList userId={DEMO_USER_ID} />
+           {isSubscribed ? <ActiveTradesList userId={DEMO_USER_ID} /> : (
+            <SubscriptionGate featureName="Active Trades List">
+               <ActiveTradesList userId="DUMMY_FOR_LAYOUT" />
+            </SubscriptionGate>
+           )}
         </div>
         <div className="space-y-8">
           <AccountBalances userId={DEMO_USER_ID} />

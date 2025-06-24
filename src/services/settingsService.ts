@@ -109,26 +109,24 @@ export async function saveSettings(userId: string, settings: SettingsFormValues)
   
   const settingsCollection = await getSettingsCollection();
 
-  // Explicitly build the object to be saved from the settings input,
-  // ensuring all parameters defined in defaultSettingsValues are included.
-  const settingsDataToSet = Object.keys(defaultSettingsValues).reduce((acc, key) => {
+  const settingsDataToSet: Partial<SettingsFormValues> = {};
+  
+  Object.keys(defaultSettingsValues).forEach(key => {
       const typedKey = key as keyof typeof defaultSettingsValues;
       const value = settings[typedKey];
       const defaultValue = defaultSettingsValues[typedKey];
       
-      // Use the provided value if it's not undefined or an empty string, otherwise use the default.
       if (typeof defaultValue === 'number') {
-        (acc as any)[typedKey] = value !== undefined && value !== '' ? Number(value) : defaultValue;
+        (settingsDataToSet as any)[typedKey] = value !== undefined && value !== '' ? Number(value) : defaultValue;
+      } else if (typeof defaultValue === 'boolean') {
+        (settingsDataToSet as any)[typedKey] = typeof value === 'boolean' ? value : defaultValue;
       } else if (Array.isArray(defaultValue)) {
-         (acc as any)[typedKey] = Array.isArray(value) && value.length > 0 ? value : defaultValue;
+         (settingsDataToSet as any)[typedKey] = Array.isArray(value) && value.length > 0 ? value : defaultValue;
+      } else {
+        (settingsDataToSet as any)[typedKey] = value ?? defaultValue;
       }
-      else {
-        (acc as any)[typedKey] = value ?? defaultValue;
-      }
-      return acc;
-  }, {} as Omit<SettingsFormValues, 'userId' | 'binanceApiKey' | 'binanceSecretKey'> & { binanceApiKey?: string; binanceSecretKey?: string; monitoredSymbols: string[] });
-  
-  // Handle API keys separately as they are optional strings and should be saved even if empty.
+  });
+
   settingsDataToSet.binanceApiKey = settings.binanceApiKey || "";
   settingsDataToSet.binanceSecretKey = settings.binanceSecretKey || "";
 
@@ -136,7 +134,7 @@ export async function saveSettings(userId: string, settings: SettingsFormValues)
   const filter = { userId: userId };
   const updateOperation: UpdateFilter<SettingsFormValues> = {
     $set: settingsDataToSet, 
-    $setOnInsert: { userId: settings.userId } // Ensures userId is set on document creation
+    $setOnInsert: { userId: settings.userId }
   };
 
   try {

@@ -1,4 +1,3 @@
-
 import type { SettingsFormValues } from '@/components/settings/settings-form';
 
 // The default list of symbols the bot will monitor. This can be changed by the user in settings.
@@ -13,6 +12,7 @@ export const defaultMonitoredSymbols = [
 // Defines the base default values for user settings.
 // Excludes userId, which is added dynamically.
 export const defaultSettingsValues: Omit<SettingsFormValues, 'userId'> = {
+  hasActiveSubscription: false, // Default to not subscribed
   monitoredSymbols: defaultMonitoredSymbols,
   binanceApiKey: "",
   binanceSecretKey: "",
@@ -22,7 +22,7 @@ export const defaultSettingsValues: Omit<SettingsFormValues, 'userId'> = {
   trailActivationProfit: 2.5,
   trailDelta: 0.8,
   maxActiveTrades: 3,
-  // --- New Advanced Parameters ---
+  // --- Advanced Parameters ---
   initialStopLossPercentage: 1.5, // %
   valueAreaPercentage: 70, // %
   imbalanceRatioThreshold: 3, // e.g., 3 means 300%
