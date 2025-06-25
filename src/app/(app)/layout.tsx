@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import type { ReactNode } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import {
   SidebarProvider,
   Sidebar,
@@ -61,11 +61,30 @@ function ThemeToggle() {
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
 
   const handleRefresh = () => {
     router.refresh();
     console.log(`[${new Date().toISOString()}] AppLayout: Manual router.refresh() called.`);
   };
+
+  // Auto-refresh the dashboard page every 30 seconds to keep data fresh
+  React.useEffect(() => {
+    let interval: NodeJS.Timeout | undefined;
+    if (pathname === '/dashboard') {
+      interval = setInterval(() => {
+        console.log(`[${new Date().toISOString()}] AppLayout: Auto-refreshing dashboard data...`);
+        router.refresh();
+      }, 30000); // 30 seconds
+    }
+
+    return () => {
+      if (interval) {
+        clearInterval(interval);
+      }
+    };
+  }, [pathname, router]);
+
 
   return (
     <FootprintProvider>
