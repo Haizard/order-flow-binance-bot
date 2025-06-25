@@ -1,0 +1,26 @@
+# render.yaml for Binance Trailblazer
+# This file configures the project for deployment on Render.
+# See https://render.com/docs/blueprint-spec for details.
+
+services:
+  # A Web Service for the Next.js application
+  - type: web
+    name: binance-trailblazer
+    # The environment for the service (e.g., node, docker)
+    env: node
+    # The pricing plan. 'free' is available for personal projects.
+    plan: free
+    # The commands to build the service
+    buildCommand: "npm install && npm run build"
+    # The command to start the service
+    startCommand: "npm start"
+    # A health check path that Render can use to determine if the service is live
+    healthCheckPath: /login
+    # Define environment variables
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        # sync: false is crucial. It tells Render not to overwrite the value
+        # you set in the dashboard with the (empty) value from this file.
+        sync: false

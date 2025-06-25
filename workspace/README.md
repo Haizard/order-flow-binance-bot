@@ -34,3 +34,17 @@ This project is ready to be hosted on Fly.io. A `Dockerfile` and `fly.toml` are 
         ```
 4.  **Deploy**:
     *   Run `fly deploy`. `flyctl` will build the Docker image and deploy it to the Fly.io platform.
+
+## Hosting on Render
+
+This project includes a `render.yaml` file to simplify deployment on [Render](https://render.com/).
+
+1.  **Create a Blueprint Instance**:
+    *   In your Render dashboard, click "New" -> "Blueprint".
+    *   Connect the Git repository for this project.
+    *   Render will automatically detect `render.yaml` and configure the service.
+2.  **Set Secrets**:
+    *   Render will prompt you for any environment variables marked as `sync: false`.
+    *   Add your MongoDB connection string for the `MONGODB_URI` variable.
+3.  **Deploy**:
+    *   Click "Apply" or "Create" to build and deploy your application.
