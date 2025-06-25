@@ -19,6 +19,7 @@ import { UserNav } from '@/components/user-nav';
 import { Button } from '@/components/ui/button';
 import { Moon, Sun, RefreshCw } from 'lucide-react';
 import { BottomNav } from '@/components/bottom-nav';
+import { FootprintProvider } from '@/context/FootprintContext';
 
 // A simple theme toggle example - in a real app, this would use context/state management
 function ThemeToggle() {
@@ -67,42 +68,44 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   };
 
   return (
-    <SidebarProvider defaultOpen>
-      {/* Desktop sidebar, hidden on mobile screens */}
-      <div className="hidden md:block">
-        <Sidebar variant="sidebar" collapsible="icon" className="border-r border-sidebar-border">
-          <SidebarHeader className="p-3">
-            <Logo href="/dashboard" />
-          </SidebarHeader>
-          <SidebarContent className="p-2 flex-grow">
-            <MainNav />
-          </SidebarContent>
-          <SidebarFooter className="p-2">
-            {/* You can add footer items here if needed */}
-          </SidebarFooter>
-        </Sidebar>
-        <SidebarRail />
-      </div>
+    <FootprintProvider>
+      <SidebarProvider defaultOpen>
+        {/* Desktop sidebar, hidden on mobile screens */}
+        <div className="hidden md:block">
+          <Sidebar variant="sidebar" collapsible="icon" className="border-r border-sidebar-border">
+            <SidebarHeader className="p-3">
+              <Logo href="/dashboard" />
+            </SidebarHeader>
+            <SidebarContent className="p-2 flex-grow">
+              <MainNav />
+            </SidebarContent>
+            <SidebarFooter className="p-2">
+              {/* You can add footer items here if needed */}
+            </SidebarFooter>
+          </Sidebar>
+          <SidebarRail />
+        </div>
 
-      <SidebarInset>
-        <header className="sticky top-0 z-40 flex h-16 items-center justify-between gap-4 border-b border-border bg-background/95 px-4 backdrop-blur-sm sm:px-6">
-          <div className="md:hidden">
-            <Logo href="/dashboard"/>
-          </div>
-          <div className="flex items-center gap-2 ml-auto">
-            <Button variant="ghost" size="icon" onClick={handleRefresh} aria-label="Refresh data" className="h-9 w-9">
-              <RefreshCw className="h-5 w-5" />
-            </Button>
-            <ThemeToggle />
-            <UserNav />
-          </div>
-        </header>
-        <main className="flex-1 p-4 sm:p-6 md:p-8 pb-24 md:pb-8">
-          {children}
-        </main>
-      </SidebarInset>
+        <SidebarInset>
+          <header className="sticky top-0 z-40 flex h-16 items-center justify-between gap-4 border-b border-border bg-background/95 px-4 backdrop-blur-sm sm:px-6">
+            <div className="md:hidden">
+              <Logo href="/dashboard"/>
+            </div>
+            <div className="flex items-center gap-2 ml-auto">
+              <Button variant="ghost" size="icon" onClick={handleRefresh} aria-label="Refresh data" className="h-9 w-9">
+                <RefreshCw className="h-5 w-5" />
+              </Button>
+              <ThemeToggle />
+              <UserNav />
+            </div>
+          </header>
+          <main className="flex-1 p-4 sm:p-6 md:p-8 pb-24 md:pb-8">
+            {children}
+          </main>
+        </SidebarInset>
 
-      <BottomNav />
-    </SidebarProvider>
+        <BottomNav />
+      </SidebarProvider>
+    </FootprintProvider>
   );
 }

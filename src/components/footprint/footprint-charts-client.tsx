@@ -8,13 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Loader2, PlayCircle, StopCircle, BarChartHorizontalBig, Info, TrendingUp, TrendingDown, Maximize, Minimize, Activity, Target, ArrowUpCircle, ArrowDownCircle, GitCompareArrows, Waves } from 'lucide-react';
 import type { FootprintBar, PriceLevelData } from '@/types/footprint';
-import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy'; // Default symbols
-import { useToast } from "@/hooks/use-toast";
+import { useFootprint } from '@/context/FootprintContext';
 import GraphicalFootprintBar from '@/components/footprint/GraphicalFootprintBar';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from '@/lib/utils';
 
-const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute, matches server-side
+const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute
 const DEFAULT_BARS_TO_DISPLAY = 10;
 const VALUE_AREA_PERCENTAGE = 0.7; // 70% for VAH/VAL calculation
 const MIN_BARS_FOR_DIVERGENCE = 10; // Minimum bars to attempt divergence calculation
@@ -40,7 +39,6 @@ const formatTimeFromTimestamp = (timestamp: number | undefined | null, includeSe
     if (includeSeconds) options.second = '2-digit';
     return new Date(timestamp).toLocaleTimeString([], options);
 };
-
 
 // Helper to calculate POC for the summary table for a single bar
 function getBarPocInfo(bar: Partial<FootprintBar>): { pocPrice: string | null; pocVolume: number | null } {
@@ -194,7 +192,6 @@ function calculateSessionVwap(bars: FootprintBar[]): number | null {
     return cumulativeTypicalPriceVolume / cumulativeVolume;
 }
 
-
 interface SwingPoint {
   price: number;
   cd: number;
@@ -267,14 +264,26 @@ interface FootprintChartsClientProps {
 
 export default function FootprintChartsClient({ initialMonitoredSymbols }: FootprintChartsClientProps) {
   const [symbolsInput, setSymbolsInput] = useState(initialMonitoredSymbols.join(','));
-  const [activeSymbols, setActiveSymbols] = useState<string[]>([]);
-  const [footprintBars, setFootprintBars] = useState<Record<string, FootprintBar[]>>({});
-  const [currentPartialBars, setCurrentPartialBars] = useState<Record<string, Partial<FootprintBar>>>({});
-  const [isLoading, setIsLoading] = useState(false);
-  const [isConnected, setIsConnected] = useState(false);
   const [numBarsToDisplay, setNumBarsToDisplay] = useState<number>(DEFAULT_BARS_TO_DISPLAY);
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const { toast } = useToast();
+  
+  // Use the new context for all data and connection management
+  const { 
+    footprintBars, 
+    currentPartialBars, 
+    isConnected, 
+    isLoading, 
+    activeSymbols,
+    connect, 
+    disconnect 
+  } = useFootprint();
+
+  // Effect to connect with initial symbols when the component mounts
+  useEffect(() => {
+    if (initialMonitoredSymbols.length > 0 && !isConnected) {
+      connect(initialMonitoredSymbols);
+    }
+    // No cleanup needed here as the provider manages the connection lifecycle
+  }, [initialMonitoredSymbols, connect, isConnected]);
 
   const handleNumBarsChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseInt(event.target.value, 10);
@@ -285,161 +294,11 @@ export default function FootprintChartsClient({ initialMonitoredSymbols }: Footp
     }
   };
 
-  const connectToStream = () => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-    if (!symbolsInput.trim()) {
-        toast({
-            title: "Symbols Missing",
-            description: "Please enter symbols to track.",
-            variant: "destructive",
-        });
-        return;
-    }
-
+  const handleConnectClick = () => {
     const symbolsToConnect = symbolsInput.split(',').map(s => s.trim().toUpperCase()).filter(s => s);
-    if (symbolsToConnect.length === 0) {
-        toast({
-            title: "No Valid Symbols",
-            description: "No valid symbols were entered.",
-            variant: "destructive",
-        });
-        return;
-    }
-    setActiveSymbols(symbolsToConnect);
-    setIsLoading(true);
-    setIsConnected(false);
-    setFootprintBars({});
-    setCurrentPartialBars({});
-
-    const url = `/api/footprint-stream?symbols=${symbolsToConnect.join(',')}`;
-    const es = new EventSource(url);
-    eventSourceRef.current = es;
-
-    es.onopen = () => {
-      setIsLoading(false);
-      setIsConnected(true);
-      toast({
-        title: "Stream Connected",
-        description: `Connected to footprint data stream for: ${symbolsToConnect.join(', ')}`,
-        variant: "default",
-        className: "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700 text-green-800 dark:text-green-300",
-      });
-    };
-
-    es.onerror = (event) => {
-      let errorDetails = `Event Type: error`;
-       if (event.target && event.target instanceof EventSource) {
-        errorDetails += `, ReadyState: ${event.target.readyState} (0=CONNECTING, 1=OPEN, 2=CLOSED)`;
-      }
-      console.error(`Client-side EventSource connection error. ${errorDetails}. This likely indicates the server at /api/footprint-stream failed to establish or maintain the stream. Check server logs for errors from that endpoint.`);
-      console.debug("Full EventSource error event object for debugging:", event);
-
-      toast({
-        title: "Stream Connection Error",
-        description: "Lost connection to data stream or failed to connect. Check console & server logs, then try reconnecting.",
-        variant: "destructive",
-      });
-
-      setIsLoading(false);
-      setIsConnected(false);
-      setActiveSymbols([]);
-      if (eventSourceRef.current) {
-         eventSourceRef.current.close();
-         eventSourceRef.current = null;
-      }
-    };
-
-    es.addEventListener('footprintUpdate', (event) => {
-      const rawData = JSON.parse(event.data);
-      const reconstructedPriceLevels = rawData.priceLevels && typeof rawData.priceLevels === 'object'
-        ? new Map<string, PriceLevelData>(Object.entries(rawData.priceLevels))
-        : new Map<string, PriceLevelData>();
-
-      const barData: FootprintBar = {
-        ...rawData,
-        timestamp: Number(rawData.timestamp),
-        priceLevels: reconstructedPriceLevels,
-      };
-
-      setFootprintBars(prev => {
-        const existingBars = prev[barData.symbol] || [];
-        const updatedBars = [
-            ...existingBars.filter(b => b.timestamp !== barData.timestamp),
-            barData
-        ].sort((a,b) => b.timestamp - a.timestamp)
-         .slice(0, numBarsToDisplay);
-        return { ...prev, [barData.symbol]: updatedBars };
-      });
-      setCurrentPartialBars(prev => ({
-        ...prev,
-        [barData.symbol]: {
-          symbol: barData.symbol,
-          timestamp: Number(barData.timestamp) + AGGREGATION_INTERVAL_MS,
-          priceLevels: new Map<string, PriceLevelData>()
-        }
-      }));
-    });
-
-    es.addEventListener('footprintUpdatePartial', (event) => {
-        const rawPartialData = JSON.parse(event.data);
-        const partialBarDataWithMap: Partial<FootprintBar> = {
-            ...rawPartialData,
-            timestamp: Number(rawPartialData.timestamp)
-        };
-
-        if (rawPartialData.priceLevels && typeof rawPartialData.priceLevels === 'object' && !(rawPartialData.priceLevels instanceof Map)) {
-            partialBarDataWithMap.priceLevels = new Map<string, PriceLevelData>(Object.entries(rawPartialData.priceLevels));
-        }
-
-        if(partialBarDataWithMap.symbol) {
-            setCurrentPartialBars(prev => {
-                const existingSymbolPartial = prev[partialBarDataWithMap.symbol!] || {};
-                const mergedPartial: Partial<FootprintBar> = {
-                  ...existingSymbolPartial,
-                  ...partialBarDataWithMap
-                };
-
-                if (partialBarDataWithMap.priceLevels instanceof Map && existingSymbolPartial.priceLevels instanceof Map) {
-                    mergedPartial.priceLevels = new Map([...existingSymbolPartial.priceLevels, ...partialBarDataWithMap.priceLevels]);
-                } else if (partialBarDataWithMap.priceLevels instanceof Map) {
-                    mergedPartial.priceLevels = partialBarDataWithMap.priceLevels;
-                } else if (!mergedPartial.priceLevels) {
-                    mergedPartial.priceLevels = new Map<string, PriceLevelData>();
-                }
-
-                return {...prev, [partialBarDataWithMap.symbol!]: mergedPartial };
-            });
-        }
-    });
+    connect(symbolsToConnect);
   };
-
-  const disconnectStream = () => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-    setIsConnected(false);
-    setActiveSymbols([]);
-    toast({
-        title: "Stream Disconnected",
-        description: "You have manually disconnected from the footprint data stream.",
-        variant: "default",
-    });
-  };
-
-  useEffect(() => {
-    return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
-    };
-  }, []);
-
-
+  
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -455,12 +314,12 @@ export default function FootprintChartsClient({ initialMonitoredSymbols }: Footp
               disabled={isConnected || isLoading}
             />
             {!isConnected && !isLoading && (
-              <Button onClick={connectToStream} disabled={!symbolsInput.trim()}>
+              <Button onClick={handleConnectClick} disabled={!symbolsInput.trim()}>
                 <PlayCircle className="mr-2 h-5 w-5" /> Connect
               </Button>
             )}
             {(isConnected || isLoading) && (
-              <Button onClick={disconnectStream} variant="outline" disabled={isLoading && !isConnected}>
+              <Button onClick={disconnect} variant="outline" disabled={isLoading && !isConnected}>
                 {isLoading && !isConnected ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <StopCircle className="mr-2 h-5 w-5" />}
                 {isLoading && !isConnected ? 'Connecting...' : 'Disconnect'}
               </Button>
@@ -476,7 +335,6 @@ export default function FootprintChartsClient({ initialMonitoredSymbols }: Footp
               value={numBarsToDisplay}
               onChange={handleNumBarsChange}
               className="w-20 h-10"
-              disabled={isConnected || isLoading}
             />
           </div>
         </div>
@@ -496,7 +354,7 @@ export default function FootprintChartsClient({ initialMonitoredSymbols }: Footp
       <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 gap-6">
         {activeSymbols.map(symbol => {
           const currentSymbolPartialBar = currentPartialBars[symbol];
-          const currentSymbolFootprintBars = footprintBars[symbol] || [];
+          const currentSymbolFootprintBars = (footprintBars[symbol] || []).slice(0, numBarsToDisplay);
 
           const summaryBarsData: Partial<FootprintBar>[] = [
             ...(currentSymbolPartialBar && (currentSymbolPartialBar.totalVolume || (currentSymbolPartialBar.priceLevels && currentSymbolPartialBar.priceLevels.size > 0)) ? [currentSymbolPartialBar] : []),
@@ -567,7 +425,6 @@ export default function FootprintChartsClient({ initialMonitoredSymbols }: Footp
           const divergenceSignals = calculateDivergences(currentSymbolFootprintBars);
           const sessionVwapNum = calculateSessionVwap(currentSymbolFootprintBars);
 
-
           return (
           <Card key={symbol} className="shadow-lg">
             <CardHeader>
@@ -580,7 +437,7 @@ export default function FootprintChartsClient({ initialMonitoredSymbols }: Footp
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {isLoading && !currentSymbolFootprintBars.length && !(currentSymbolPartialBar?.priceLevels && (currentSymbolPartialBar.priceLevels.size > 0 || (currentSymbolPartialBar.totalVolume ?? 0) > 0) ) ? (
+              {isLoading && !isConnected ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-primary" />
                   <p className="ml-2 text-muted-foreground">Waiting for data...</p>
