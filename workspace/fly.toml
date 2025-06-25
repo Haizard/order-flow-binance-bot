@@ -1,0 +1,26 @@
+# fly.toml app configuration file for binance-trailblazer
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = "binance-trailblazer" # Replace with your app name on Fly.io
+primary_region = "iad" # Choose a region close to you or your users
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8080"
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true # Set to false to prevent the app from sleeping
+  auto_start_machines = true
+  min_machines_running = 0 # Set to 1 for faster responses, but may incur costs
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256 # Increase if you experience memory issues
