@@ -28,6 +28,13 @@ export function FootprintProvider({ children }: { children: ReactNode }) {
   const eventSourceRef = useRef<EventSource | null>(null);
   const { toast } = useToast();
 
+  // Ref to hold the latest state for use in callbacks without triggering re-renders of the callback itself.
+  const stateRef = useRef({ isLoading, isConnected, activeSymbols });
+  useEffect(() => {
+    stateRef.current = { isLoading, isConnected, activeSymbols };
+  }, [isLoading, isConnected, activeSymbols]);
+
+
   const handleDisconnect = useCallback(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
@@ -49,7 +56,10 @@ export function FootprintProvider({ children }: { children: ReactNode }) {
   }, [handleDisconnect, toast]);
 
   const connect = useCallback((symbolsToConnect: string[]) => {
-    if (isLoading || (isConnected && JSON.stringify(symbolsToConnect.sort()) === JSON.stringify(activeSymbols.sort()))) {
+    // Read the latest state from the ref to avoid dependency loops.
+    const { isLoading: currentIsLoading, isConnected: currentIsConnected, activeSymbols: currentActiveSymbols } = stateRef.current;
+    
+    if (currentIsLoading || (currentIsConnected && JSON.stringify(symbolsToConnect.sort()) === JSON.stringify(currentActiveSymbols.sort()))) {
       return; // Already connecting or connected to the same symbols
     }
 
@@ -143,7 +153,6 @@ export function FootprintProvider({ children }: { children: ReactNode }) {
       }
 
       if (partialBarDataWithMap.symbol) {
-        // FIX: The incoming data IS the new state for the partial bar. No merging needed.
         setCurrentPartialBars(prev => ({
           ...prev,
           [partialBarDataWithMap.symbol!]: partialBarDataWithMap,
@@ -151,7 +160,7 @@ export function FootprintProvider({ children }: { children: ReactNode }) {
       }
     });
 
-  }, [isLoading, isConnected, activeSymbols, handleDisconnect, toast]);
+  }, [handleDisconnect, toast]); // Dependency array is now stable
 
   useEffect(() => {
     // Cleanup on provider unmount (e.g., user logs out)
