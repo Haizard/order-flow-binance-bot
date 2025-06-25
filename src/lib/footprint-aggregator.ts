@@ -1,6 +1,6 @@
 /**
  * @fileOverview Handles WebSocket connection to Binance for trade streams
- * and aggregates data into FootprintBar structures.
+ * and aggregates data into FootprintBar structures. Runs as a persistent service.
  */
 
 import WebSocket from 'ws';
@@ -24,8 +24,7 @@ const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_DELAY_BASE = 1000; // 1 second
 let pingTimeout: NodeJS.Timeout | null = null;
 let keepAliveIntervalId: NodeJS.Timeout | null = null;
-let botIntervalId: NodeJS.Timeout | null = null; // To control the bot execution cycle
-
+let botIntervalId: NodeJS.Timeout | null = null;
 
 type ListenerCallback = (data: FootprintBar | Partial<FootprintBar>, eventType: 'footprintUpdate' | 'footprintUpdatePartial') => void;
 const listeners = new Set<ListenerCallback>();
@@ -37,14 +36,8 @@ export function removeFootprintListener(callback: ListenerCallback) {
   listeners.delete(callback);
 }
 function notifyListeners(data: FootprintBar | Partial<FootprintBar>, eventType: 'footprintUpdate' | 'footprintUpdatePartial') {
-  const logTimestamp = new Date().toISOString();
-  const symbol = 'symbol' in data ? data.symbol : 'N/A';
-  const priceLevelsSize = data.priceLevels instanceof Map ? data.priceLevels.size : (typeof data.priceLevels === 'object' ? Object.keys(data.priceLevels).length : 'N/A');
-  const priceLevelKeys = data.priceLevels instanceof Map && data.priceLevels.size > 0 ? Array.from(data.priceLevels.keys()).join(', ') : "None";
-  
   listeners.forEach(listener => listener(data, eventType));
 }
-
 
 function initializeNewBar(symbol: string, timestamp: number): Partial<FootprintBar> {
   return {
@@ -71,7 +64,6 @@ function processTrade(symbol: string, tradeData: BinanceTradeData) {
   const parsedQuantity = parseFloat(tradeData.q);
 
   if (isNaN(parsedPrice) || parsedPrice <= 0 || isNaN(parsedQuantity) || parsedQuantity <= 0) {
-    console.warn(`[${new Date().toISOString()}] FootprintAggregator [${symbol}]: Invalid price or quantity for trade ${tradeData.t}. Price: ${tradeData.p}, Qty: ${tradeData.q}. Skipping trade.`);
     return;
   }
 
@@ -91,7 +83,7 @@ function processTrade(symbol: string, tradeData: BinanceTradeData) {
       if (completedBar.totalVolume > 0) {
         const symbolBars = footprintDataStore.get(symbol) || [];
         symbolBars.push(completedBar);
-        footprintDataStore.set(symbol, symbolBars.slice(-100)); // Keep last 100 bars
+        footprintDataStore.set(symbol, symbolBars.slice(-100));
         notifyListeners(completedBar, 'footprintUpdate');
       }
     }
@@ -100,17 +92,15 @@ function processTrade(symbol: string, tradeData: BinanceTradeData) {
   }
   
   if (!bar.priceLevels) { 
-    console.error(`[${new Date().toISOString()}] FootprintAggregator [${symbol}]: CRITICAL - bar.priceLevels is undefined for bar at ${bar.timestamp}. Re-initializing.`);
     bar.priceLevels = new Map<string, PriceLevelData>();
   }
   if (!bar.tradesInBar) { 
      bar.tradesInBar = [];
   }
 
-  // Update OHLC
   if (bar.open === undefined) bar.open = currentTrade.price;
-  if (bar.high === undefined) bar.high = currentTrade.price; else bar.high = Math.max(bar.high, currentTrade.price);
-  if (bar.low === undefined) bar.low = currentTrade.price; else bar.low = Math.min(bar.low, currentTrade.price);
+  bar.high = Math.max(bar.high ?? currentTrade.price, currentTrade.price);
+  bar.low = Math.min(bar.low ?? currentTrade.price, currentTrade.price);
   bar.close = currentTrade.price;
   
   bar.totalVolume = (bar.totalVolume ?? 0) + currentTrade.volume;
@@ -155,29 +145,31 @@ function heartbeat() {
   pingTimeout = setTimeout(() => {
     if (wsInstance) {
       console.log(`[${new Date().toISOString()}] FootprintAggregator: WebSocket ping timeout, terminating connection.`);
-      wsInstance.terminate(); // Force close if pong not received
+      wsInstance.terminate();
     }
-  }, 30000 + 1000); // Binance sends pings every 3 minutes. We expect pong within 30s.
+  }, 3 * 60 * 1000 + 5000); // 3 minutes + 5 seconds grace period
 }
 
 async function startBotCycle() {
-    if (botIntervalId) {
-        clearInterval(botIntervalId);
-        botIntervalId = null;
-    }
+    if (botIntervalId) return; // Already running
+
     console.log(`[${new Date().toISOString()}] FootprintAggregator: Starting continuous bot cycle (every ${BOT_CYCLE_INTERVAL_MS / 1000}s).`);
+    
+    // Initial run right away
+    try {
+        const settings = await getSettings(DEMO_USER_ID);
+        if (settings.hasActiveSubscription) await runBotCycle(DEMO_USER_ID);
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] FootprintAggregator: Error during initial bot cycle execution:`, error);
+    }
+    
+    // Interval for subsequent runs
     botIntervalId = setInterval(async () => {
-        const logTimestamp = new Date().toISOString();
         try {
             const settings = await getSettings(DEMO_USER_ID);
-            if (!settings.hasActiveSubscription) {
-                console.log(`[${logTimestamp}] FootprintAggregator: Skipping bot cycle for user ${DEMO_USER_ID} (no active subscription).`);
-                return;
-            }
-            console.log(`[${logTimestamp}] FootprintAggregator: Triggering periodic bot cycle for subscribed user ${DEMO_USER_ID}.`);
-            await runBotCycle(DEMO_USER_ID);
+            if (settings.hasActiveSubscription) await runBotCycle(DEMO_USER_ID);
         } catch (error) {
-            console.error(`[${logTimestamp}] FootprintAggregator: Error during periodic bot cycle execution:`, error);
+            console.error(`[${new Date().toISOString()}] FootprintAggregator: Error during periodic bot cycle execution:`, error);
         }
     }, BOT_CYCLE_INTERVAL_MS);
 }
@@ -190,7 +182,6 @@ function stopBotCycle() {
     }
 }
 
-
 function connect() {
   if (wsInstance && (wsInstance.readyState === WebSocket.OPEN || wsInstance.readyState === WebSocket.CONNECTING)) {
     return;
@@ -198,28 +189,25 @@ function connect() {
 
   const streams = activeSymbols.map(s => `${s.toLowerCase()}@trade`).join('/');
   if (!streams) {
-    console.log(`[${new Date().toISOString()}] FootprintAggregator: No active symbols to connect.`);
     return;
   }
   const url = `${BINANCE_FUTURES_WEBSOCKET_URL}?streams=${streams}`;
   console.log(`[${new Date().toISOString()}] FootprintAggregator: Connecting to ${url}`);
 
   wsInstance = new WebSocket(url);
-  heartbeat(); // Start heartbeat on new connection attempt
+  heartbeat();
 
   wsInstance.on('open', () => {
     console.log(`[${new Date().toISOString()}] FootprintAggregator: WebSocket connection established for symbols: ${activeSymbols.join(', ')}.`);
     reconnectAttempts = 0;
-    heartbeat(); // Reset heartbeat on open
+    heartbeat();
 
     if (keepAliveIntervalId) clearInterval(keepAliveIntervalId);
     keepAliveIntervalId = setInterval(() => {
       if (wsInstance && wsInstance.readyState === WebSocket.OPEN) {
         wsInstance.ping();
       }
-    }, 3 * 60 * 1000); // Send a ping every 3 minutes
-    
-    startBotCycle();
+    }, 3 * 60 * 1000);
   });
 
   wsInstance.on('message', (data: WebSocket.Data) => {
@@ -228,10 +216,6 @@ function connect() {
       if (message.stream && message.data && message.data.s) {
         const symbolFromStream = message.stream.split('@')[0].toUpperCase();
         processTrade(symbolFromStream, message.data);
-      } else if (data.toString().includes("ping")) {
-        wsInstance?.pong();
-      } else if (data.toString().includes("pong")) {
-         heartbeat();
       }
     } catch (error) {
       console.error(`[${new Date().toISOString()}] FootprintAggregator: Error processing message:`, error, data.toString());
@@ -239,7 +223,6 @@ function connect() {
   });
 
   wsInstance.on('ping', () => {
-    heartbeat();
     wsInstance?.pong();
   });
 
@@ -255,38 +238,24 @@ function connect() {
     console.log(`[${new Date().toISOString()}] FootprintAggregator: WebSocket connection closed. Code: ${code}, Reason: ${reason.toString()}.`);
     if (pingTimeout) clearTimeout(pingTimeout);
     if (keepAliveIntervalId) clearInterval(keepAliveIntervalId);
-    stopBotCycle();
     wsInstance = null;
+    // Don't stop bot cycle. It should persist.
     if (activeSymbols.length > 0 && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
         attemptReconnect();
-    } else if (activeSymbols.length === 0) {
-        console.log(`[${new Date().toISOString()}] FootprintAggregator: No active symbols, will not reconnect automatically.`);
-        reconnectAttempts = 0;
-    } else {
-        console.log(`[${new Date().toISOString()}] FootprintAggregator: Max reconnect attempts reached or reconnection not intended.`);
     }
   });
 }
 
 function attemptReconnect() {
-  if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-    reconnectAttempts++;
-    const delay = Math.pow(2, reconnectAttempts - 1) * RECONNECT_DELAY_BASE;
-    console.log(`[${new Date().toISOString()}] FootprintAggregator: Reconnect attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${delay / 1000}s.`);
-    setTimeout(() => {
-      if (activeSymbols.length > 0) {
-        connect();
-      } else {
-        console.log(`[${new Date().toISOString()}] FootprintAggregator: No active symbols, stopping reconnection attempts.`);
-        reconnectAttempts = 0;
-      }
-    }, delay);
-  } else {
-    console.error(`[${new Date().toISOString()}] FootprintAggregator: Maximum reconnect attempts reached. Please check the connection or symbol list.`);
-  }
+  reconnectAttempts++;
+  const delay = Math.pow(2, reconnectAttempts - 1) * RECONNECT_DELAY_BASE;
+  console.log(`[${new Date().toISOString()}] FootprintAggregator: Reconnect attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${delay / 1000}s.`);
+  setTimeout(() => {
+    if (activeSymbols.length > 0) connect();
+  }, delay);
 }
 
-export function startFootprintStream(symbols: string[] = MONITORED_MARKET_SYMBOLS) {
+export function startFootprintStream(symbols: string[]) {
   const newSymbols = symbols.filter(s => s.trim() !== '' && !activeSymbols.includes(s.toUpperCase()));
   const symbolsToKeep = activeSymbols.filter(s => symbols.map(sy => sy.toUpperCase()).includes(s));
   const finalSymbolList = [...new Set([...symbolsToKeep, ...newSymbols.map(s => s.toUpperCase())])];
@@ -295,52 +264,32 @@ export function startFootprintStream(symbols: string[] = MONITORED_MARKET_SYMBOL
   const newSymbolsJSON = JSON.stringify(finalSymbolList.sort());
 
   if (newSymbolsJSON !== oldSymbolsJSON || (!wsInstance && finalSymbolList.length > 0)) {
-    console.log(`[${new Date().toISOString()}] FootprintAggregator: Symbol list changing from [${activeSymbols.join(',')}] to [${finalSymbolList.join(',')}], or WS needs to start.`);
+    console.log(`[${new Date().toISOString()}] FootprintAggregator: Symbol list changing to [${finalSymbolList.join(',')}], restarting WebSocket.`);
     activeSymbols = finalSymbolList;
 
     if (wsInstance) {
-      console.log(`[${new Date().toISOString()}] FootprintAggregator: Closing existing WebSocket due to symbol change or restart.`);
       const tempWs = wsInstance;
       wsInstance = null;
-      reconnectAttempts = MAX_RECONNECT_ATTEMPTS + 1;
+      // Prevent automatic reconnection from the 'close' event handler while we are manually restarting.
+      tempWs.removeAllListeners('close'); 
       tempWs.close();
-      setTimeout(() => {
-        reconnectAttempts = 0;
-        if (activeSymbols.length > 0) connect();
-      }, 500);
-    } else if (activeSymbols.length > 0) {
-      reconnectAttempts = 0;
+      setTimeout(connect, 500); // Give it a moment to close before reconnecting.
+    } else {
       connect();
     }
-  } else if (activeSymbols.length === 0 && wsInstance) {
-    console.log(`[${new Date().toISOString()}] FootprintAggregator: No active symbols. Closing WebSocket.`);
-    const tempWs = wsInstance;
-    wsInstance = null;
-    reconnectAttempts = MAX_RECONNECT_ATTEMPTS +1;
-    tempWs.close();
-    reconnectAttempts = 0;
   }
 }
 
 export function stopFootprintStream() {
-  console.log(`[${new Date().toISOString()}] FootprintAggregator: stopFootprintStream called.`);
-  stopBotCycle();
-  const oldActiveSymbols = [...activeSymbols];
+  console.log(`[${new Date().toISOString()}] FootprintAggregator: stopFootprintStream called. This will stop WebSocket data but not the bot cycle.`);
   activeSymbols = [];
   if (wsInstance) {
-    console.log(`[${new Date().toISOString()}] FootprintAggregator: Closing WebSocket connection explicitly.`);
     const tempWsInstance = wsInstance;
     wsInstance = null;
-    reconnectAttempts = MAX_RECONNECT_ATTEMPTS + 1;
+    tempWsInstance.removeAllListeners('close');
     tempWsInstance.close();
-    console.log(`[${new Date().toISOString()}] FootprintAggregator: Stopped stream for ${oldActiveSymbols.join(', ')}.`);
     if (pingTimeout) clearTimeout(pingTimeout);
     if (keepAliveIntervalId) clearInterval(keepAliveIntervalId);
-    setTimeout(() => { 
-        if (!wsInstance) reconnectAttempts = 0; 
-    }, RECONNECT_DELAY_BASE * 2);
-  } else {
-    reconnectAttempts = 0;
   }
   currentBarData.clear();
 }
@@ -353,4 +302,18 @@ export function getLatestFootprintBars(symbol: string, count: number): Footprint
 export function getCurrentAggregatingBar(symbol: string): Partial<FootprintBar> | undefined {
   return currentBarData.get(symbol.toUpperCase());
 }
-    
+
+/**
+ * Initializes the persistent aggregator and bot cycle.
+ * This should be called once when the server starts.
+ */
+function initializePersistentServices() {
+    console.log(`[${new Date().toISOString()}] FootprintAggregator: Initializing persistent data aggregation and bot cycle.`);
+    // Start the WebSocket stream with the default symbols the bot needs.
+    startFootprintStream(MONITORED_MARKET_SYMBOLS);
+    // Start the bot cycle, which will now run independently of client connections.
+    startBotCycle();
+}
+
+// Auto-initialize the service when this module is loaded by the server.
+initializePersistentServices();
