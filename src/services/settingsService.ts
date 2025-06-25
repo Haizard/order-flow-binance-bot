@@ -148,3 +148,18 @@ export async function saveSettings(userId: string, settings: SettingsFormValues)
     throw dbError;
   }
 }
+
+/**
+ * Retrieves all user settings documents from the database.
+ * @returns A promise that resolves to an array of all user settings.
+ */
+export async function getAllUserSettings(): Promise<SettingsFormValues[]> {
+    const settingsCollection = await getSettingsCollection();
+    const settingsDocs = await settingsCollection.find({}).toArray();
+
+    return settingsDocs.map(doc => {
+        const { _id, ...settingsWithoutMongoId } = doc as WithId<SettingsFormValues>;
+        // Merge with defaults to ensure all properties are present
+        return { ...defaultSettingsValues, ...settingsWithoutMongoId };
+    });
+}
