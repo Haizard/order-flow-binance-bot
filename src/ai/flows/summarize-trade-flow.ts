@@ -67,7 +67,26 @@ const summarizeTradeFlow = ai.defineFlow(
     outputSchema: SummarizeTradeOutputSchema,
   },
   async (input) => {
-    const { output } = await prompt(input);
-    return output!;
+    try {
+      const { output } = await prompt(input);
+      // If the model returns a valid string, use it.
+      if (output) {
+        return output;
+      }
+      // Log if the output is null/undefined without an error being thrown.
+      console.warn(`[${new Date().toISOString()}] summarizeTradeFlow: Genkit prompt returned null or undefined output for symbol ${input.symbol}. Falling back to default summary.`);
+    } catch (e) {
+      // Log if the prompt itself throws an error.
+      console.error(`[${new Date().toISOString()}] summarizeTradeFlow: Genkit prompt failed for symbol ${input.symbol}. Error:`, e instanceof Error ? e.message : String(e));
+    }
+
+    // Fallback logic if AI generation fails or returns a nullish value.
+    // This ensures the flow always returns a valid string, preventing the crash.
+    const outcome = input.pnl === undefined ? 'a' : (input.pnl > 0 ? 'a successful' : (input.pnl < 0 ? 'an unsuccessful' : 'a break-even'));
+    const pnlText = input.pnl !== undefined && input.pnlPercentage !== undefined
+        ? ` for a profit/loss of ${input.pnl.toFixed(2)} (${input.pnlPercentage.toFixed(2)}%)`
+        : '';
+    
+    return `This was ${outcome} ${input.tradeDirection} trade on ${input.symbol}. The position was closed${pnlText}. Entry: ${input.entryReason || 'N/A'}. Exit: ${input.exitReason || 'N/A'}.`;
   }
 );
