@@ -143,18 +143,11 @@ export function FootprintProvider({ children }: { children: ReactNode }) {
       }
 
       if (partialBarDataWithMap.symbol) {
-        setCurrentPartialBars(prev => {
-          const existingSymbolPartial = prev[partialBarDataWithMap.symbol!] || {};
-          const mergedPartial: Partial<FootprintBar> = { ...existingSymbolPartial, ...partialBarDataWithMap };
-          if (partialBarDataWithMap.priceLevels instanceof Map && existingSymbolPartial.priceLevels instanceof Map) {
-              mergedPartial.priceLevels = new Map([...existingSymbolPartial.priceLevels, ...partialBarDataWithMap.priceLevels]);
-          } else if (partialBarDataWithMap.priceLevels instanceof Map) {
-              mergedPartial.priceLevels = partialBarDataWithMap.priceLevels;
-          } else if (!mergedPartial.priceLevels) {
-              mergedPartial.priceLevels = new Map<string, PriceLevelData>();
-          }
-          return { ...prev, [partialBarDataWithMap.symbol!]: mergedPartial };
-        });
+        // FIX: The incoming data IS the new state for the partial bar. No merging needed.
+        setCurrentPartialBars(prev => ({
+          ...prev,
+          [partialBarDataWithMap.symbol!]: partialBarDataWithMap,
+        }));
       }
     });
 
