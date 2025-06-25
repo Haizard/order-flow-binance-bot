@@ -1,4 +1,5 @@
 
+
 'use server';
 /**
  * @fileOverview Core bot logic for making trading decisions.
@@ -16,6 +17,8 @@ import {
     getCurrentAggregatingBar,
 } from '@/lib/footprint-aggregator';
 import { calculateAllBotMetrics, type BotOrderFlowMetrics } from './botMetricCalculators';
+import { summarizeTrade } from '@/ai/flows/summarize-trade-flow';
+import type { Trade } from '@/types/trade';
 
 const ADMIN_USER_ID = "admin001"; // The user whose settings define the global strategy.
 const FOOTPRINT_BARS_FOR_METRICS = 20;
@@ -182,6 +185,7 @@ export async function runBotCycle(
                     quantity: quantityToBuy,
                     initialStopLossPrice: initialStopLossPrice,
                     tradeDirection: 'LONG',
+                    entryReason: longEntryReason,
                 });
                 activeTradeSymbols.push(symbol); 
                 if (activeTradeSymbols.length >= maxActiveTrades) break;
@@ -231,6 +235,7 @@ export async function runBotCycle(
                     quantity: quantityToSell,
                     initialStopLossPrice: initialStopLossPrice,
                     tradeDirection: 'SHORT',
+                    entryReason: shortEntryReason,
                 });
                 activeTradeSymbols.push(symbol); 
                 if (activeTradeSymbols.length >= maxActiveTrades) break;
@@ -254,9 +259,12 @@ export async function runBotCycle(
             const exitPrice = trade.initialStopLossPrice;
             const pnlValue = (exitPrice - trade.entryPrice) * trade.quantity;
             const pnlPercentageValue = (trade.entryPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.entryPrice * trade.quantity)) * 100;
-            console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): LONG INITIAL STOP-LOSS HIT for ${trade.symbol} ID ${trade.id}. Selling at $${exitPrice.toFixed(4)}.`);
+            const exitReason = `Initial Stop-Loss hit at $${exitPrice.toFixed(4)}`;
+            console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): ${exitReason} for ${trade.symbol} ID ${trade.id}.`);
             try {
-                await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
+                const tempTrade: Trade = {...trade, exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue, exitReason};
+                const aiSummary = await summarizeTrade(tempTrade);
+                await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue, exitReason, aiSummary });
             } catch (error) {
                 console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Error closing LONG trade ${trade.id} on initial SL:`, error);
             }
@@ -279,10 +287,10 @@ export async function runBotCycle(
             }
 
             let proactiveExitReason = "";
-            if (priceNearVah && isBearishBarCharacterForExit) proactiveExitReason = "Price near VAH & Bearish Bar Character";
-            else if (activeTradeMetrics.imbalanceReversalSignal === 'BEARISH_IMBALANCE_REVERSAL') proactiveExitReason = "Bearish Imbalance Reversal Detected";
-            else if (activeTradeMetrics.divergenceSignals.includes("Bearish Delta Divergence")) proactiveExitReason = "Bearish Divergence appeared";
-            else if (activeTradeMetrics.breakoutSignal === 'BEARISH') proactiveExitReason = "Bearish Breakout appeared";
+            if (priceNearVah && isBearishBarCharacterForExit) proactiveExitReason = "Proactive Exit: Price near VAH & Bearish Bar Character";
+            else if (activeTradeMetrics.imbalanceReversalSignal === 'BEARISH_IMBALANCE_REVERSAL') proactiveExitReason = "Proactive Exit: Bearish Imbalance Reversal Detected";
+            else if (activeTradeMetrics.divergenceSignals.includes("Bearish Delta Divergence")) proactiveExitReason = "Proactive Exit: Bearish Divergence appeared";
+            else if (activeTradeMetrics.breakoutSignal === 'BEARISH') proactiveExitReason = "Proactive Exit: Bearish Breakout appeared";
 
             if (proactiveExitReason && (trade.status === 'ACTIVE_LONG_ENTRY' || trade.status === 'ACTIVE_TRAILING_LONG')) {
                 const exitPrice = currentPriceForTrade;
@@ -290,7 +298,9 @@ export async function runBotCycle(
                 const pnlPercentageValue = (trade.entryPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.entryPrice * trade.quantity)) * 100;
                 console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): LONG PROACTIVE EXIT SIGNAL for ${trade.symbol} ID ${trade.id}. Reason: ${proactiveExitReason}.`);
                 try {
-                    await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
+                    const tempTrade: Trade = {...trade, exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue, exitReason: proactiveExitReason};
+                    const aiSummary = await summarizeTrade(tempTrade);
+                    await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue, exitReason: proactiveExitReason, aiSummary });
                 } catch(error) {
                     console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Error closing LONG trade ${trade.id} on proactive exit:`, error);
                 }
@@ -320,8 +330,11 @@ export async function runBotCycle(
                 const exitPrice = currentPriceForTrade;
                 const pnlValue = (exitPrice - trade.entryPrice) * trade.quantity;
                 const pnlPercentageValue = (trade.entryPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.entryPrice * trade.quantity)) * 100;
+                const exitReason = `Trailing Stop-Loss triggered`;
                  try {
-                    await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
+                    const tempTrade: Trade = {...trade, exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue, exitReason };
+                    const aiSummary = await summarizeTrade(tempTrade);
+                    await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue, exitReason, aiSummary });
                  } catch (error) {
                     console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Error closing LONG trade ${trade.id} on trailing stop:`, error);
                  }
@@ -334,9 +347,12 @@ export async function runBotCycle(
             const exitPrice = trade.initialStopLossPrice;
             const pnlValue = (trade.entryPrice - exitPrice) * trade.quantity;
             const pnlPercentageValue = (trade.entryPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.entryPrice * trade.quantity)) * 100;
-            console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): SHORT INITIAL STOP-LOSS HIT for ${trade.symbol} ID ${trade.id}. Covering at $${exitPrice.toFixed(4)}.`);
+            const exitReason = `Initial Stop-Loss hit at $${exitPrice.toFixed(4)}`;
+            console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): ${exitReason} for ${trade.symbol} ID ${trade.id}.`);
              try {
-                await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
+                const tempTrade: Trade = {...trade, exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue, exitReason};
+                const aiSummary = await summarizeTrade(tempTrade);
+                await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue, exitReason, aiSummary });
              } catch (error) {
                 console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Error closing SHORT trade ${trade.id} on initial SL:`, error);
              }
@@ -359,10 +375,10 @@ export async function runBotCycle(
             }
 
             let proactiveExitReason = "";
-            if (priceNearVal && isBullishBarCharacterForExit) proactiveExitReason = "Price near VAL & Bullish Bar Character";
-            else if (activeTradeMetrics.imbalanceReversalSignal === 'BULLISH_IMBALANCE_REVERSAL') proactiveExitReason = "Bullish Imbalance Reversal Detected";
-            else if (activeTradeMetrics.divergenceSignals.includes("Bullish Delta Divergence")) proactiveExitReason = "Bullish Divergence appeared";
-            else if (activeTradeMetrics.breakoutSignal === 'BULLISH') proactiveExitReason = "Bullish Breakout appeared";
+            if (priceNearVal && isBullishBarCharacterForExit) proactiveExitReason = "Proactive Exit: Price near VAL & Bullish Bar Character";
+            else if (activeTradeMetrics.imbalanceReversalSignal === 'BULLISH_IMBALANCE_REVERSAL') proactiveExitReason = "Proactive Exit: Bullish Imbalance Reversal Detected";
+            else if (activeTradeMetrics.divergenceSignals.includes("Bullish Delta Divergence")) proactiveExitReason = "Proactive Exit: Bullish Divergence appeared";
+            else if (activeTradeMetrics.breakoutSignal === 'BULLISH') proactiveExitReason = "Proactive Exit: Bullish Breakout appeared";
             
             if (proactiveExitReason && (trade.status === 'ACTIVE_SHORT_ENTRY' || trade.status === 'ACTIVE_TRAILING_SHORT')) {
                 const exitPrice = currentPriceForTrade;
@@ -370,7 +386,9 @@ export async function runBotCycle(
                 const pnlPercentageValue = (trade.entryPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.entryPrice * trade.quantity)) * 100;
                 console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): SHORT PROACTIVE EXIT SIGNAL for ${trade.symbol} ID ${trade.id}. Reason: ${proactiveExitReason}.`);
                  try {
-                    await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
+                    const tempTrade: Trade = {...trade, exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue, exitReason: proactiveExitReason};
+                    const aiSummary = await summarizeTrade(tempTrade);
+                    await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue, exitReason: proactiveExitReason, aiSummary });
                  } catch (error) {
                     console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Error closing SHORT trade ${trade.id} on proactive exit:`, error);
                  }
@@ -400,8 +418,11 @@ export async function runBotCycle(
                 const exitPrice = currentPriceForTrade;
                 const pnlValue = (trade.entryPrice - exitPrice) * trade.quantity;
                 const pnlPercentageValue = (trade.entryPrice * trade.quantity === 0) ? 0 : (pnlValue / (trade.entryPrice * trade.quantity)) * 100;
+                const exitReason = `Trailing Stop-Loss triggered`;
                  try {
-                    await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue });
+                    const tempTrade: Trade = {...trade, exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue, exitReason };
+                    const aiSummary = await summarizeTrade(tempTrade);
+                    await tradeService.updateTrade(clientUserId, trade.id, { status: 'CLOSED_EXITED', exitPrice, pnl: pnlValue, pnlPercentage: pnlPercentageValue, exitReason, aiSummary });
                  } catch (error) {
                     console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Error closing SHORT trade ${trade.id} on trailing stop:`, error);
                  }

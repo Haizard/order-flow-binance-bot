@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import * as React from "react";
@@ -12,11 +13,19 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Bitcoin, TrendingUp, TrendingDown, ArrowLeft, ArrowRight, History, AlertTriangle, ServerCrash, Activity, BarChartBig } from 'lucide-react';
+import { Bitcoin, TrendingUp, TrendingDown, ArrowLeft, ArrowRight, History, AlertTriangle, ServerCrash, Activity, BarChartBig, Info, MessageSquareQuote } from 'lucide-react';
 import { Badge } from "@/components/ui/badge";
 import * as tradeService from '@/services/tradeService';
 import type { Trade } from '@/types/trade';
 import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 const TRADES_PER_PAGE = 10;
 
@@ -153,11 +162,9 @@ export function TradeHistoryTable({ userId }: TradeHistoryTableProps) {
                 <TableHead className="font-semibold bg-muted/50 h-11 px-3">Symbol</TableHead>
                 <TableHead className="text-right font-semibold bg-muted/50 h-11 px-3">Entry Price</TableHead>
                 <TableHead className="text-right font-semibold bg-muted/50 h-11 px-3">Exit Price</TableHead>
-                <TableHead className="text-right font-semibold bg-muted/50 h-11 px-3">Quantity</TableHead>
                 <TableHead className="text-right font-semibold bg-muted/50 h-11 px-3">P&amp;L ({currentTrades[0]?.quoteAsset || 'USD'})</TableHead>
-                <TableHead className="text-right font-semibold bg-muted/50 h-11 px-3">P&amp;L (%)</TableHead>
-                <TableHead className="font-semibold bg-muted/50 h-11 px-3">Exited At</TableHead>
                 <TableHead className="font-semibold bg-muted/50 h-11 px-3">Status</TableHead>
+                <TableHead className="text-center font-semibold bg-muted/50 h-11 px-3">Details</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -171,15 +178,10 @@ export function TradeHistoryTable({ userId }: TradeHistoryTableProps) {
                   </TableCell>
                   <TableCell className="text-right p-3">{formatCurrency(trade.entryPrice, trade.quoteAsset)}</TableCell>
                   <TableCell className="text-right p-3">{trade.exitPrice ? formatCurrency(trade.exitPrice, trade.quoteAsset) : 'N/A'}</TableCell>
-                  <TableCell className="text-right p-3">{trade.quantity.toLocaleString(undefined, {maximumFractionDigits: 8})}</TableCell>
                   <TableCell className={cn("text-right p-3 font-medium", trade.pnl && trade.pnl >= 0 ? 'text-accent' : 'text-destructive')}>
                     {trade.pnl !== undefined ? formatCurrency(trade.pnl, trade.quoteAsset) : 'N/A'}
+                    {trade.pnlPercentage !== undefined ? ` (${trade.pnlPercentage.toFixed(2)}%)` : ''}
                   </TableCell>
-                   <TableCell className={cn("text-right p-3 font-medium", trade.pnlPercentage && trade.pnlPercentage >= 0 ? 'text-accent' : 'text-destructive')}>
-                    {trade.pnlPercentage !== undefined ? `${trade.pnlPercentage.toFixed(2)}%` : 'N/A'}
-                    {trade.pnlPercentage !== undefined ? (trade.pnlPercentage >= 0 ? <TrendingUp className="inline ml-1 h-4 w-4" /> : <TrendingDown className="inline ml-1 h-4 w-4" />) : null}
-                  </TableCell>
-                  <TableCell className="p-3">{trade.exitTimestamp ? new Date(trade.exitTimestamp).toLocaleDateString() : 'N/A'}</TableCell>
                   <TableCell className="p-3">
                     <Badge 
                       variant={trade.status === 'CLOSED_EXITED' ? 'default' : (trade.status === 'CLOSED_ERROR' ? 'destructive' : 'outline')}
@@ -188,6 +190,37 @@ export function TradeHistoryTable({ userId }: TradeHistoryTableProps) {
                     >
                         {trade.status.replace('CLOSED_', '')}
                     </Badge>
+                  </TableCell>
+                  <TableCell className="text-center p-3">
+                    {trade.aiSummary ? (
+                       <Dialog>
+                        <DialogTrigger asChild>
+                           <Button variant="ghost" size="icon" className="h-7 w-7">
+                            <Info className="h-4 w-4 text-primary" />
+                           </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-md">
+                          <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2">
+                                <MessageSquareQuote className="h-6 w-6 text-primary" />
+                                AI Trade Analysis
+                            </DialogTitle>
+                            <DialogDescription>
+                              Trade ID: {trade.id}
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-4 py-4 text-sm">
+                            <p className="leading-relaxed">{trade.aiSummary}</p>
+                            <div className="text-xs text-muted-foreground space-y-1 border-t pt-3">
+                               <p><strong>Entry Reason:</strong> {trade.entryReason || 'N/A'}</p>
+                               <p><strong>Exit Reason:</strong> {trade.exitReason || 'N/A'}</p>
+                            </div>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    ) : (
+                        <span className="text-muted-foreground text-xs italic">No summary</span>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -225,4 +258,3 @@ export function TradeHistoryTable({ userId }: TradeHistoryTableProps) {
     </Card>
   );
 }
-

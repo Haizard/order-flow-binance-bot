@@ -16,6 +16,8 @@ export interface Trade {
     | 'ACTIVE_TRAILING_SHORT'
     | 'CLOSED_EXITED'         // Generalized from CLOSED_SOLD
     | 'CLOSED_ERROR';
+  entryReason?: string;        // Why the bot entered the trade
+  exitReason?: string;         // Why the bot exited the trade
   exitPrice?: number;          // Renamed from sellPrice
   exitTimestamp?: number;      // Renamed from sellTimestamp
   pnl?: number;
@@ -24,6 +26,7 @@ export interface Trade {
   trailingHighPrice?: number;  // For trailing stop of LONG trades (highest price reached)
   trailingLowPrice?: number;   // For trailing stop of SHORT trades (lowest price reached)
   sellError?: string;          // Kept for logging specific sell/exit errors
+  aiSummary?: string;          // The AI-generated summary of the trade
 }
 
 // Input type for creating a new trade
@@ -37,8 +40,10 @@ export type NewTradeInput = Pick<
   | 'quantity'
   | 'initialStopLossPrice'
   | 'tradeDirection'
+  | 'entryReason'
   // entryTimestamp will be set by the service
 >;
 
 // Input type for updating a trade to an exited status
 export type ExitTradeInput = Pick<Trade, 'exitPrice' | 'pnl' | 'pnlPercentage'>;
+
