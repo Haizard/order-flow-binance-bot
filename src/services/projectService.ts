@@ -129,3 +129,14 @@ export async function createInvestment(projectId: string, userId: string): Promi
         return { success: false, message: 'A database error occurred. Please try again.' };
     }
 }
+
+export async function getInvestorsByProject(projectId: string): Promise<Investment[]> {
+    const investmentsCollection = await getInvestmentsCollection();
+    const investors = await investmentsCollection.find({ projectId }).sort({ timestamp: -1 }).toArray();
+    
+    // Remove MongoDB's internal _id before returning
+    return investors.map(doc => {
+        const { _id, ...investment } = doc as WithId<Investment>;
+        return investment as Investment;
+    });
+}
