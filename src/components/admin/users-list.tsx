@@ -12,14 +12,11 @@ interface UsersListProps {
 
 export function UsersList({ users }: UsersListProps) {
   
-  // Filter out the admin from the list to only show client users
-  const clientUsers = users.filter(u => u.userId !== 'admin001');
-
-  if (!clientUsers || clientUsers.length === 0) {
+  if (!users || users.length === 0) {
     return (
       <div className="text-center py-12 border-2 border-dashed rounded-lg">
-        <p className="text-muted-foreground">No other users found.</p>
-        <p className="text-sm text-muted-foreground mt-2">New users will appear here after they register and save their settings.</p>
+        <p className="text-muted-foreground">No users found.</p>
+        <p className="text-sm text-muted-foreground mt-2">New users will appear here after they register and save their settings for the first time.</p>
       </div>
     );
   }
@@ -36,7 +33,7 @@ export function UsersList({ users }: UsersListProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {clientUsers.map((user) => (
+            {users.map((user) => (
               <TableRow key={user.userId}>
                 <TableCell className="font-medium">{user.userId}</TableCell>
                 <TableCell>

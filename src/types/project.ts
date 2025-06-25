@@ -14,3 +14,5 @@ export interface Investment {
   userId: string;
   timestamp: number;
 }
+
+export type NewProjectInput = Omit<Project, 'id'>;

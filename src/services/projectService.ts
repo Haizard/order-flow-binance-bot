@@ -5,7 +5,7 @@
  */
 
 import { MongoClient, type Db, type Collection, type WithId } from 'mongodb';
-import type { Project, Investment } from '@/types/project';
+import type { Project, Investment, NewProjectInput } from '@/types/project';
 
 console.log(`[${new Date().toISOString()}] [projectService] Module loading. Attempting to read MONGODB_URI...`);
 
@@ -59,6 +59,32 @@ async function getInvestmentsCollection(): Promise<Collection<Investment>> {
   const db = await getDb();
   return db.collection<Investment>(INVESTMENTS_COLLECTION);
 }
+
+export async function createProject(projectData: NewProjectInput): Promise<{ success: boolean; message: string; }> {
+    const projectsCollection = await getProjectsCollection();
+
+    // Create a URL-friendly ID from the project name
+    const id = projectData.name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+
+    const existingProject = await projectsCollection.findOne({ id });
+    if (existingProject) {
+        return { success: false, message: 'A project with this name already exists.' };
+    }
+
+    const newProject: Project = {
+        id,
+        ...projectData,
+    };
+
+    try {
+        await projectsCollection.insertOne(newProject);
+        return { success: true, message: 'Project created successfully.' };
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] [projectService] Error creating project ${id}:`, error);
+        return { success: false, message: 'A database error occurred during project creation.' };
+    }
+}
+
 
 export async function getAllProjects(): Promise<Project[]> {
     const projectsCollection = await getProjectsCollection();
