@@ -40,7 +40,7 @@ import { handleClearUserTrades } from "@/app/(app)/settings/actions";
 
 
 // Define user roles for the demo. In a real app, this would come from an auth context.
-const DEMO_USER_ID = "user123"; // This is the currently "logged in" user.
+const DEMO_USER_ID = "admin001"; // This is the currently "logged in" user.
 const ADMIN_USER_ID = "admin001";
 
 const settingsFormSchema = z.object({

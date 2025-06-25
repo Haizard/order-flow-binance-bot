@@ -60,6 +60,45 @@ async function getInvestmentsCollection(): Promise<Collection<Investment>> {
   return db.collection<Investment>(INVESTMENTS_COLLECTION);
 }
 
+export async function getAllProjects(): Promise<Project[]> {
+    const projectsCollection = await getProjectsCollection();
+    const projectsCursor = projectsCollection.find({});
+    const projectsArray = await projectsCursor.toArray();
+    
+    if (projectsArray.length === 0) {
+        // If no projects exist, create the default one and return it.
+        const defaultProject = await getFeaturedProject();
+        return [defaultProject];
+    }
+    
+    return projectsArray.map(doc => {
+        const { _id, ...project } = doc as WithId<Project>;
+        return project as Project;
+    });
+}
+
+export async function deleteProject(projectId: string): Promise<{ success: boolean; message: string; }> {
+    const projectsCollection = await getProjectsCollection();
+    const investmentsCollection = await getInvestmentsCollection();
+
+    try {
+        const projectResult = await projectsCollection.deleteOne({ id: projectId });
+        if (projectResult.deletedCount === 0) {
+            return { success: false, message: 'Project not found.' };
+        }
+        
+        // Also delete associated investments
+        const investmentsResult = await investmentsCollection.deleteMany({ projectId });
+        console.log(`[${new Date().toISOString()}] [projectService] Deleted project ${projectId} and ${investmentsResult.deletedCount} associated investments.`);
+
+        return { success: true, message: `Project "${projectId}" and its investments have been deleted.` };
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] [projectService] Error deleting project ${projectId}:`, error);
+        return { success: false, message: 'A database error occurred during deletion.' };
+    }
+}
+
+
 export async function getFeaturedProject(): Promise<Project> {
     const projectsCollection = await getProjectsCollection();
     const projectId = 'project-chimera';

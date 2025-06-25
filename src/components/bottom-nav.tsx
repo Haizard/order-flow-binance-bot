@@ -3,16 +3,29 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, BarChartHorizontalBig, History, Settings, Rocket } from 'lucide-react';
+import { LayoutDashboard, BarChartHorizontalBig, History, Settings, Rocket, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const menuItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/footprint-charts', label: 'Charts', icon: BarChartHorizontalBig },
-  { href: '/invest', label: 'Invest', icon: Rocket },
-  { href: '/trades', label: 'History', icon: History },
-  { href: '/settings', label: 'Settings', icon: Settings },
+// This is a temporary solution for the demo to identify the admin.
+// In a real app, this would come from an authentication context.
+const DEMO_USER_ID = "admin001";
+const ADMIN_USER_ID = "admin001";
+const IS_ADMIN = DEMO_USER_ID === ADMIN_USER_ID;
+
+const allMenuItems = [
+  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, admin: false },
+  { href: '/footprint-charts', label: 'Charts', icon: BarChartHorizontalBig, admin: false },
+  { href: '/invest', label: 'Invest', icon: Rocket, admin: false },
+  ...(IS_ADMIN ? [{ href: '/admin/projects', label: 'Admin', icon: Shield, admin: true }] : []),
+  { href: '/trades', label: 'History', icon: History, admin: false },
+  { href: '/settings', label: 'Settings', icon: Settings, admin: false },
 ];
+
+// Ensure we have exactly 5 items for the grid
+const menuItems = IS_ADMIN
+  ? allMenuItems.filter(item => !item.admin || item.href === '/admin/projects').slice(0, 5)
+  : allMenuItems.filter(item => !item.admin).slice(0, 5);
+
 
 export function BottomNav() {
   const pathname = usePathname();

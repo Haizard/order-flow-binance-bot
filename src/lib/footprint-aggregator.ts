@@ -12,7 +12,7 @@ import { getSettings } from '@/services/settingsService';
 const BINANCE_FUTURES_WEBSOCKET_URL = 'wss://fstream.binance.com/stream';
 const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute
 const BOT_CYCLE_INTERVAL_MS = 60 * 1000; // Run bot logic every 1 minute
-const DEMO_USER_ID = "user123";
+const DEMO_USER_ID = "admin001";
 
 const footprintDataStore = new Map<string, FootprintBar[]>(); // Stores arrays of completed bars
 const currentBarData = new Map<string, Partial<FootprintBar>>(); // Stores the currently aggregating bar

@@ -9,7 +9,7 @@ import { defaultMonitoredSymbols } from "@/config/settings-defaults";
 
 export const dynamic = 'force-dynamic';
 
-const DEMO_USER_ID = "user123";
+const DEMO_USER_ID = "admin001";
 
 export default async function FootprintChartsPage() {
   const settings = await getSettings(DEMO_USER_ID);

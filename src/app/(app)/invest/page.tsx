@@ -6,8 +6,8 @@ import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Investment } from "@/types/project";
 
-// To test admin view, change DEMO_USER_ID to "admin001"
-const DEMO_USER_ID = "user123";
+// To test client view, change DEMO_USER_ID to "user123"
+const DEMO_USER_ID = "admin001";
 const ADMIN_USER_ID = "admin001";
 
 export default async function InvestPage() {

@@ -2,7 +2,7 @@
 import { TradeHistoryTable } from "@/components/trades/trade-history-table";
 
 // Placeholder for current user ID - replace with actual auth system integration
-const DEMO_USER_ID = "user123";
+const DEMO_USER_ID = "admin001";
 
 export default function TradesPage() {
   return (
