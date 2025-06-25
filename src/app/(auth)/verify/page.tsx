@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-
+import React, { Suspense } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -19,9 +19,8 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { MailCheck, Info } from "lucide-react";
+import { MailCheck, Info, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import React from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const verifyFormSchema = z.object({
@@ -30,7 +29,8 @@ const verifyFormSchema = z.object({
 
 type VerifyFormValues = z.infer<typeof verifyFormSchema>;
 
-export default function VerifyPage() {
+
+function VerifyForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
@@ -129,5 +129,30 @@ export default function VerifyPage() {
         </p>
       </CardContent>
     </Card>
+  );
+}
+
+
+function LoadingState() {
+    return (
+        <Card className="w-full max-w-md shadow-xl">
+          <CardHeader className="space-y-1 text-center">
+            <CardTitle className="text-2xl font-bold font-headline">Loading...</CardTitle>
+            <CardDescription>
+              Preparing verification form.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-center items-center py-20">
+              <Loader2 className="h-12 w-12 animate-spin text-primary" />
+          </CardContent>
+        </Card>
+    );
+}
+
+export default function VerifyPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <VerifyForm />
+    </Suspense>
   );
 }
