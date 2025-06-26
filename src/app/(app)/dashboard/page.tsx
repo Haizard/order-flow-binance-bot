@@ -215,7 +215,7 @@ export default async function DashboardPage() {
           </CardDescription>
         </CardHeader>
         {liveMarketData.length > 0 ? (
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+          <div className="grid grid-cols-2 gap-6 lg:grid-cols-3">
             {liveMarketData.map(ticker => (
               <MarketOverviewItem key={ticker.symbol} ticker={ticker} />
             ))}
@@ -254,7 +254,7 @@ export default async function DashboardPage() {
         </CardHeader>
         {isSubscribed ? (
           liveMarketData.length > 0 ? ( potentialDipBuys.length > 0 ? (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+            <div className="grid grid-cols-2 gap-6 lg:grid-cols-3">
               {potentialDipBuys.map(ticker => (
                 <MarketOverviewItem key={`${ticker.symbol}-dip`} ticker={ticker} />
               ))}
@@ -279,7 +279,7 @@ export default async function DashboardPage() {
           )
         ) : (
            <SubscriptionGate featureName="Potential Dip Buys">
-             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3">
+             <div className="grid grid-cols-2 gap-6 lg:grid-cols-3">
                 {/* Placeholder content for blurring */}
                 {[...Array(3)].map((_, i) => <MarketOverviewItem key={i} ticker={{ symbol: 'LOCKED', lastPrice: '0', priceChangePercent: '-10.00' }} />)}
              </div>
