@@ -153,6 +153,7 @@ export function FootprintProvider({ children }: { children: ReactNode }) {
       }
 
       if (partialBarDataWithMap.symbol) {
+        // FIX: The incoming data IS the new state for the partial bar. No merging needed.
         setCurrentPartialBars(prev => ({
           ...prev,
           [partialBarDataWithMap.symbol!]: partialBarDataWithMap,
