@@ -208,6 +208,7 @@ export function SettingsForm() {
         Object.keys(defaultSettingsValues).forEach(key => {
             const formValue = data[key as keyof FormSchemaType];
             const defaultValue = defaultSettingsValues[key as keyof typeof defaultSettingsValues];
+            const value = (settingsToSave as any)[key];
             
             if (typeof defaultValue === 'number') {
                 (settingsToSave as any)[key] = formValue !== undefined && formValue !== '' ? Number(formValue) : defaultValue;
