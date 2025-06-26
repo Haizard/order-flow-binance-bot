@@ -103,6 +103,30 @@ export async function getAllProjects(): Promise<Project[]> {
     });
 }
 
+export async function getProjectById(projectId: string): Promise<Project | null> {
+    const projectsCollection = await getProjectsCollection();
+    const projectDoc = await projectsCollection.findOne({ id: projectId });
+    if (!projectDoc) {
+        return null;
+    }
+    const { _id, ...project } = projectDoc as WithId<Project>;
+    return project as Project;
+}
+
+export async function updateProject(projectId: string, projectData: NewProjectInput): Promise<{ success: boolean; message: string; }> {
+    const projectsCollection = await getProjectsCollection();
+    try {
+        const result = await projectsCollection.updateOne({ id: projectId }, { $set: projectData });
+        if (result.matchedCount === 0) {
+            return { success: false, message: 'Project not found.' };
+        }
+        return { success: true, message: 'Project updated successfully.' };
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] [projectService] Error updating project ${projectId}:`, error);
+        return { success: false, message: 'A database error occurred during project update.' };
+    }
+}
+
 export async function deleteProject(projectId: string): Promise<{ success: boolean; message: string; }> {
     const projectsCollection = await getProjectsCollection();
     const investmentsCollection = await getInvestmentsCollection();

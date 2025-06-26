@@ -6,8 +6,9 @@ import { useToast } from '@/hooks/use-toast';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Trash2, Loader2, Users, Target } from 'lucide-react';
+import { Trash2, Loader2, Users, Target, Edit } from 'lucide-react';
 import { handleDeleteProject } from '@/app/(app)/admin/projects/actions';
+import Link from 'next/link';
 
 interface ProjectsListProps {
   initialProjects: Project[];
@@ -65,7 +66,12 @@ export default function ProjectsList({ initialProjects }: ProjectsListProps) {
             </div>
           </CardContent>
           <CardFooter className="flex justify-end gap-2 bg-muted/50 p-3">
-             <Button variant="outline" size="sm" disabled>Edit</Button>
+             <Button variant="outline" size="sm" asChild>
+                <Link href={`/admin/projects/edit/${project.id}`}>
+                    <Edit className="h-4 w-4 mr-2" />
+                    Edit
+                </Link>
+             </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" size="sm" disabled={isPending}>

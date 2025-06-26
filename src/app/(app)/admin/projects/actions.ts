@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { deleteProject, createProject } from '@/services/projectService';
+import { deleteProject, createProject, updateProject } from '@/services/projectService';
 import type { NewProjectInput } from '@/types/project';
 
 interface ActionResult {
@@ -31,6 +31,20 @@ export async function handleCreateProject(projectData: NewProjectInput): Promise
 
     if (result.success) {
         revalidatePath('/admin/projects');
+        redirect('/admin/projects');
+    }
+
+    return result;
+}
+
+
+export async function handleUpdateProject(projectId: string, projectData: NewProjectInput): Promise<ActionResult> {
+    // In a real app, you would add an authorization check here.
+    const result = await updateProject(projectId, projectData);
+
+    if (result.success) {
+        revalidatePath('/admin/projects');
+        revalidatePath(`/admin/projects/edit/${projectId}`);
         redirect('/admin/projects');
     }
 

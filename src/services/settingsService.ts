@@ -157,9 +157,18 @@ export async function getAllUserSettings(): Promise<SettingsFormValues[]> {
     const settingsCollection = await getSettingsCollection();
     const settingsDocs = await settingsCollection.find({}).toArray();
 
-    return settingsDocs.map(doc => {
+    const users = settingsDocs.map(doc => {
         const { _id, ...settingsWithoutMongoId } = doc as WithId<SettingsFormValues>;
         // Merge with defaults to ensure all properties are present
         return { ...defaultSettingsValues, ...settingsWithoutMongoId };
     });
+    
+    // Ensure the primary admin user is always in the list, even if they have no document yet.
+    const adminUserId = "admin001";
+    const adminInList = users.find(u => u.userId === adminUserId);
+    if (!adminInList) {
+        users.unshift({ ...defaultSettingsValues, userId: adminUserId });
+    }
+
+    return users;
 }
