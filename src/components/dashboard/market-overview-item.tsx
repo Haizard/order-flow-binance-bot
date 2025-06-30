@@ -1,6 +1,6 @@
 import type { Ticker24hr } from "@/types/binance";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Bitcoin, TrendingUp, TrendingDown, Activity, BarChartBig } from "lucide-react"; 
+import { Bitcoin, TrendingUp, TrendingDown, Activity, BarChartBig, Euro, PoundSterling } from "lucide-react"; 
 import { cn } from "@/lib/utils";
 
 interface MarketOverviewItemProps {
@@ -23,6 +23,12 @@ export function MarketOverviewItem({ ticker }: MarketOverviewItemProps) {
       break;
     case "SOL":
        IconComponent = () => <svg className="h-5 w-5 text-primary" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M4.75 2.75a.75.75 0 0 0-.75.75v12.04a.75.75 0 0 0 .75.75h14.5a.75.75 0 0 0 .75-.75V7.543a.75.75 0 0 0-.75-.75H9.295a.75.75 0 0 1-.53-.22L7.046 4.854a.75.75 0 0 0-.53-.22H4.75zm4.545 4.545h10.205V15.H9.295V7.295zM2.75 18.54v-1.75h18.5v1.75a.75.75 0 0 1-.75.75H3.5a.75.75 0 0 1-.75-.75z"/></svg>;
+      break;
+    case "EUR":
+      IconComponent = Euro;
+      break;
+    case "GBP":
+      IconComponent = PoundSterling;
       break;
     default:
       IconComponent = BarChartBig; 

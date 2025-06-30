@@ -9,11 +9,11 @@
  * Invalid symbols will cause API errors. This list is a common starting point.
  */
 export const MONITORED_MARKET_SYMBOLS = [
-    // Core USDT Pairs (commonly available on Testnet)
+    // Core Crypto USDT Pairs (commonly available on Testnet)
     "BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "SOLUSDT",
     "LTCUSDT", "LINKUSDT", "DOGEUSDT",
+    // Example Forex Pairs (if available on the stream)
+    "EURUSDT", "GBPUSDT",
     // Common BTC Pairs
     "ETHBTC", "BNBBTC", "ADABTC", "XRPBTC", "LTCBTC", "LINKBTC"
-    // Removed symbols like MATICUSDT, FTMUSDT, SHIBUSDT, etc., based on previous errors.
-    // Add symbols back cautiously and test their availability on Testnet.
 ];
