@@ -226,10 +226,12 @@ export function SettingsForm() {
                 (settingsToSave as any)[key] = formValue ?? defaultValue;
             }
         });
+    } else {
+        // Non-admins can only save their API keys and subscription status
+        settingsToSave.binanceApiKey = data.binanceApiKey;
+        settingsToSave.binanceSecretKey = data.binanceSecretKey;
+        settingsToSave.hasActiveSubscription = data.hasActiveSubscription;
     }
-
-    settingsToSave.binanceApiKey = data.binanceApiKey || "";
-    settingsToSave.binanceSecretKey = data.binanceSecretKey || "";
 
     try {
       await saveSettings(sessionUser.id, settingsToSave);

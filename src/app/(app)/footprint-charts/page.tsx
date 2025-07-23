@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { CreditCard, Lock } from "lucide-react";
 import Link from "next/link";
 import FootprintChartsClient from "@/components/footprint/footprint-charts-client";
-import { defaultMonitoredSymbols } from "@/config/settings-defaults";
+import { defaultSettingsValues } from "@/config/settings-defaults";
 import { getSession } from "@/lib/session";
 import { redirect } from "next/navigation";
 
@@ -52,7 +52,7 @@ export default async function FootprintChartsPage() {
   // If subscribed, render the client component with the user's monitored symbols
   const initialSymbols = settings.monitoredSymbols && settings.monitoredSymbols.length > 0 
     ? settings.monitoredSymbols 
-    : defaultMonitoredSymbols;
+    : defaultSettingsValues.monitoredSymbols;
 
   return <FootprintChartsClient initialMonitoredSymbols={initialSymbols.slice(0, 3)} />;
 }

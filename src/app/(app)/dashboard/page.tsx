@@ -18,18 +18,16 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { getSession } from '@/lib/session';
 import { redirect } from 'next/navigation';
+import { findUserByEmail } from '@/services/userService';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com';
 
-async function getAdminId(): Promise<string> {
-    // In a real app, you might have a more robust way to identify the admin,
-    // but for this structure, we get the admin's settings via their email.
-    // We assume the admin has registered and has a settings document.
-    // This is a bit of a simplification.
-    return ADMIN_EMAIL;
+async function getAdminId(): Promise<string | null> {
+    const adminUser = await findUserByEmail(ADMIN_EMAIL);
+    return adminUser?.id || null;
 }
 
 async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
@@ -145,11 +143,14 @@ export default async function DashboardPage() {
 
   let clientSettings: SettingsFormValues;
   let adminSettings: SettingsFormValues;
+  let adminUserId: string | null;
   try {
-    const adminEmail = await getAdminId();
+    adminUserId = await getAdminId();
+    if (!adminUserId) throw new Error("Admin user not found in database.");
+
     clientSettings = await getSettings(clientUserId);
-    adminSettings = await getSettings(adminEmail); // Admin's settings are identified by their known email.
-    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded settings for client ${clientUserId} and admin ${adminEmail}.`);
+    adminSettings = await getSettings(adminUserId);
+    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded settings for client ${clientUserId} and admin ${adminUserId}.`);
   } catch (error) {
     console.error(`[${new Date().toISOString()}] DashboardPage: Failed to load settings, using defaults for display:`, error);
     clientSettings = { ...defaultSettingsValues, userId: clientUserId };
@@ -202,7 +203,7 @@ export default async function DashboardPage() {
             value={isSubscribed ? `${totalPnl >= 0 ? '+' : ''}$${totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N/A'}
             icon={DollarSign}
             description="P&L from bot-managed trades. Live prices. Auto-refreshes."
-            className={`shadow-card hover:shadow-card-hover ${isSubscribed ? (totalPnl >= 0 ? 'text-accent-foreground bg-accent/10 dark:bg-accent/20' : 'text-destructive bg-destructive/10 dark:bg-destructive/20') : ''}`}
+            className={`shadow-card hover:shadow-card-hover ${isSubscribed ? (totalPnl >= 0 ? 'text-accent' : 'text-destructive') : ''}`}
           />
           <MetricCard
             title="Active Bot Trades"

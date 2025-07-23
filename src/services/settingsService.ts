@@ -6,7 +6,7 @@
 
 import type { SettingsFormValues } from '@/components/settings/settings-form';
 import { defaultSettingsValues } from "@/config/settings-defaults";
-import { MongoClient, type Db, type Collection, type WithId, type UpdateFilter } from 'mongodb';
+import { MongoClient, type Db, type Collection, type WithId, type UpdateFilter, type Document } from 'mongodb';
 
 console.log(`[${new Date().toISOString()}] [settingsService] Module loading. Attempting to read MONGODB_URI from process.env...`);
 
@@ -111,24 +111,12 @@ export async function saveSettings(userId: string, settings: SettingsFormValues)
 
   const settingsDataToSet: Partial<SettingsFormValues> = {};
   
-  Object.keys(defaultSettingsValues).forEach(key => {
-      const typedKey = key as keyof typeof defaultSettingsValues;
-      const value = settings[typedKey];
-      const defaultValue = defaultSettingsValues[typedKey];
-      
-      if (typeof defaultValue === 'number') {
-        (settingsDataToSet as any)[typedKey] = value !== undefined && value !== '' ? Number(value) : defaultValue;
-      } else if (typeof defaultValue === 'boolean') {
-        (settingsDataToSet as any)[typedKey] = typeof value === 'boolean' ? value : defaultValue;
-      } else if (Array.isArray(defaultValue)) {
-         (settingsDataToSet as any)[typedKey] = Array.isArray(value) && value.length > 0 ? value : defaultValue;
-      } else {
-        (settingsDataToSet as any)[typedKey] = value ?? defaultValue;
-      }
+  Object.keys(settings).forEach(key => {
+    const typedKey = key as keyof SettingsFormValues;
+    if (typedKey !== 'userId') { // Don't try to set the userId in the $set operator
+      (settingsDataToSet as any)[typedKey] = settings[typedKey];
+    }
   });
-
-  settingsDataToSet.binanceApiKey = settings.binanceApiKey || "";
-  settingsDataToSet.binanceSecretKey = settings.binanceSecretKey || "";
 
 
   const filter = { userId: userId };
@@ -162,13 +150,6 @@ export async function getAllUserSettings(): Promise<SettingsFormValues[]> {
         // Merge with defaults to ensure all properties are present
         return { ...defaultSettingsValues, ...settingsWithoutMongoId };
     });
-    
-    // Ensure the primary admin user is always in the list, even if they have no document yet.
-    const adminUserId = "admin001";
-    const adminInList = users.find(u => u.userId === adminUserId);
-    if (!adminInList) {
-        users.unshift({ ...defaultSettingsValues, userId: adminUserId });
-    }
 
     return users;
 }
