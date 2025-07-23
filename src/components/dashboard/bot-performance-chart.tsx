@@ -32,6 +32,7 @@ const chartConfig = {
   },
 };
 
+// This function now runs on the client and calls a server action implicitly via tradeService
 async function getChartData(userId: string): Promise<ChartDataPoint[]> {
   console.log(`[${new Date().toISOString()}] BotPerformanceChart.getChartData: Fetching closed trades for user ${userId}`);
   const closedTrades = await tradeService.getClosedTrades(userId);

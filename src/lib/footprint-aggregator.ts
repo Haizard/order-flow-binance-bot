@@ -1,3 +1,4 @@
+
 /**
  * @fileOverview Handles WebSocket connection to Binance for trade streams
  * and aggregates data into FootprintBar structures. Runs as a persistent service.
@@ -8,11 +9,12 @@ import type { FootprintTrade, FootprintBar, PriceLevelData, BinanceTradeData, Bi
 import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy';
 import { runBotCycle } from '@/core/bot';
 import { getSettings } from '@/services/settingsService';
+import { findUserByEmail } from '@/services/userService';
 
 const BINANCE_FUTURES_WEBSOCKET_URL = 'wss://fstream.binance.com/stream';
 const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute
 const BOT_CYCLE_INTERVAL_MS = 60 * 1000; // Run bot logic every 1 minute
-const DEMO_USER_ID = "admin001";
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com';
 
 const footprintDataStore = new Map<string, FootprintBar[]>(); // Stores arrays of completed bars
 const currentBarData = new Map<string, Partial<FootprintBar>>(); // Stores the currently aggregating bar
@@ -155,23 +157,31 @@ async function startBotCycle() {
 
     console.log(`[${new Date().toISOString()}] FootprintAggregator: Starting continuous bot cycle (every ${BOT_CYCLE_INTERVAL_MS / 1000}s).`);
     
+    // This function runs on the server and needs to check which users are subscribed.
+    const runForAllSubscribedUsers = async () => {
+        try {
+            // This is a simplified approach. A better one would query for users with `hasActiveSubscription: true`.
+            const adminUser = await findUserByEmail(ADMIN_EMAIL);
+            if (!adminUser) {
+                console.warn(`[${new Date().toISOString()}] BotCycle: Admin user not found, cannot determine all users easily. This needs a better implementation.`);
+                return;
+            }
+            // For now, let's just run for the admin user for demonstration.
+            // A real implementation would fetch all users from the DB.
+            const userSettings = await getSettings(adminUser.id);
+            if(userSettings.hasActiveSubscription) {
+                await runBotCycle(adminUser.id);
+            }
+        } catch (error) {
+            console.error(`[${new Date().toISOString()}] FootprintAggregator: Error during bot cycle execution:`, error);
+        }
+    };
+    
     // Initial run right away
-    try {
-        const settings = await getSettings(DEMO_USER_ID);
-        if (settings.hasActiveSubscription) await runBotCycle(DEMO_USER_ID);
-    } catch (error) {
-        console.error(`[${new Date().toISOString()}] FootprintAggregator: Error during initial bot cycle execution:`, error);
-    }
+    await runForAllSubscribedUsers();
     
     // Interval for subsequent runs
-    botIntervalId = setInterval(async () => {
-        try {
-            const settings = await getSettings(DEMO_USER_ID);
-            if (settings.hasActiveSubscription) await runBotCycle(DEMO_USER_ID);
-        } catch (error) {
-            console.error(`[${new Date().toISOString()}] FootprintAggregator: Error during periodic bot cycle execution:`, error);
-        }
-    }, BOT_CYCLE_INTERVAL_MS);
+    botIntervalId = setInterval(runForAllSubscribedUsers, BOT_CYCLE_INTERVAL_MS);
 }
 
 function stopBotCycle() {

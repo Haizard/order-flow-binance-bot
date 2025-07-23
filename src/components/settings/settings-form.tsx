@@ -37,11 +37,9 @@ import { getAccountInformation } from "@/services/binance";
 import { getSettings, saveSettings } from "@/services/settingsService";
 import { defaultSettingsValues, defaultMonitoredSymbols } from "@/config/settings-defaults";
 import { handleClearUserTrades } from "@/app/(app)/settings/actions";
+import { getSession } from "@/lib/session-client";
+import type { User } from "@/types/user";
 
-
-// Define user roles for the demo. In a real app, this would come from an auth context.
-const DEMO_USER_ID = "admin001"; // This is the currently "logged in" user.
-const ADMIN_USER_ID = "admin001";
 
 const settingsFormSchema = z.object({
   userId: z.string().min(1, "User ID is required."),
@@ -100,38 +98,45 @@ type FormSchemaType = z.infer<typeof settingsFormSchema>;
 
 
 export function SettingsForm() {
-  const form = useForm<FormSchemaType>({
-    resolver: zodResolver(settingsFormSchema),
-    defaultValues: {
-       ...defaultSettingsValues,
-       userId: DEMO_USER_ID,
-       monitoredSymbols: defaultMonitoredSymbols.join(', '),
-     },
-    mode: "onChange",
-  });
-
   const { toast } = useToast();
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isClearingTrades, setIsClearingTrades] = useState(false);
   const [isDevelopmentEnv, setIsDevelopmentEnv] = useState(false);
-  
-  const isCurrentUserAdmin = DEMO_USER_ID === ADMIN_USER_ID;
+  const [sessionUser, setSessionUser] = useState<(User & { isAdmin: boolean }) | null>(null);
 
+  const form = useForm<FormSchemaType>({
+    resolver: zodResolver(settingsFormSchema),
+    defaultValues: {
+       ...defaultSettingsValues,
+       userId: "", // Will be populated from session
+       monitoredSymbols: defaultMonitoredSymbols.join(', '),
+     },
+    mode: "onChange",
+  });
+  
+  const isCurrentUserAdmin = sessionUser?.isAdmin ?? false;
   const isSubscribed = form.watch("hasActiveSubscription");
 
   useEffect(() => {
     setIsDevelopmentEnv(process.env.NODE_ENV === 'development');
 
-    async function loadSettings() {
+    async function loadInitialData() {
       setIsLoadingSettings(true);
+      const session = await getSession();
+      if (!session) {
+        toast({ title: "Authentication Error", description: "Could not load user session.", variant: "destructive" });
+        setIsLoadingSettings(false);
+        return;
+      }
+      setSessionUser(session);
+      
       try {
-        // We load settings for the currently logged-in user (DEMO_USER_ID)
-        const savedSettings = await getSettings(DEMO_USER_ID);
+        const savedSettings = await getSettings(session.id);
         const fullDefaultsWithUserId = {
              ...defaultSettingsValues,
-             userId: DEMO_USER_ID,
+             userId: session.id,
              monitoredSymbols: defaultMonitoredSymbols.join(', '),
         };
         const settingsForForm = {
@@ -143,7 +148,7 @@ export function SettingsForm() {
         };
         form.reset(settingsForForm);
       } catch (error) {
-        console.error(`[${new Date().toISOString()}] SettingsForm: Failed to load settings for user ${DEMO_USER_ID}:`, error);
+        console.error(`[${new Date().toISOString()}] SettingsForm: Failed to load settings for user ${session.id}:`, error);
         toast({
           title: "Error Loading Settings",
           description: "Could not load your saved settings. Using defaults.",
@@ -151,14 +156,14 @@ export function SettingsForm() {
         });
         form.reset({
             ...defaultSettingsValues,
-            userId: DEMO_USER_ID,
+            userId: session.id,
             monitoredSymbols: defaultMonitoredSymbols.join(', '),
         });
       } finally {
         setIsLoadingSettings(false);
       }
     }
-    loadSettings();
+    loadInitialData();
   }, [form, toast]);
 
   async function handleTestConnection() {
@@ -193,6 +198,7 @@ export function SettingsForm() {
   }
 
   async function onSubmit(data: FormSchemaType) {
+    if (!sessionUser) return;
     setIsSaving(true);
 
     const symbolsArray = data.monitoredSymbols.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
@@ -208,13 +214,13 @@ export function SettingsForm() {
         Object.keys(defaultSettingsValues).forEach(key => {
             const formValue = data[key as keyof FormSchemaType];
             const defaultValue = defaultSettingsValues[key as keyof typeof defaultSettingsValues];
-            const value = (settingsToSave as any)[key];
             
             if (typeof defaultValue === 'number') {
                 (settingsToSave as any)[key] = formValue !== undefined && formValue !== '' ? Number(formValue) : defaultValue;
             } else if (typeof defaultValue === 'boolean') {
                 (settingsToSave as any)[key] = formValue;
             } else if (Array.isArray(defaultValue)) {
+                const value = (settingsToSave as any)[key];
                 (settingsToSave as any)[key] = Array.isArray(value) && value.length > 0 ? value : defaultValue;
             } else {
                 (settingsToSave as any)[key] = formValue ?? defaultValue;
@@ -226,7 +232,7 @@ export function SettingsForm() {
     settingsToSave.binanceSecretKey = data.binanceSecretKey || "";
 
     try {
-      await saveSettings(data.userId, settingsToSave);
+      await saveSettings(sessionUser.id, settingsToSave);
       toast({
         title: "Settings Saved!",
         description: "Your settings have been successfully saved.",
@@ -247,7 +253,7 @@ export function SettingsForm() {
 
   async function onClearTradesConfirm() {
     setIsClearingTrades(true);
-    const result = await handleClearUserTrades(DEMO_USER_ID);
+    const result = await handleClearUserTrades();
     if (result.success) {
       toast({
         title: "Trades Cleared",
@@ -623,7 +629,7 @@ export function SettingsForm() {
             <CardContent>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
-                  <Button variant="destructive" className="w-full md:w-auto" disabled={isClearingTrades || isSaving}>
+                  <Button variant="destructive" className="w-full md:w-auto" disabled={isClearingTrades || isSaving || !sessionUser}>
                     {isClearingTrades ? (
                       <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                     ) : (
@@ -636,7 +642,7 @@ export function SettingsForm() {
                   <AlertDialogHeader>
                     <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                     <AlertDialogDescription>
-                      This action will permanently delete all trade history and active trades for your user ({DEMO_USER_ID}). This cannot be undone.
+                      This action will permanently delete all trade history and active trades for your user ({sessionUser?.email}). This cannot be undone.
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
@@ -655,7 +661,7 @@ export function SettingsForm() {
                 </AlertDialogContent>
               </AlertDialog>
               <FormDescription className="mt-2 text-xs">
-                This button is only visible in development mode. It calls a server action to clear trades for '{DEMO_USER_ID}'.
+                This button is only visible in development mode. It calls a server action to clear trades for the logged-in user.
               </FormDescription>
             </CardContent>
           </Card>

@@ -5,7 +5,9 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useTransition } from "react";
+import { handleLogin } from "./actions";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -18,19 +20,21 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { LogIn } from "lucide-react";
+import { LogIn, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const loginFormSchema = z.object({
   email: z.string().email("Invalid email address.").min(1, "Email is required."),
-  password: z.string().min(6, "Password must be at least 6 characters.").min(1, "Password is required."),
+  password: z.string().min(1, "Password is required."),
 });
 
 type LoginFormValues = z.infer<typeof loginFormSchema>;
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
+  const [isPending, startTransition] = useTransition();
   
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginFormSchema),
@@ -41,12 +45,21 @@ export default function LoginPage() {
   });
 
   function onSubmit(data: LoginFormValues) {
-    // Simulate API call and successful login
-    console.log("Login data:", data);
-    toast({ title: "Login Successful", description: "Welcome back! Redirecting to your dashboard..." });
-    
-    // Redirect to the main application dashboard
-    router.push('/dashboard');
+    startTransition(async () => {
+        const result = await handleLogin(data);
+        if (result.success) {
+            toast({ title: "Login Successful", description: "Welcome back! Redirecting to your dashboard..." });
+            const redirectTo = searchParams.get('redirect_to') || '/dashboard';
+            router.push(redirectTo);
+            router.refresh(); // Refresh to update session-dependent components
+        } else {
+            toast({
+                title: "Login Failed",
+                description: result.message,
+                variant: "destructive",
+            });
+        }
+    });
   }
 
   return (
@@ -84,8 +97,9 @@ export default function LoginPage() {
                 </FormItem>
               )}
             />
-            <Button type="submit" className="w-full" size="lg">
-              <LogIn className="mr-2 h-5 w-5" /> Login
+            <Button type="submit" className="w-full" size="lg" disabled={isPending}>
+              {isPending ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <LogIn className="mr-2 h-5 w-5" />}
+              {isPending ? 'Logging in...' : 'Login'}
             </Button>
           </form>
         </Form>

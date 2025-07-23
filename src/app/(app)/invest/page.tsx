@@ -5,19 +5,22 @@ import { Rocket, Clock, CheckCircle, Users } from "lucide-react";
 import { Card, CardHeader, CardContent, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Investment } from "@/types/project";
-
-// To test client view, change DEMO_USER_ID to "user123"
-const DEMO_USER_ID = "admin001";
-const ADMIN_USER_ID = "admin001";
+import { getSession } from "@/lib/session";
+import { redirect } from "next/navigation";
 
 export default async function InvestPage() {
+    const session = await getSession();
+    if (!session) {
+        redirect('/login');
+    }
+    const currentUserId = session.id;
+
     const project = await getFeaturedProject();
     const investorsCount = await getInvestmentCount(project.id);
-    const userHasInvested = await hasUserInvested(project.id, DEMO_USER_ID);
+    const userHasInvested = await hasUserInvested(project.id, currentUserId);
     
-    const isUserAdmin = DEMO_USER_ID === ADMIN_USER_ID;
     let investorsList: Investment[] = [];
-    if (isUserAdmin) {
+    if (session.isAdmin) {
         investorsList = await getInvestorsByProject(project.id);
     }
 
@@ -33,11 +36,11 @@ export default async function InvestPage() {
             <InvestCard 
                 project={project} 
                 investorsCount={investorsCount} 
-                userId={DEMO_USER_ID}
+                userId={currentUserId}
                 userHasInvested={userHasInvested}
             />
 
-            {isUserAdmin && (
+            {session.isAdmin && (
                 <Card>
                     <CardHeader>
                         <CardTitle className="font-headline flex items-center gap-3">

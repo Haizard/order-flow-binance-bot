@@ -5,30 +5,36 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { LayoutDashboard, BarChartHorizontalBig, History, Settings, Rocket, Shield } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-// This is a temporary solution for the demo to identify the admin.
-// In a real app, this would come from an authentication context.
-const DEMO_USER_ID = "admin001";
-const ADMIN_USER_ID = "admin001";
-const IS_ADMIN = DEMO_USER_ID === ADMIN_USER_ID;
-
-const allMenuItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, admin: false },
-  { href: '/footprint-charts', label: 'Charts', icon: BarChartHorizontalBig, admin: false },
-  { href: '/invest', label: 'Invest', icon: Rocket, admin: false },
-  ...(IS_ADMIN ? [{ href: '/admin/projects', label: 'Admin', icon: Shield, admin: true }] : []),
-  { href: '/trades', label: 'History', icon: History, admin: false },
-  { href: '/settings', label: 'Settings', icon: Settings, admin: false },
-];
-
-// Ensure we have exactly 5 items for the grid
-const menuItems = IS_ADMIN
-  ? allMenuItems.filter(item => !item.admin || item.href === '/admin/projects').slice(0, 5)
-  : allMenuItems.filter(item => !item.admin).slice(0, 5);
-
+import { useEffect, useState } from 'react';
+import { getSession } from '@/lib/session-client';
 
 export function BottomNav() {
   const pathname = usePathname();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+      async function checkAdmin() {
+          const session = await getSession();
+          if (session?.isAdmin) {
+              setIsAdmin(true);
+          }
+      }
+      checkAdmin();
+  }, []);
+
+  const allMenuItems = [
+    { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, admin: false },
+    { href: '/footprint-charts', label: 'Charts', icon: BarChartHorizontalBig, admin: false },
+    { href: '/invest', label: 'Invest', icon: Rocket, admin: false },
+    ...(isAdmin ? [{ href: '/admin/projects', label: 'Admin', icon: Shield, admin: true }] : []),
+    { href: '/trades', label: 'History', icon: History, admin: false },
+    { href: '/settings', label: 'Settings', icon: Settings, admin: false },
+  ];
+
+  const menuItems = isAdmin
+    ? allMenuItems.filter(item => !item.admin || item.href === '/admin/projects').slice(0, 5)
+    : allMenuItems.filter(item => !item.admin).slice(0, 5);
+
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 border-t bg-background/95 backdrop-blur-sm md:hidden">

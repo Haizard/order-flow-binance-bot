@@ -1,3 +1,4 @@
+
 // src/app/(app)/footprint-charts/page.tsx
 import { getSettings } from "@/services/settingsService";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,13 +7,18 @@ import { CreditCard, Lock } from "lucide-react";
 import Link from "next/link";
 import FootprintChartsClient from "@/components/footprint/footprint-charts-client";
 import { defaultMonitoredSymbols } from "@/config/settings-defaults";
+import { getSession } from "@/lib/session";
+import { redirect } from "next/navigation";
 
 export const dynamic = 'force-dynamic';
 
-const DEMO_USER_ID = "admin001";
-
 export default async function FootprintChartsPage() {
-  const settings = await getSettings(DEMO_USER_ID);
+  const session = await getSession();
+  if (!session) {
+    redirect('/login');
+  }
+
+  const settings = await getSettings(session.id);
 
   if (!settings.hasActiveSubscription) {
     return (

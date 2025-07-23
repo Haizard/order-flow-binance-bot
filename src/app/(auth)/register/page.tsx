@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import * as z from "zod";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -18,16 +19,17 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { UserPlus } from "lucide-react";
+import { UserPlus, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { handleRegister } from "./actions";
 
 const registerFormSchema = z.object({
   email: z.string().email("Invalid email address.").min(1,"Email is required."),
-  password: z.string().min(6, "Password must be at least 6 characters.").min(1, "Password is required."),
+  password: z.string().min(8, "Password must be at least 8 characters.").min(1, "Password is required."),
   confirmPassword: z.string().min(1, "Please confirm your password."),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
-  path: ["confirmPassword"], // path to field that gets the error
+  path: ["confirmPassword"],
 });
 
 type RegisterFormValues = z.infer<typeof registerFormSchema>;
@@ -35,6 +37,7 @@ type RegisterFormValues = z.infer<typeof registerFormSchema>;
 export default function RegisterPage() {
   const router = useRouter();
   const { toast } = useToast();
+  const [isPending, startTransition] = useTransition();
 
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerFormSchema),
@@ -46,17 +49,24 @@ export default function RegisterPage() {
   });
 
   function onSubmit(data: RegisterFormValues) {
-    // Simulate API call to register user and send verification code
-    console.log("Register data:", data);
-    toast({ 
-      title: "Registration Submitted", 
-      description: "A verification code has been sent to your email. Please check your inbox.",
-      variant: "default",
-      className: "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700 text-green-800 dark:text-green-300",
+    startTransition(async () => {
+      const result = await handleRegister(data);
+      if (result.success) {
+        toast({ 
+          title: "Registration Successful!", 
+          description: "Your account has been created. Please log in.",
+          variant: "default",
+          className: "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700 text-green-800 dark:text-green-300",
+        });
+        router.push('/login');
+      } else {
+        toast({
+          title: "Registration Failed",
+          description: result.message,
+          variant: "destructive",
+        });
+      }
     });
-
-    // Redirect to the verification page, passing the email as a query param
-    router.push(`/verify?email=${encodeURIComponent(data.email)}`);
   }
 
   return (
@@ -107,8 +117,9 @@ export default function RegisterPage() {
                 </FormItem>
               )}
             />
-            <Button type="submit" className="w-full" size="lg">
-               <UserPlus className="mr-2 h-5 w-5" /> Register
+            <Button type="submit" className="w-full" size="lg" disabled={isPending}>
+               {isPending ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <UserPlus className="mr-2 h-5 w-5" />}
+               {isPending ? "Registering..." : "Register"}
             </Button>
           </form>
         </Form>

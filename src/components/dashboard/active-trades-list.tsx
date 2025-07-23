@@ -1,4 +1,5 @@
 
+
 import { Bitcoin, TrendingUp, TrendingDown, Hourglass, AlertTriangle, Activity, Info, AlertCircle, BarChartBig } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -8,6 +9,7 @@ import * as tradeService from '@/services/tradeService';
 import type { Ticker24hr } from '@/types/binance';
 import type { Trade } from '@/types/trade';
 import { cn } from '@/lib/utils';
+import { getSession } from '@/lib/session';
 
 interface ProcessedTrade extends Trade {
   currentPrice: number | null;
@@ -69,6 +71,11 @@ async function fetchAndProcessActiveBotTrades(userId: string): Promise<Processed
 
 
 export async function ActiveTradesList({ userId }: ActiveTradesListProps) {
+  // If userId is a dummy, don't fetch trades. This is for the subscription gate layout.
+  if (userId === "DUMMY_FOR_LAYOUT") {
+    return <Card className="shadow-card"><CardContent className="h-64"></CardContent></Card>;
+  }
+
   const activeBotTrades = await fetchAndProcessActiveBotTrades(userId);
 
   if (activeBotTrades.length === 0) {

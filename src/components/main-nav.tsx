@@ -11,12 +11,8 @@ import {
   SidebarMenuButton,
   useSidebar,
 } from '@/components/ui/sidebar';
-
-// This is a temporary solution for the demo to identify the admin.
-// In a real app, this would come from an authentication context.
-const DEMO_USER_ID = "admin001";
-const ADMIN_USER_ID = "admin001";
-const IS_ADMIN = DEMO_USER_ID === ADMIN_USER_ID;
+import { useEffect, useState } from 'react';
+import { getSession } from '@/lib/session-client';
 
 const menuItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -34,8 +30,19 @@ const adminMenuItems = [
 export function MainNav() {
   const pathname = usePathname();
   const { open } = useSidebar();
+  const [isAdmin, setIsAdmin] = useState(false);
 
-  const allItems = IS_ADMIN ? [...menuItems, ...adminMenuItems] : menuItems;
+  useEffect(() => {
+    async function checkAdminStatus() {
+        const session = await getSession();
+        if(session?.isAdmin) {
+            setIsAdmin(true);
+        }
+    }
+    checkAdminStatus();
+  }, []);
+
+  const allItems = isAdmin ? [...menuItems, ...adminMenuItems] : menuItems;
 
   return (
     <SidebarMenu>

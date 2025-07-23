@@ -1,4 +1,5 @@
 
+
 import { DollarSign, ListChecks, Percent, TrendingDown, SearchX, AlertTriangle, Info, Activity, Lock, CreditCard } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/metric-card';
 import { ActiveTradesList } from '@/components/dashboard/active-trades-list';
@@ -15,12 +16,21 @@ import { defaultSettingsValues } from '@/config/settings-defaults';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { getSession } from '@/lib/session';
+import { redirect } from 'next/navigation';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-const CLIENT_USER_ID = "user123";
-const ADMIN_USER_ID = "admin001"; // The user who controls the strategy
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com';
+
+async function getAdminId(): Promise<string> {
+    // In a real app, you might have a more robust way to identify the admin,
+    // but for this structure, we get the admin's settings via their email.
+    // We assume the admin has registered and has a settings document.
+    // This is a bit of a simplification.
+    return ADMIN_EMAIL;
+}
 
 async function getMarketData(symbols: string[]): Promise<Ticker24hr[]> {
   console.log(`[${new Date().toISOString()}] DashboardPage: getMarketData called for symbols:`, symbols);
@@ -125,18 +135,25 @@ function SubscriptionGate({ featureName, children }: { featureName: string, chil
 
 
 export default async function DashboardPage() {
-  console.log(`[${new Date().toISOString()}] DashboardPage: Component rendering started for user ${CLIENT_USER_ID}.`);
+  const session = await getSession();
+  if (!session) {
+    redirect('/login');
+  }
+  const clientUserId = session.id;
+
+  console.log(`[${new Date().toISOString()}] DashboardPage: Component rendering started for user ${clientUserId}.`);
 
   let clientSettings: SettingsFormValues;
   let adminSettings: SettingsFormValues;
   try {
-    clientSettings = await getSettings(CLIENT_USER_ID);
-    adminSettings = await getSettings(ADMIN_USER_ID);
-    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded settings for client ${CLIENT_USER_ID} and admin ${ADMIN_USER_ID}.`);
+    const adminEmail = await getAdminId();
+    clientSettings = await getSettings(clientUserId);
+    adminSettings = await getSettings(adminEmail); // Admin's settings are identified by their known email.
+    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded settings for client ${clientUserId} and admin ${adminEmail}.`);
   } catch (error) {
     console.error(`[${new Date().toISOString()}] DashboardPage: Failed to load settings, using defaults for display:`, error);
-    clientSettings = { ...defaultSettingsValues, userId: CLIENT_USER_ID };
-    adminSettings = { ...defaultSettingsValues, userId: ADMIN_USER_ID };
+    clientSettings = { ...defaultSettingsValues, userId: clientUserId };
+    adminSettings = { ...defaultSettingsValues, userId: 'admin-fallback' };
   }
   
   const isSubscribed = clientSettings.hasActiveSubscription;
@@ -148,10 +165,10 @@ export default async function DashboardPage() {
 
   const liveMarketData = await getMarketData(monitoredSymbolsToUse);
   
-  const totalPnl = await calculateTotalPnlFromBotTrades(CLIENT_USER_ID);
-  const activeTrades = await tradeService.getActiveTrades(CLIENT_USER_ID);
+  const totalPnl = await calculateTotalPnlFromBotTrades(clientUserId);
+  const activeTrades = await tradeService.getActiveTrades(clientUserId);
   const activeTradesCount = activeTrades.length;
-  const overallPerformancePercent = await calculateOverallPerformance(CLIENT_USER_ID);
+  const overallPerformancePercent = await calculateOverallPerformance(clientUserId);
 
   // The bot uses the admin's dip percentage for its logic.
   const dipPercentageToUse = typeof adminSettings.dipPercentage === 'number' 
@@ -163,7 +180,7 @@ export default async function DashboardPage() {
                  !activeTrades.some(at => at.symbol === ticker.symbol)
   );
 
-  console.log(`[${new Date().toISOString()}] DashboardPage PRE-RENDER: User: ${CLIENT_USER_ID}, Subscribed: ${isSubscribed}, Total P&L: ${totalPnl}, Active Trades: ${activeTradesCount}`);
+  console.log(`[${new Date().toISOString()}] DashboardPage PRE-RENDER: User: ${clientUserId}, Subscribed: ${isSubscribed}, Total P&L: ${totalPnl}, Active Trades: ${activeTradesCount}`);
 
   return (
     <div className="flex flex-col gap-8">
@@ -179,7 +196,7 @@ export default async function DashboardPage() {
 
       <section>
         <h1 className="text-3xl font-headline mb-6">Bot Performance</h1>
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-2 gap-6 lg:grid-cols-3">
           <MetricCard
             title="Total P&L (Bot)"
             value={isSubscribed ? `${totalPnl >= 0 ? '+' : ''}$${totalPnl.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'N/A'}
@@ -289,15 +306,15 @@ export default async function DashboardPage() {
 
       <section className="grid grid-cols-1 gap-8 xl:grid-cols-3">
         <div className="xl:col-span-2">
-           {isSubscribed ? <ActiveTradesList userId={CLIENT_USER_ID} /> : (
+           {isSubscribed ? <ActiveTradesList userId={clientUserId} /> : (
             <SubscriptionGate featureName="Active Trades List">
                <ActiveTradesList userId="DUMMY_FOR_LAYOUT" />
             </SubscriptionGate>
            )}
         </div>
         <div className="space-y-8">
-          <AccountBalances userId={CLIENT_USER_ID} />
-          <BotPerformanceChart userId={CLIENT_USER_ID} />
+          <AccountBalances userId={clientUserId} />
+          <BotPerformanceChart userId={clientUserId} />
         </div>
       </section>
     </div>

@@ -1,5 +1,4 @@
 
-
 'use server';
 /**
  * @fileOverview Core bot logic for making trading decisions.
@@ -19,9 +18,15 @@ import {
 import { calculateAllBotMetrics, type BotOrderFlowMetrics } from './botMetricCalculators';
 import { summarizeTrade } from '@/ai/flows/summarize-trade-flow';
 import type { Trade } from '@/types/trade';
+import { findUserByEmail } from '@/services/userService';
 
-const ADMIN_USER_ID = "admin001"; // The user whose settings define the global strategy.
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com';
 const FOOTPRINT_BARS_FOR_METRICS = 20;
+
+async function getAdminUserId(): Promise<string | null> {
+    const adminUser = await findUserByEmail(ADMIN_EMAIL);
+    return adminUser?.id || null;
+}
 
 function getAssetsFromSymbol(symbol: string): { baseAsset: string, quoteAsset: string } {
     const commonQuoteAssets = ['USDT', 'BUSD', 'TUSD', 'FDUSD'];
@@ -50,11 +55,17 @@ export async function runBotCycle(
     return;
   }
 
+  const adminUserId = await getAdminUserId();
+  if (!adminUserId) {
+      console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): CRITICAL - Admin user not found in database. Cannot load strategy. Please register the admin email: ${ADMIN_EMAIL}`);
+      return;
+  }
+
   let adminSettings: SettingsFormValues;
   let clientSettings: SettingsFormValues;
   try {
     // Fetch settings for both admin (strategy) and client (API keys, subscription)
-    adminSettings = await getSettings(ADMIN_USER_ID);
+    adminSettings = await getSettings(adminUserId);
     clientSettings = await getSettings(clientUserId);
   } catch (error) {
     console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): CRITICAL - Error loading settings. Error:`, error instanceof Error ? error.message : String(error));
@@ -96,7 +107,7 @@ export async function runBotCycle(
     ? monitoredSymbols
     : defaultSettingsValues.monitoredSymbols;
 
-  console.log(`[${botRunTimestamp}] Bot cycle STARTED for client ${clientUserId}. Using strategy from admin ${ADMIN_USER_ID}.`);
+  console.log(`[${botRunTimestamp}] Bot cycle STARTED for client ${clientUserId}. Using strategy from admin ${adminUserId}.`);
   console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Monitoring symbols: ${monitoredSymbolsToUse.join(',')}`);
 
   let liveMarketData: Ticker24hr[];

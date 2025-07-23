@@ -10,6 +10,8 @@ import type { Balance } from "@/types/binance";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { Button } from "../ui/button";
+import { getSession } from "@/lib/session";
+import { redirect } from "next/navigation";
 
 interface AccountBalancesProps {
   userId: string;
