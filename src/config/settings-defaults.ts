@@ -4,11 +4,7 @@ import type { SettingsFormValues } from '@/components/settings/settings-form';
 export const defaultMonitoredSymbols = [
     // Core Crypto USDT Pairs (commonly available on Testnet)
     "BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "XRPUSDT", "SOLUSDT",
-    "LTCUSDT", "LINKUSDT", "DOGEUSDT",
-    // Example Forex Pairs (if available on the stream)
-    "EURUSDT", "GBPUSDT",
-    // Common BTC Pairs
-    "ETHBTC", "BNBBTC", "ADABTC", "XRPBTC", "LTCBTC", "LINKBTC"
+    "LTCUSDT", "LINKUSDT", "DOGEUSDT"
 ];
 
 // Defines the base default values for user settings.
