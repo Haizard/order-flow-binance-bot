@@ -15,7 +15,17 @@ export default async function InvestPage() {
     }
     const currentUserId = session.id;
 
+    // A real app might have multiple projects; for this demo, we use one featured project.
     const project = await getFeaturedProject();
+    if (!project) {
+        return (
+             <div className="flex flex-col gap-8 items-center text-center">
+                 <h1 className="text-3xl font-bold tracking-tight font-headline">No Projects Available</h1>
+                 <p className="text-muted-foreground">There are currently no investment projects available. Please check back later.</p>
+             </div>
+        )
+    }
+
     const investorsCount = await getInvestmentCount(project.id);
     const userHasInvested = await hasUserInvested(project.id, currentUserId);
     
@@ -53,14 +63,14 @@ export default async function InvestPage() {
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead>User ID</TableHead>
+                                        <TableHead>User Email</TableHead>
                                         <TableHead className="text-right">Investment Date</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {investorsList.map((investor) => (
                                         <TableRow key={investor.userId}>
-                                            <TableCell className="font-medium">{investor.userId}</TableCell>
+                                            <TableCell className="font-medium">{investor.userEmail}</TableCell>
                                             <TableCell className="text-right">{new Date(investor.timestamp).toLocaleString()}</TableCell>
                                         </TableRow>
                                     ))}

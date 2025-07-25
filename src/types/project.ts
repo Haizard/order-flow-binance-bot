@@ -12,6 +12,7 @@ export interface Project {
 export interface Investment {
   projectId: string;
   userId: string;
+  userEmail: string; // Add user email for display purposes
   timestamp: number;
 }
 

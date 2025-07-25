@@ -26,7 +26,7 @@ export default function InvestCard({ project, investorsCount, userId, userHasInv
 
     const onInvestClick = () => {
         startTransition(async () => {
-            const result = await handleInvest(project.id, userId);
+            const result = await handleInvest(project.id);
             if (result.success) {
                 toast({
                     title: "Investment Successful!",
@@ -95,7 +95,7 @@ export default function InvestCard({ project, investorsCount, userId, userHasInv
                                 {investorsCount} of {project.investorTarget} Backers
                             </span>
                             <span className="font-bold text-primary">
-                                ${(project.investorTarget - investorsCount) * project.investmentAmount} left to raise
+                                {isFullyFunded ? 'Project Funded!' : `$${(project.investorTarget - investorsCount) * project.investmentAmount} left to raise`}
                             </span>
                         </div>
                     </div>

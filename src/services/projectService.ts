@@ -4,7 +4,7 @@
  * @fileOverview ProjectService - Manages investment projects and user investments using MongoDB.
  */
 
-import { MongoClient, type Db, type Collection, type WithId } from 'mongodb';
+import { MongoClient, type Db, type Collection, type WithId, ObjectId } from 'mongodb';
 import type { Project, Investment, NewProjectInput } from '@/types/project';
 
 console.log(`[${new Date().toISOString()}] [projectService] Module loading. Attempting to read MONGODB_URI...`);
@@ -22,6 +22,7 @@ const DB_NAME = process.env.MONGODB_DB_NAME || 'binanceTrailblazerDb';
 const PROJECTS_COLLECTION = 'projects';
 const INVESTMENTS_COLLECTION = 'investments';
 
+// Use a specific global variable for project service to avoid conflicts
 interface CustomGlobal extends NodeJS.Global {
   _mongoProjectClientPromise?: Promise<MongoClient>;
 }
@@ -94,7 +95,10 @@ export async function getAllProjects(): Promise<Project[]> {
     if (projectsArray.length === 0) {
         // If no projects exist, create the default one and return it.
         const defaultProject = await getFeaturedProject();
-        return [defaultProject];
+        if (defaultProject) {
+            return [defaultProject];
+        }
+        return [];
     }
     
     return projectsArray.map(doc => {
@@ -149,15 +153,16 @@ export async function deleteProject(projectId: string): Promise<{ success: boole
 }
 
 
-export async function getFeaturedProject(): Promise<Project> {
+export async function getFeaturedProject(): Promise<Project | null> {
     const projectsCollection = await getProjectsCollection();
-    const projectId = 'project-chimera';
-    let projectDoc = await projectsCollection.findOne({ id: projectId });
+    // In a real app, you might have a "featured" flag. Here, we'll just pick one.
+    // If there are multiple, we'll pick the first one.
+    let projectDoc = await projectsCollection.findOne({});
 
     if (!projectDoc) {
-        console.log(`[${new Date().toISOString()}] [projectService] Featured project '${projectId}' not found, creating it...`);
+        console.log(`[${new Date().toISOString()}] [projectService] No projects found, creating a default one...`);
         const defaultProject: Project = {
-            id: projectId,
+            id: 'project-chimera',
             name: 'Project Chimera',
             vision: 'While Binance Trailblazer is a powerful tool, I envision something far more advanced. Project Chimera will be a multi-strategy, AI-optimized trading system that adapts to market conditions in real-time. It requires significant resources for hosting, enterprise-grade data feeds, and dedicated AI model training. Your investment will directly fund this development.',
             goal: "To raise the necessary capital to build and deploy Project Chimera within a one-month timeframe. We're seeking a small group of founding backers who believe in this vision.",
@@ -165,8 +170,13 @@ export async function getFeaturedProject(): Promise<Project> {
             investorTarget: 10,
             investmentAmount: 150,
         };
-        await projectsCollection.insertOne(defaultProject);
-        projectDoc = defaultProject;
+        try {
+            await projectsCollection.insertOne(defaultProject);
+            projectDoc = defaultProject;
+        } catch (error) {
+             console.error(`[${new Date().toISOString()}] [projectService] Failed to create default project:`, error);
+             return null;
+        }
     }
     
     // Ensure we don't pass MongoDB's internal _id to the client
@@ -185,7 +195,7 @@ export async function hasUserInvested(projectId: string, userId: string): Promis
     return count > 0;
 }
 
-export async function createInvestment(projectId: string, userId: string): Promise<{ success: boolean; message: string; }> {
+export async function createInvestment(projectId: string, userId: string, userEmail: string): Promise<{ success: boolean; message: string; }> {
     const investmentsCollection = await getInvestmentsCollection();
     const projectsCollection = await getProjectsCollection();
 
@@ -207,6 +217,7 @@ export async function createInvestment(projectId: string, userId: string): Promi
     const newInvestment: Investment = {
         projectId,
         userId,
+        userEmail,
         timestamp: Date.now(),
     };
 
