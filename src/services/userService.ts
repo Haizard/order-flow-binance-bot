@@ -82,15 +82,22 @@ export async function createUser(userData: NewUserInput): Promise<{ success: boo
 }
 
 export async function findUserByEmail(email: string): Promise<User & { password?: string } | null> {
-    const usersCollection = await getUsersCollection();
-    const userDoc = await usersCollection.findOne({ email });
+    try {
+        const usersCollection = await getUsersCollection();
+        const userDoc = await usersCollection.findOne({ email });
 
-    if (!userDoc) {
+        if (!userDoc) {
+            return null;
+        }
+
+        const { _id, ...user } = userDoc as WithId<User & { password?: string }>;
+        return { id: _id.toString(), ...user };
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] [userService] Database error in findUserByEmail for ${email}:`, error);
+        // Do not throw the original error to the client, but return null as if user was not found.
+        // This prevents leaking database implementation details.
         return null;
     }
-
-    const { _id, ...user } = userDoc as WithId<User & { password?: string }>;
-    return { id: _id.toString(), ...user };
 }
 
 export async function verifyPassword(plainPassword: string, hashedPassword: string): Promise<boolean> {

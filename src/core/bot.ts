@@ -56,9 +56,9 @@ export async function runBotCycle(
     return;
   }
 
-  const adminUserId = await getAdminUserId();
+  const adminUserId = await getAdminId();
   if (!adminUserId) {
-      console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): CRITICAL - Admin user not found in database. Cannot load strategy. Please register the admin email: ${ADMIN_EMAIL}`);
+      console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): CRITICAL - Admin user with email "${ADMIN_EMAIL}" not found. Cannot load strategy. Bot will not run. Please ensure admin user is registered.`);
       return;
   }
 

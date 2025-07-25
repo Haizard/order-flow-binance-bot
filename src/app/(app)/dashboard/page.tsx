@@ -143,14 +143,19 @@ export default async function DashboardPage() {
 
   let clientSettings: SettingsFormValues;
   let adminSettings: SettingsFormValues;
-  let adminUserId: string | null;
+  
   try {
-    adminUserId = await getAdminId();
-    if (!adminUserId) throw new Error("Admin user not found in database.");
-
+    const adminUserId = await getAdminId();
     clientSettings = await getSettings(clientUserId);
-    adminSettings = await getSettings(adminUserId);
-    console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded settings for client ${clientUserId} and admin ${adminUserId}.`);
+    
+    if (adminUserId) {
+        adminSettings = await getSettings(adminUserId);
+        console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded settings for client ${clientUserId} and admin ${adminUserId}.`);
+    } else {
+        console.error(`[${new Date().toISOString()}] DashboardPage: CRITICAL - Admin user with email "${ADMIN_EMAIL}" not found. Bot logic will use default strategy. Please ensure admin user is registered.`);
+        adminSettings = { ...defaultSettingsValues, userId: 'admin-fallback' };
+    }
+
   } catch (error) {
     console.error(`[${new Date().toISOString()}] DashboardPage: Failed to load settings, using defaults for display:`, error);
     clientSettings = { ...defaultSettingsValues, userId: clientUserId };
