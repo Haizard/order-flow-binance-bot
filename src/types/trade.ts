@@ -46,4 +46,3 @@ export type NewTradeInput = Pick<
 
 // Input type for updating a trade to an exited status
 export type ExitTradeInput = Pick<Trade, 'exitPrice' | 'pnl' | 'pnlPercentage'>;
-

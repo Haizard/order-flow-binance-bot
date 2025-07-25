@@ -77,11 +77,11 @@ const summarizeTradeFlow = ai.defineFlow(
     };
 
     try {
-      const response = await prompt(input);
+      const {output} = await prompt(input);
       
       // Defensively check if the response and its output are valid strings.
-      if (response && response.output && typeof response.output === 'string' && response.output.trim() !== '') {
-        return response.output;
+      if (output && typeof output === 'string' && output.trim() !== '') {
+        return output;
       }
 
       // If we reach here, the output was invalid (null, undefined, empty string).

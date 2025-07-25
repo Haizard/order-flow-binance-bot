@@ -18,6 +18,7 @@ import {
 import { calculateAllBotMetrics, type BotOrderFlowMetrics } from './botMetricCalculators';
 import { summarizeTrade } from '@/ai/flows/summarize-trade-flow';
 import type { Trade } from '@/types/trade';
+import { getSession } from '@/lib/session';
 import { findUserByEmail } from '@/services/userService';
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com';
