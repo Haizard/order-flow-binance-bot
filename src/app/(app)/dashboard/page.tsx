@@ -1,6 +1,6 @@
 
 
-import { DollarSign, ListChecks, Percent, TrendingDown, SearchX, AlertTriangle, Info, Activity, Lock, CreditCard } from 'lucide-react';
+import { DollarSign, ListChecks, Percent, TrendingDown, SearchX, AlertTriangle, Info, Activity, Lock, CreditCard, ShieldAlert } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/metric-card';
 import { ActiveTradesList } from '@/components/dashboard/active-trades-list';
 import { MarketOverviewItem } from '@/components/dashboard/market-overview-item';
@@ -143,6 +143,7 @@ export default async function DashboardPage() {
 
   let clientSettings: SettingsFormValues;
   let adminSettings: SettingsFormValues;
+  let adminAccountExists = true;
   
   try {
     const adminUserId = await getAdminId();
@@ -152,6 +153,7 @@ export default async function DashboardPage() {
         adminSettings = await getSettings(adminUserId);
         console.log(`[${new Date().toISOString()}] DashboardPage: Successfully loaded settings for client ${clientUserId} and admin ${adminUserId}.`);
     } else {
+        adminAccountExists = false;
         console.error(`[${new Date().toISOString()}] DashboardPage: CRITICAL - Admin user with email "${ADMIN_EMAIL}" not found. Bot logic will use default strategy. Please ensure admin user is registered.`);
         adminSettings = { ...defaultSettingsValues, userId: 'admin-fallback' };
     }
@@ -190,6 +192,17 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-8">
+       {!adminAccountExists && (
+        <Alert variant="destructive" className="bg-amber-50 border-amber-200 dark:bg-amber-900/30 dark:border-amber-700 text-amber-900 dark:text-amber-200">
+          <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+          <AlertTitle className="font-bold text-amber-800 dark:text-amber-300">Admin Account Not Found</AlertTitle>
+          <AlertDescription>
+            The bot's trading strategy cannot be loaded because the admin user (<code className="font-semibold">{ADMIN_EMAIL}</code>) has not been registered. The bot is currently running on default placeholder settings. 
+            Please <Button variant="link" asChild className="p-0 h-auto text-sm text-amber-800 dark:text-amber-300 font-bold"><Link href="/register">register an account</Link></Button> with this email to enable full functionality.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {!isSubscribed && (
         <Alert variant="default" className="bg-primary/10 border-primary/30 text-primary-foreground">
           <CreditCard className="h-5 w-5 text-primary" />
