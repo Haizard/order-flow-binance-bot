@@ -26,7 +26,8 @@ export async function handleCreateCheckoutSession(): Promise<ActionResult> {
 
   const host = headers().get('host');
   const protocol = process.env.NODE_ENV === 'development' ? 'http' : 'https';
-  const successUrl = `${protocol}://${host}/dashboard?session_id={CHECKOUT_SESSION_ID}`;
+  // After a successful payment, Stripe will redirect the user to the dashboard.
+  const successUrl = `${protocol}://${host}/dashboard?subscription_success=true`;
   const cancelUrl = `${protocol}://${host}/subscription`;
 
   try {
