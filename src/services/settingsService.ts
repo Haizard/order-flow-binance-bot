@@ -27,7 +27,7 @@ if (!MONGODB_URI) {
 }
 
 
-const DB_NAME = process.env.MONGODB_DB_NAME || 'binanceTrailblazerDb';
+const DB_NAME = process.env.MONGODB_DB_NAME || 'haizardMisapeDb';
 const COLLECTION_NAME = 'userApiSettings';
 
 interface CustomGlobal extends NodeJS.Global {

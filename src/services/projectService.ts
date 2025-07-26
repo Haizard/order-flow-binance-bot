@@ -18,7 +18,7 @@ if (!MONGODB_URI) {
   MONGODB_URI = MONGODB_URI_FALLBACK;
 }
 
-const DB_NAME = process.env.MONGODB_DB_NAME || 'binanceTrailblazerDb';
+const DB_NAME = process.env.MONGODB_DB_NAME || 'haizardMisapeDb';
 const PROJECTS_COLLECTION = 'projects';
 const INVESTMENTS_COLLECTION = 'investments';
 
@@ -164,7 +164,7 @@ export async function getFeaturedProject(): Promise<Project | null> {
         const defaultProject: Project = {
             id: 'project-chimera',
             name: 'Project Chimera',
-            vision: 'While Binance Trailblazer is a powerful tool, I envision something far more advanced. Project Chimera will be a multi-strategy, AI-optimized trading system that adapts to market conditions in real-time. It requires significant resources for hosting, enterprise-grade data feeds, and dedicated AI model training. Your investment will directly fund this development.',
+            vision: 'While Haizard Misape is a powerful tool, I envision something far more advanced. Project Chimera will be a multi-strategy, AI-optimized trading system that adapts to market conditions in real-time. It requires significant resources for hosting, enterprise-grade data feeds, and dedicated AI model training. Your investment will directly fund this development.',
             goal: "To raise the necessary capital to build and deploy Project Chimera within a one-month timeframe. We're seeking a small group of founding backers who believe in this vision.",
             offer: "As a thank you, each of our 10 founding backers will receive a <strong class=\"text-foreground\">Lifetime Pro Plan</strong> for the new platform. No subscriptions, ever.",
             investorTarget: 10,

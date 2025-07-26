@@ -73,7 +73,7 @@ export default function SubscriptionPage() {
             
             <Card className="border-primary border-2 shadow-xl flex flex-col">
               <CardHeader>
-                <CardTitle className="font-headline text-primary">Binance Trailblazer Bot</CardTitle>
+                <CardTitle className="font-headline text-primary">Haizard Misape Bot</CardTitle>
                 <CardDescription>Automated order flow trading on Binance.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 flex-grow">

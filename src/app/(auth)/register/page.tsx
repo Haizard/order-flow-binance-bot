@@ -73,7 +73,7 @@ export default function RegisterPage() {
     <Card className="w-full max-w-md shadow-xl">
       <CardHeader className="space-y-1 text-center">
         <CardTitle className="text-2xl font-bold font-headline">Create an Account</CardTitle>
-        <CardDescription>Join Binance Trailblazer and start automating your trades.</CardDescription>
+        <CardDescription>Join Haizard Misape and start automating your trades.</CardDescription>
       </CardHeader>
       <CardContent>
         <Form {...form}>

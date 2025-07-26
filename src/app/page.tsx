@@ -28,7 +28,7 @@ export default function HomePage() {
             Automated Order Flow Trading
           </h1>
           <p className="max-w-3xl text-lg text-muted-foreground sm:text-xl md:text-2xl">
-            Leverage institutional-grade footprint chart analysis to automate your Binance trading strategies. Make data-driven decisions, 24/7.
+            Leverage institutional-grade footprint chart analysis to automate your trading strategies. Make data-driven decisions, 24/7.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <Button size="lg" asChild>
@@ -43,7 +43,7 @@ export default function HomePage() {
         <section id="features" className="bg-muted py-20 sm:py-24">
           <div className="container mx-auto px-4 sm:px-6 lg:px-8">
             <div className="mx-auto max-w-2xl text-center">
-              <h2 className="text-3xl font-bold tracking-tight font-headline sm:text-4xl">Why Binance Trailblazer?</h2>
+              <h2 className="text-3xl font-bold tracking-tight font-headline sm:text-4xl">Why Haizard Misape?</h2>
               <p className="mt-4 text-lg text-muted-foreground">
                 Go beyond simple indicators. Our bot uses real-time order flow data to find high-probability entries and exits.
               </p>
@@ -89,7 +89,7 @@ export default function HomePage() {
         <section className="container mx-auto px-4 py-20 text-center sm:px-6 lg:px-8 sm:py-24">
             <h2 className="text-3xl font-bold tracking-tight font-headline sm:text-4xl">Ready to Start?</h2>
             <p className="mt-4 text-lg text-muted-foreground">
-                Create an account and connect your Binance API keys in minutes.
+                Create an account and connect your API keys in minutes.
             </p>
             <div className="mt-8">
                 <Button size="lg" asChild>
@@ -101,7 +101,7 @@ export default function HomePage() {
 
       <footer className="border-t bg-muted">
         <div className="container mx-auto flex flex-col items-center justify-between gap-4 px-4 py-8 sm:flex-row sm:px-6 lg:px-8">
-          <p className="text-sm text-muted-foreground">&copy; {new Date().getFullYear()} Binance Trailblazer. All rights reserved.</p>
+          <p className="text-sm text-muted-foreground">&copy; {new Date().getFullYear()} Haizard Misape. All rights reserved.</p>
           <div className="flex gap-4">
             <Link href="#" className="text-sm text-muted-foreground hover:text-foreground">Privacy Policy</Link>
             <Link href="#" className="text-sm text-muted-foreground hover:text-foreground">Terms of Service</Link>

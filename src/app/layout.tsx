@@ -4,8 +4,8 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
-  title: 'Binance Trailblazer',
-  description: 'Automate your Binance trading with custom strategies.',
+  title: 'Haizard Misape',
+  description: 'Automate your trading with custom strategies.',
 };
 
 export default function RootLayout({
