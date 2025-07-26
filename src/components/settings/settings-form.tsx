@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, KeyRound, CheckCircle, Loader2, Save, Zap, ShieldAlert, Trash2, TriangleAlert, SlidersHorizontal, CreditCard } from "lucide-react";
+import { AlertCircle, KeyRound, CheckCircle, Loader2, Save, Zap, ShieldAlert, Trash2, TriangleAlert, SlidersHorizontal, CreditCard, Lock, Server } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -39,6 +39,7 @@ import { defaultSettingsValues, defaultMonitoredSymbols } from "@/config/setting
 import { handleClearUserTrades } from "@/app/(app)/settings/actions";
 import { getSession } from "@/lib/session-client";
 import type { User } from "@/types/user";
+import Link from "next/link";
 
 
 const settingsFormSchema = z.object({
@@ -323,7 +324,7 @@ export function SettingsForm() {
           </CardContent>
         </Card>
 
-        {/* API Key Card is visible to everyone */}
+        {/* API Key Card is visible to everyone, but content is gated */}
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-headline">
@@ -334,58 +335,96 @@ export function SettingsForm() {
               Connect your Binance account by providing your API Key and Secret Key. This is required for the bot to place trades on your behalf.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <Alert variant="default" className="bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
-              <AlertCircle className="h-5 w-5 text-primary" />
-              <AlertTitle className="text-primary font-semibold">Important Security Notice</AlertTitle>
-              <AlertDescription>
-                Store API keys securely. Grant minimal permissions: Enable Spot & Margin Trading only. DO NOT enable withdrawals.
-                API keys entered here are saved to your user-specific settings in the database.
-              </AlertDescription>
-            </Alert>
-            <FormField
-              control={form.control}
-              name="binanceApiKey"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Your Binance API Key</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Enter your Binance API Key" {...field} value={field.value ?? ""} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="binanceSecretKey"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Your Binance Secret Key</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="Enter your Binance Secret Key" {...field} value={field.value ?? ""} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <Button
-              type="button"
-              onClick={handleTestConnection}
-              disabled={isTestingConnection || isSaving || isLoadingSettings}
-              variant="outline"
-              className="w-full md:w-auto"
-            >
-              {isTestingConnection ? (
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              ) : (
-                <CheckCircle className="mr-2 h-5 w-5" />
-              )}
-              Test My Connection
-            </Button>
-          </CardContent>
+          <fieldset disabled={!isSubscribed} className="group">
+            <CardContent className="space-y-6">
+                {!isSubscribed && (
+                    <Alert variant="destructive" className="bg-amber-50 border-amber-200 dark:bg-amber-900/30 dark:border-amber-700 text-amber-900 dark:text-amber-200">
+                        <Lock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                        <AlertTitle className="font-bold text-amber-800 dark:text-amber-300">Subscription Required</AlertTitle>
+                        <AlertDescription>
+                            You must have an active subscription to connect your API keys. Please 
+                            <Button variant="link" asChild className="p-0 ml-1 h-auto text-sm text-amber-800 dark:text-amber-300 font-bold"><Link href="/subscription">subscribe to a plan</Link></Button>.
+                        </AlertDescription>
+                    </Alert>
+                )}
+                <div className="space-y-6 group-disabled:opacity-50">
+                    <FormField
+                    control={form.control}
+                    name="binanceApiKey"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Your Binance API Key</FormLabel>
+                        <FormControl>
+                            <Input placeholder="Enter your Binance API Key" {...field} value={field.value ?? ""} />
+                        </FormControl>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                    />
+                    <FormField
+                    control={form.control}
+                    name="binanceSecretKey"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Your Binance Secret Key</FormLabel>
+                        <FormControl>
+                            <Input type="password" placeholder="Enter your Binance Secret Key" {...field} value={field.value ?? ""} />
+                        </FormControl>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                    />
+                    <Button
+                    type="button"
+                    onClick={handleTestConnection}
+                    disabled={isTestingConnection || isSaving || isLoadingSettings}
+                    variant="outline"
+                    className="w-full md:w-auto"
+                    >
+                    {isTestingConnection ? (
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    ) : (
+                        <CheckCircle className="mr-2 h-5 w-5" />
+                    )}
+                    Test My Connection
+                    </Button>
+                </div>
+            </CardContent>
+          </fieldset>
         </Card>
         
+        {isSubscribed && (
+          <Card className="shadow-lg border-green-200 dark:border-green-800">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 font-headline text-accent">
+                <Server className="h-6 w-6" />
+                IP Whitelisting (Required)
+              </CardTitle>
+              <CardDescription>
+                For added security, you must whitelist our platform's IP address in your Binance API key settings.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Alert variant="default" className="bg-blue-50 border-blue-200 dark:bg-blue-900/30 dark:border-blue-700">
+                  <AlertCircle className="h-5 w-5 text-primary" />
+                  <AlertTitle className="text-primary font-semibold">How to Whitelist IP</AlertTitle>
+                  <AlertDescription>
+                    1. Go to your Binance account's API Management section. <br/>
+                    2. Find the API key you are using for this platform and click "Edit restrictions". <br/>
+                    3. Select "Restrict access to trusted IPs only (Recommended)". <br/>
+                    4. Copy the IP address below and paste it into the field, then click "Confirm".
+                  </AlertDescription>
+              </Alert>
+              <div className="mt-4 rounded-md border bg-muted p-4 text-center font-mono text-lg tracking-wider">
+                192.0.2.1
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground text-center">
+                This is a placeholder IP. In a real production environment, this would show the static outbound IP of the server.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Admin-only strategy settings */}
         {isCurrentUserAdmin && (
           <fieldset disabled={!isSubscribed} className="space-y-8 disabled:opacity-60">
