@@ -76,9 +76,12 @@ async function getSettingsCollection(): Promise<Collection<SettingsFormValues>> 
 export async function getSettings(userId: string): Promise<SettingsFormValues> {
   const logTimestamp = new Date().toISOString();
   if (!userId) {
+    console.error(`[${logTimestamp}] [settingsService] getSettings called without a userId. Returning defaults.`);
     const fullDefaultSettings = { ...defaultSettingsValues, userId: "UNKNOWN_USER_ID_IN_GETSETTINGS" };
     return fullDefaultSettings;
   }
+  
+  console.log(`[${logTimestamp}] [settingsService] getSettings called for user: ${userId}`);
   const settingsCollection = await getSettingsCollection();
   const settingsDoc = await settingsCollection.findOne({ userId: userId });
 
@@ -88,6 +91,7 @@ export async function getSettings(userId: string): Promise<SettingsFormValues> {
     const mergedSettings = { ...defaultSettingsValues, ...settingsWithoutMongoId, userId: userId };
     return mergedSettings;
   } else {
+    console.log(`[${logTimestamp}] [settingsService] No settings found for user ${userId}, returning defaults.`);
     return { ...defaultSettingsValues, userId: userId };
   }
 }
@@ -106,6 +110,7 @@ export async function saveSettings(userId: string, settings: SettingsFormValues)
   if (settings.userId !== userId) {
     throw new Error('User ID mismatch in saveSettings.');
   }
+  console.log(`[${logTimestamp}] [settingsService] saveSettings called for user: ${userId}`);
   
   const settingsCollection = await getSettingsCollection();
 
@@ -131,6 +136,7 @@ export async function saveSettings(userId: string, settings: SettingsFormValues)
       updateOperation,
       { upsert: true }
     );
+     console.log(`[${logTimestamp}] [settingsService] Successfully saved settings for user: ${userId}`);
   } catch (dbError) {
     console.error(`[${logTimestamp}] settingsService.saveSettings (MongoDB) for user: ${userId}. DATABASE OPERATION FAILED:`, dbError);
     throw dbError;

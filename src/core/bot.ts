@@ -61,6 +61,8 @@ export async function runBotCycle(
       console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): CRITICAL - Admin user with email "${ADMIN_EMAIL}" not found. Cannot load strategy. Bot will not run. Please ensure admin user is registered.`);
       return;
   }
+  
+  console.log(`[${botRunTimestamp}] Bot cycle STARTED for client ${clientUserId}. Using strategy from admin ${adminUserId}.`);
 
   let adminSettings: SettingsFormValues;
   let clientSettings: SettingsFormValues;
@@ -84,7 +86,7 @@ export async function runBotCycle(
   
   // Use client's subscription status to determine if bot should run for them
   if (!clientSettings.hasActiveSubscription) {
-      // This check is redundant if the caller (footprint-aggregator) already checks, but good for safety.
+      console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Client does not have an active subscription. Skipping trade execution.`);
       return;
   }
 
@@ -108,7 +110,6 @@ export async function runBotCycle(
     ? monitoredSymbols
     : defaultSettingsValues.monitoredSymbols;
 
-  console.log(`[${botRunTimestamp}] Bot cycle STARTED for client ${clientUserId}. Using strategy from admin ${adminUserId}.`);
   console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Monitoring symbols: ${monitoredSymbolsToUse.join(',')}`);
 
   let liveMarketData: Ticker24hr[];
