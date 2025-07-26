@@ -11,22 +11,19 @@ interface ActionResult {
   url?: string;
 }
 
-const STRIPE_PRO_PRICE_ID = process.env.STRIPE_PRO_PRICE_ID;
-
-export async function handleCreateCheckoutSession(): Promise<ActionResult> {
+export async function handleCreateCheckoutSession(priceId: string): Promise<ActionResult> {
   const session = await getSession();
   if (!session) {
     return { success: false, message: 'Authentication required.' };
   }
   
-  if (!STRIPE_PRO_PRICE_ID) {
-      console.error("Stripe Pro Price ID is not configured in environment variables.");
-      return { success: false, message: "Subscription service is currently unavailable. Please contact support." };
+  if (!priceId) {
+      console.error("Stripe Price ID was not provided to the checkout action.");
+      return { success: false, message: "Subscription plan ID is missing. Please contact support." };
   }
 
   const host = headers().get('host');
   const protocol = process.env.NODE_ENV === 'development' ? 'http' : 'https';
-  // After a successful payment, Stripe will redirect the user to the dashboard.
   const successUrl = `${protocol}://${host}/dashboard?subscription_success=true`;
   const cancelUrl = `${protocol}://${host}/subscription`;
 
@@ -35,16 +32,19 @@ export async function handleCreateCheckoutSession(): Promise<ActionResult> {
       payment_method_types: ['card'],
       line_items: [
         {
-          price: STRIPE_PRO_PRICE_ID,
+          price: priceId,
           quantity: 1,
         },
       ],
       mode: 'subscription',
       success_url: successUrl,
       cancel_url: cancelUrl,
-      // Pass the user's ID to Stripe metadata to identify them in webhooks
       client_reference_id: session.id,
       customer_email: session.email,
+      // Add metadata to know which product was purchased in the webhook
+      metadata: {
+          priceId: priceId
+      }
     });
 
     if (!checkoutSession.url) {
@@ -67,20 +67,7 @@ export async function handleCreateBinancePayOrder(): Promise<ActionResult> {
     }
 
     // --- Placeholder for Binance Pay Integration ---
-    // In a real implementation, you would use the Binance Pay SDK here
-    // to create an order and get a checkout URL.
-    //
-    // Example steps:
-    // 1. Check for BINANCE_PAY_API_KEY and SECRET in .env
-    // 2. Initialize Binance Pay client
-    // 3. Create an order with details like:
-    //    - merchant_order_id (a unique ID from your system)
-    //    - order_amount (e.g., 29.99)
-    //    - currency (e.g., 'USDT')
-    //    - goods_name ('Pro Trader Subscription')
-    //    - webhook_url (for receiving payment confirmation)
-    // 4. The SDK would return a checkoutUrl.
-    // 5. Return that URL in the success response.
+    // In a real implementation, you would use the Binance Pay SDK here.
     // ------------------------------------------------
 
     console.log(`Binance Pay action triggered for user: ${session.email}`);
