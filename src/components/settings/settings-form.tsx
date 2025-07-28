@@ -292,10 +292,10 @@ export function SettingsForm() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 font-headline">
               <CreditCard className="h-6 w-6 text-primary" />
-              Subscription Status (Demo)
+              Subscription Status
             </CardTitle>
             <CardDescription>
-              Toggle your subscription status to see how the app reacts. In a real app, this would be managed by a payment provider.
+              Your current subscription plan status. This is updated automatically via payments.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -310,12 +310,15 @@ export function SettingsForm() {
                       </FormLabel>
                       <FormDescription>
                         {field.value ? "Your Pro subscription is active. The bot is running." : "Your subscription is inactive. The bot is paused."}
+                         {!isCurrentUserAdmin && ' (Manage in your Stripe account)'}
                       </FormDescription>
                     </div>
                     <FormControl>
                       <Switch
                         checked={field.value}
                         onCheckedChange={field.onChange}
+                        disabled={!isCurrentUserAdmin}
+                        aria-readonly={!isCurrentUserAdmin}
                       />
                     </FormControl>
                   </FormItem>
