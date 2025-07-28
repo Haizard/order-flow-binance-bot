@@ -17,7 +17,7 @@ if (!MONGODB_URI) {
   MONGODB_URI = MONGODB_URI_FALLBACK;
 }
 
-const DB_NAME = process.env.MONGODB_DB_NAME || 'haizardMisapeDb';
+const DB_NAME = process.env.MONGODB_DB_NAME || 'binanceTrailblazerDb';
 const USERS_COLLECTION = 'users';
 
 interface CustomGlobal extends NodeJS.Global {
@@ -103,3 +103,5 @@ export async function findUserByEmail(email: string): Promise<User & { password?
 export async function verifyPassword(plainPassword: string, hashedPassword: string): Promise<boolean> {
     return await bcrypt.compare(plainPassword, hashedPassword);
 }
+
+    

@@ -28,7 +28,7 @@ if (!MONGODB_URI) {
 }
 
 
-const DB_NAME = process.env.MONGODB_DB_NAME || 'haizardMisapeDb'; 
+const DB_NAME = process.env.MONGODB_DB_NAME || 'binanceTrailblazerDb'; 
 const COLLECTION_NAME = 'trades'; 
 
 interface CustomGlobal extends NodeJS.Global {
@@ -243,3 +243,5 @@ export async function clearUserTradesFromDb(userId: string): Promise<void> {
   const deleteResult = await tradesCollection.deleteMany({ userId: userId });
   console.log(`[${logTimestamp}] tradeService.clearUserTradesFromDb (MongoDB) - Successfully deleted ${deleteResult.deletedCount} trades for user ${userId}.`);
 }
+
+    

@@ -27,7 +27,7 @@ if (!MONGODB_URI) {
 }
 
 
-const DB_NAME = process.env.MONGODB_DB_NAME || 'haizardMisapeDb';
+const DB_NAME = process.env.MONGODB_DB_NAME || 'binanceTrailblazerDb';
 const COLLECTION_NAME = 'userApiSettings';
 
 interface CustomGlobal extends NodeJS.Global {
@@ -159,3 +159,5 @@ export async function getAllUserSettings(): Promise<SettingsFormValues[]> {
 
     return users;
 }
+
+    

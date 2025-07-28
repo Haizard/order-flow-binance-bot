@@ -18,7 +18,7 @@ if (!MONGODB_URI) {
   MONGODB_URI = MONGODB_URI_FALLBACK;
 }
 
-const DB_NAME = process.env.MONGODB_DB_NAME || 'haizardMisapeDb';
+const DB_NAME = process.env.MONGODB_DB_NAME || 'binanceTrailblazerDb';
 const PROJECTS_COLLECTION = 'projects';
 const INVESTMENTS_COLLECTION = 'investments';
 
@@ -240,3 +240,5 @@ export async function getInvestorsByProject(projectId: string): Promise<Investme
         return investment as Investment;
     });
 }
+
+    
