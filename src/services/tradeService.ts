@@ -12,7 +12,7 @@ import { MongoClient, type Db, type Collection, type WithId, type UpdateFilter, 
 console.log(`[${new Date().toISOString()}] [tradeService] Module loading. Attempting to read MONGODB_URI from process.env...`);
 
 let MONGODB_URI = process.env.MONGODB_URI;
-const MONGODB_URI_FALLBACK = "mongodb+srv://haithammisape:hrz123@cluster0.quboghr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+const MONGODB_URI_FALLBACK = "mongodb+srv://haithammisape:hrz123@cluster0.quboghr.mongodb.net/binanceTrailblazerDb?retryWrites=true&w=majority&appName=Cluster0";
 
 if (!MONGODB_URI) {
   const timestamp = new Date().toISOString();
@@ -75,9 +75,9 @@ async function getTradesCollection(): Promise<Collection<Trade>> {
  */
 export async function createTrade(tradeInput: NewTradeInput): Promise<Trade> {
   const logTimestamp = new Date().toISOString();
-  if (!tradeInput.userId) {
-    console.error(`[${logTimestamp}] tradeService (MongoDB): Attempted to create trade without userId for symbol: ${tradeInput.symbol}`);
-    throw new Error('userId is required to create a trade.');
+  if (!tradeInput.userId || tradeInput.userId.trim() === "") {
+    console.error(`[${logTimestamp}] tradeService (MongoDB): Attempted to create trade without a valid userId for symbol: ${tradeInput.symbol}`);
+    throw new Error('A valid userId is required to create a trade.');
   }
   console.log(`[${logTimestamp}] tradeService.createTrade (MongoDB) called for user: ${tradeInput.userId}, symbol: ${tradeInput.symbol}, direction: ${tradeInput.tradeDirection}, SL: ${tradeInput.initialStopLossPrice}`);
   const tradesCollection = await getTradesCollection();
@@ -165,9 +165,9 @@ export async function updateTrade(
     updates: Partial<Omit<Trade, 'id' | 'userId' | 'symbol' | 'entryPrice' | 'quantity' | 'entryTimestamp' | 'baseAsset' | 'quoteAsset' | 'initialStopLossPrice' | 'tradeDirection'>>
 ): Promise<Trade> {
   const logTimestamp = new Date().toISOString();
-  if (!userId) {
-    console.error(`[${logTimestamp}] tradeService (MongoDB): Attempted to update trade ID ${tradeId} without userId.`);
-    throw new Error('userId is required to update a trade.');
+  if (!userId || userId.trim() === "") {
+    console.error(`[${logTimestamp}] tradeService (MongoDB): Attempted to update trade ID ${tradeId} with an invalid userId.`);
+    throw new Error('A valid userId is required to update a trade.');
   }
   console.log(`[${logTimestamp}] tradeService.updateTrade (MongoDB) called for user: ${userId}, ID: ${tradeId} with updates:`, JSON.stringify(updates));
   const tradesCollection = await getTradesCollection();
@@ -243,5 +243,3 @@ export async function clearUserTradesFromDb(userId: string): Promise<void> {
   const deleteResult = await tradesCollection.deleteMany({ userId: userId });
   console.log(`[${logTimestamp}] tradeService.clearUserTradesFromDb (MongoDB) - Successfully deleted ${deleteResult.deletedCount} trades for user ${userId}.`);
 }
-
-    

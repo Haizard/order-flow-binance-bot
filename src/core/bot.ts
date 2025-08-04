@@ -36,12 +36,14 @@ function getAssetsFromSymbol(symbol: string): { baseAsset: string, quoteAsset: s
             return { baseAsset: symbol.slice(0, -quote.length), quoteAsset: quote };
         }
     }
+    // Handle cases like ETHBTC
     if (symbol.length > 3 && (symbol.endsWith('BTC') || symbol.endsWith('ETH') )) {
         const knownQuote = symbol.endsWith('BTC') ? 'BTC' : 'ETH';
          if (symbol.length > knownQuote.length && symbol.endsWith(knownQuote)) {
             return { baseAsset: symbol.slice(0, -knownQuote.length), quoteAsset: knownQuote };
         }
     }
+    // Fallback for other or unknown pairs
     return { baseAsset: symbol.length > 3 ? symbol.slice(0, symbol.length - 3) : symbol, quoteAsset: symbol.length > 3 ? symbol.slice(-3) : 'UNKNOWN' };
 }
 
@@ -62,7 +64,7 @@ export async function runBotCycle(
       return;
   }
   
-  console.log(`[${botRunTimestamp}] Bot cycle STARTED for client ${clientUserId}. Using strategy from admin ${adminUserId}.`);
+  console.log(`[${botRunTimestamp}] Bot cycle STARTED. Client: ${clientUserId}, Strategy Admin: ${adminUserId}.`);
 
   let adminSettings: SettingsFormValues;
   let clientSettings: SettingsFormValues;

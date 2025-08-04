@@ -11,7 +11,7 @@ import { MongoClient, type Db, type Collection, type WithId, type UpdateFilter, 
 console.log(`[${new Date().toISOString()}] [settingsService] Module loading. Attempting to read MONGODB_URI from process.env...`);
 
 let MONGODB_URI = process.env.MONGODB_URI;
-const MONGODB_URI_FALLBACK = "mongodb+srv://haithammisape:hrz123@cluster0.quboghr.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+const MONGODB_URI_FALLBACK = "mongodb+srv://haithammisape:hrz123@cluster0.quboghr.mongodb.net/binanceTrailblazerDb?retryWrites=true&w=majority&appName=Cluster0";
 
 if (!MONGODB_URI) {
   const timestamp = new Date().toISOString();
@@ -104,10 +104,12 @@ export async function getSettings(userId: string): Promise<SettingsFormValues> {
  */
 export async function saveSettings(userId: string, settings: SettingsFormValues): Promise<void> {
   const logTimestamp = new Date().toISOString();
-   if (!userId) {
-    throw new Error('userId is required to save settings.');
+   if (!userId || userId.trim() === "") {
+    console.error(`[${logTimestamp}] [settingsService] saveSettings: Attempted to save settings with an invalid userId.`);
+    throw new Error('A valid userId is required to save settings.');
   }
   if (settings.userId !== userId) {
+    console.error(`[${logTimestamp}] [settingsService] saveSettings: User ID mismatch. Provided userId '${userId}' does not match settings.userId '${settings.userId}'.`);
     throw new Error('User ID mismatch in saveSettings.');
   }
   console.log(`[${logTimestamp}] [settingsService] saveSettings called for user: ${userId}`);
@@ -159,5 +161,3 @@ export async function getAllUserSettings(): Promise<SettingsFormValues[]> {
 
     return users;
 }
-
-    
