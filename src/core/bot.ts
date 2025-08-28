@@ -7,9 +7,9 @@
  */
 import type { SettingsFormValues } from '@/components/settings/settings-form';
 import { getSettings } from '@/services/settingsService';
-import type { Ticker24hr } from '@/types/binance';
+import type { Ticker24hr, AccountInformation } from '@/types/binance';
 import * as tradeService from '@/services/tradeService';
-import { get24hrTicker } from '@/services/binance';
+import { get24hrTicker, getAccountInformation } from '@/services/binance';
 import { defaultSettingsValues } from '@/config/settings-defaults';
 import { 
     getLatestFootprintBars,
@@ -90,6 +90,19 @@ export async function runBotCycle(
   if (!clientSettings.hasActiveSubscription) {
       console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Client does not have an active subscription. Skipping trade execution.`);
       return;
+  }
+
+  // Fetch client's account balance information
+  let accountInfo: AccountInformation;
+  try {
+    accountInfo = await getAccountInformation(apiKeyToUse, secretKeyToUse);
+    const usdtBalance = accountInfo.balances.find(b => b.asset === 'USDT')?.free || '0';
+    console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Successfully fetched account info. USDT Balance: ${usdtBalance}.`);
+    // This `accountInfo` object is now available for more advanced logic, like dynamic trade sizing.
+  } catch (error) {
+    console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Could not fetch account information. Error:`, error instanceof Error ? error.message : String(error));
+    // We can decide to stop the cycle here or continue with fixed trade sizes.
+    // For now, we will continue, as the current logic doesn't depend on the balance.
   }
 
   // All strategy parameters are from adminSettings.
