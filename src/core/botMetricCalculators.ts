@@ -282,7 +282,9 @@ export async function calculateAllBotMetrics(
     const sessionVwap = await calculateSessionVwapForBot(completedFootprintBars);
     
     let barForCharacterAnalysis: Partial<FootprintBar> | undefined = currentAggregatingBar;
+    // Prioritize the currently aggregating bar if it has any trading activity.
     if (!barForCharacterAnalysis || (barForCharacterAnalysis.totalVolume === 0 || barForCharacterAnalysis.totalVolume === undefined)) {
+        // Fallback to the last completed bar if the current one is empty.
         if(completedFootprintBars.length > 0) {
             barForCharacterAnalysis = completedFootprintBars[completedFootprintBars.length - 1];
         }
