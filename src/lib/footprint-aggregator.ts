@@ -9,10 +9,10 @@ import type { FootprintTrade, FootprintBar, PriceLevelData, BinanceTradeData, Bi
 import { MONITORED_MARKET_SYMBOLS } from '@/config/bot-strategy';
 import { runBotCycle } from '@/core/bot';
 import { getSettings } from '@/services/settingsService';
-import { findUserByEmail } from '@/services/userService';
+import { findUserByEmail, getAllUserIds } from '@/services/userService';
 
 const BINANCE_FUTURES_WEBSOCKET_URL = 'wss://fstream.binance.com/stream';
-const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute
+const AGGREGATION_INTERVAL_MS = 60 * 1000; // 1 minute - This is now the default, but can be adapted
 const BOT_CYCLE_INTERVAL_MS = 60 * 1000; // Run bot logic every 1 minute
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@example.com';
 
@@ -41,7 +41,7 @@ function notifyListeners(data: FootprintBar | Partial<FootprintBar>, eventType: 
   listeners.forEach(listener => listener(data, eventType));
 }
 
-function initializeNewBar(symbol: string, timestamp: number): Partial<FootprintBar> {
+function initializeNewBar(symbol: string, timestamp: number, aggregationInterval: number): Partial<FootprintBar> {
   return {
     symbol: symbol,
     timestamp: timestamp,
@@ -58,9 +58,9 @@ function initializeNewBar(symbol: string, timestamp: number): Partial<FootprintB
   };
 }
 
-function processTrade(symbol: string, tradeData: BinanceTradeData) {
+function processTrade(symbol: string, tradeData: BinanceTradeData, aggregationInterval: number) {
   const tradeTime = tradeData.T;
-  const barTimestamp = Math.floor(tradeTime / AGGREGATION_INTERVAL_MS) * AGGREGATION_INTERVAL_MS;
+  const barTimestamp = Math.floor(tradeTime / aggregationInterval) * aggregationInterval;
 
   const parsedPrice = parseFloat(tradeData.p);
   const parsedQuantity = parseFloat(tradeData.q);
@@ -89,7 +89,7 @@ function processTrade(symbol: string, tradeData: BinanceTradeData) {
         notifyListeners(completedBar, 'footprintUpdate');
       }
     }
-    bar = initializeNewBar(symbol, barTimestamp);
+    bar = initializeNewBar(symbol, barTimestamp, aggregationInterval);
     currentBarData.set(symbol, bar);
   }
   
@@ -157,30 +157,27 @@ async function startBotCycle() {
 
     console.log(`[${new Date().toISOString()}] FootprintAggregator: Starting continuous bot cycle (every ${BOT_CYCLE_INTERVAL_MS / 1000}s).`);
     
-    // This function runs on the server and needs to check which users are subscribed.
     const runForAllSubscribedUsers = async () => {
         try {
-            // This is a simplified approach. A better one would query for users with `hasActiveSubscription: true`.
-            const adminUser = await findUserByEmail(ADMIN_EMAIL);
-            if (!adminUser) {
-                console.warn(`[${new Date().toISOString()}] BotCycle: Admin user not found, cannot determine all users easily. This needs a better implementation.`);
-                return;
-            }
-            // For now, let's just run for the admin user for demonstration.
-            // A real implementation would fetch all users from the DB.
-            const userSettings = await getSettings(adminUser.id);
-            if(userSettings.hasActiveSubscription) {
-                await runBotCycle(adminUser.id);
+            const allUserIds = await getAllUserIds();
+            console.log(`[${new Date().toISOString()}] BotCycle: Found ${allUserIds.length} users to check for bot execution.`);
+            
+            for (const userId of allUserIds) {
+                const userSettings = await getSettings(userId);
+                if (userSettings.hasActiveSubscription && userSettings.binanceApiKey && userSettings.binanceSecretKey) {
+                    console.log(`[${new Date().toISOString()}] BotCycle: Running for subscribed user ${userId}.`);
+                    await runBotCycle(userId);
+                } else {
+                     console.log(`[${new Date().toISOString()}] BotCycle: Skipping user ${userId} (Not subscribed or API keys missing).`);
+                }
             }
         } catch (error) {
             console.error(`[${new Date().toISOString()}] FootprintAggregator: Error during bot cycle execution:`, error);
         }
     };
     
-    // Initial run right away
     await runForAllSubscribedUsers();
     
-    // Interval for subsequent runs
     botIntervalId = setInterval(runForAllSubscribedUsers, BOT_CYCLE_INTERVAL_MS);
 }
 
@@ -225,7 +222,8 @@ function connect() {
       const message: BinanceStreamData = JSON.parse(data.toString());
       if (message.stream && message.data && message.data.s) {
         const symbolFromStream = message.stream.split('@')[0].toUpperCase();
-        processTrade(symbolFromStream, message.data);
+        // Pass the default 1-minute aggregation interval for now.
+        processTrade(symbolFromStream, message.data, AGGREGATION_INTERVAL_MS);
       }
     } catch (error) {
       console.error(`[${new Date().toISOString()}] FootprintAggregator: Error processing message:`, error, data.toString());

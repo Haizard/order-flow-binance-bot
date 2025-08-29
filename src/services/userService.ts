@@ -100,8 +100,18 @@ export async function findUserByEmail(email: string): Promise<User & { password?
     }
 }
 
+export async function getAllUserIds(): Promise<string[]> {
+    try {
+        const usersCollection = await getUsersCollection();
+        const usersCursor = usersCollection.find({}, { projection: { _id: 1 } });
+        const usersArray = await usersCursor.toArray();
+        return usersArray.map(doc => doc._id.toString());
+    } catch (error) {
+        console.error(`[${new Date().toISOString()}] [userService] Database error in getAllUserIds:`, error);
+        return [];
+    }
+}
+
 export async function verifyPassword(plainPassword: string, hashedPassword: string): Promise<boolean> {
     return await bcrypt.compare(plainPassword, hashedPassword);
 }
-
-    

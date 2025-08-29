@@ -17,6 +17,7 @@ import {
 } from '@/lib/footprint-aggregator';
 import { calculateAllBotMetrics, type BotOrderFlowMetrics } from './botMetricCalculators';
 import { summarizeTrade } from '@/ai/flows/summarize-trade-flow';
+import { analyzeSentiment } from '@/ai/flows/sentiment-analysis-flow';
 import type { Trade } from '@/types/trade';
 import { getSession } from '@/lib/session';
 import { findUserByEmail } from '@/services/userService';
@@ -164,37 +165,46 @@ export async function runBotCycle(
 
         if (completedFootprintBars.length < minBarsForDivergence) continue;
         
+        // --- SENTIMENT ANALYSIS FILTER ---
+        const sentiment = await analyzeSentiment({ symbol });
+        console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Sentiment for ${symbol} is '${sentiment}'.`);
+
         const metrics: BotOrderFlowMetrics = await calculateAllBotMetrics(
             completedFootprintBars, 
             currentAggregatingBar,
             { valueAreaPercentage, imbalanceRatioThreshold, stackedImbalanceCount, swingLookaroundWindow, minBarsForDivergence }
         );
 
-        const { sessionVal, sessionVah, latestBarCharacter, divergenceSignals, imbalanceReversalSignal, breakoutSignal } = metrics;
+        const { sessionVal, latestBarCharacter, divergenceSignals, imbalanceReversalSignal, breakoutSignal, sessionVah } = metrics;
         
         // --- LONG ENTRY LOGIC ---
-        const isBullishBarCharacter = latestBarCharacter === "Price Buy" || latestBarCharacter === "Delta Buy";
-        const val = sessionVal;
-        let priceNearVal = false;
-        if (val !== null) {
-            const valThresholdUpper = val * (1 + 0.002);
-            priceNearVal = (currentPrice >= val && currentPrice <= valThresholdUpper) || (currentAggregatingBar?.low ?? Infinity) <= val;
-        }
-
         let shouldBuyLong = false;
         let longEntryReason = "";
-        if (priceNearVal && isBullishBarCharacter) {
-            shouldBuyLong = true;
-            longEntryReason = `Price near VAL (${val?.toFixed(4)}) & Bullish Bar Character ('${latestBarCharacter}')`;
-        } else if (divergenceSignals.includes("Bullish Delta Divergence") && isBullishBarCharacter) {
-            shouldBuyLong = true;
-            longEntryReason = `Bullish Delta Divergence & Bullish Bar Character ('${latestBarCharacter}')`;
-        } else if (imbalanceReversalSignal === 'BULLISH_IMBALANCE_REVERSAL') {
-            shouldBuyLong = true;
-            longEntryReason = 'Bullish Imbalance Reversal Detected';
-        } else if (breakoutSignal === 'BULLISH') {
-            shouldBuyLong = true;
-            longEntryReason = 'Bullish Breakout Detected';
+
+        if (sentiment === 'Bearish') {
+            console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Skipping LONG check for ${symbol} due to Bearish sentiment.`);
+        } else {
+            const isBullishBarCharacter = latestBarCharacter === "Price Buy" || latestBarCharacter === "Delta Buy";
+            const val = sessionVal;
+            let priceNearVal = false;
+            if (val !== null) {
+                const valThresholdUpper = val * (1 + 0.002);
+                priceNearVal = (currentPrice >= val && currentPrice <= valThresholdUpper) || (currentAggregatingBar?.low ?? Infinity) <= val;
+            }
+
+            if (priceNearVal && isBullishBarCharacter) {
+                shouldBuyLong = true;
+                longEntryReason = `Price near VAL (${val?.toFixed(4)}) & Bullish Bar Character ('${latestBarCharacter}')`;
+            } else if (divergenceSignals.includes("Bullish Delta Divergence") && isBullishBarCharacter) {
+                shouldBuyLong = true;
+                longEntryReason = `Bullish Delta Divergence & Bullish Bar Character ('${latestBarCharacter}')`;
+            } else if (imbalanceReversalSignal === 'BULLISH_IMBALANCE_REVERSAL') {
+                shouldBuyLong = true;
+                longEntryReason = 'Bullish Imbalance Reversal Detected';
+            } else if (breakoutSignal === 'BULLISH') {
+                shouldBuyLong = true;
+                longEntryReason = 'Bullish Breakout Detected';
+            }
         }
         
         if (shouldBuyLong) {
@@ -235,28 +245,33 @@ export async function runBotCycle(
         }
 
         // --- SHORT ENTRY LOGIC ---
-        const isBearishBarCharacter = latestBarCharacter === "Price Sell" || latestBarCharacter === "Delta Sell";
-        const vah = sessionVah;
-        let priceNearVah = false;
-        if (vah !== null) {
-            const vahThresholdLower = vah * (1 - 0.002);
-            priceNearVah = (currentPrice >= vahThresholdLower && currentPrice <= vah) || (currentAggregatingBar?.high ?? 0) >= vah;
-        }
-
         let shouldSellShort = false;
         let shortEntryReason = "";
-        if (priceNearVah && isBearishBarCharacter) {
-            shouldSellShort = true;
-            shortEntryReason = `Price near VAH (${vah?.toFixed(4)}) & Bearish Bar Character ('${latestBarCharacter}')`;
-        } else if (divergenceSignals.includes("Bearish Delta Divergence") && isBearishBarCharacter) {
-            shouldSellShort = true;
-            shortEntryReason = `Bearish Delta Divergence & Bearish Bar Character ('${latestBarCharacter}')`;
-        } else if (imbalanceReversalSignal === 'BEARISH_IMBALANCE_REVERSAL') {
-            shouldSellShort = true;
-            shortEntryReason = 'Bearish Imbalance Reversal Detected';
-        } else if (breakoutSignal === 'BEARISH') {
-            shouldSellShort = true;
-            shortEntryReason = 'Bearish Breakout Detected';
+
+        if (sentiment === 'Bullish') {
+            console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Skipping SHORT check for ${symbol} due to Bullish sentiment.`);
+        } else {
+            const isBearishBarCharacter = latestBarCharacter === "Price Sell" || latestBarCharacter === "Delta Sell";
+            const vah = sessionVah;
+            let priceNearVah = false;
+            if (vah !== null) {
+                const vahThresholdLower = vah * (1 - 0.002);
+                priceNearVah = (currentPrice >= vahThresholdLower && currentPrice <= vah) || (currentAggregatingBar?.high ?? 0) >= vah;
+            }
+
+            if (priceNearVah && isBearishBarCharacter) {
+                shouldSellShort = true;
+                shortEntryReason = `Price near VAH (${vah?.toFixed(4)}) & Bearish Bar Character ('${latestBarCharacter}')`;
+            } else if (divergenceSignals.includes("Bearish Delta Divergence") && isBearishBarCharacter) {
+                shouldSellShort = true;
+                shortEntryReason = `Bearish Delta Divergence & Bearish Bar Character ('${latestBarCharacter}')`;
+            } else if (imbalanceReversalSignal === 'BEARISH_IMBALANCE_REVERSAL') {
+                shouldSellShort = true;
+                shortEntryReason = 'Bearish Imbalance Reversal Detected';
+            } else if (breakoutSignal === 'BEARISH') {
+                shouldSellShort = true;
+                shortEntryReason = 'Bearish Breakout Detected';
+            }
         }
 
         if (shouldSellShort) {
