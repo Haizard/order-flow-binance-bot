@@ -15,8 +15,10 @@ export const defaultSettingsValues: Omit<SettingsFormValues, 'userId'> = {
   binanceApiKey: "",
   binanceSecretKey: "",
   // Bot strategy defaults
+  useDynamicSizing: false, // Default to fixed size
+  riskPercentage: 1, // Default risk 1% of account balance
+  buyAmountUsd: 50, // Fallback fixed trade size
   dipPercentage: -4,
-  buyAmountUsd: 50,
   trailActivationProfit: 2.5,
   trailDelta: 0.8,
   maxActiveTrades: 3,

@@ -93,20 +93,20 @@ export async function runBotCycle(
   }
 
   // Fetch client's account balance information
-  let accountInfo: AccountInformation;
+  let accountInfo: AccountInformation | null = null;
+  let usdtBalance = 0;
   try {
     accountInfo = await getAccountInformation(apiKeyToUse, secretKeyToUse);
-    const usdtBalance = accountInfo.balances.find(b => b.asset === 'USDT')?.free || '0';
+    usdtBalance = parseFloat(accountInfo.balances.find(b => b.asset === 'USDT')?.free || '0');
     console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Successfully fetched account info. USDT Balance: ${usdtBalance}.`);
-    // This `accountInfo` object is now available for more advanced logic, like dynamic trade sizing.
   } catch (error) {
-    console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Could not fetch account information. Error:`, error instanceof Error ? error.message : String(error));
-    // We can decide to stop the cycle here or continue with fixed trade sizes.
-    // For now, we will continue, as the current logic doesn't depend on the balance.
+    console.error(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Could not fetch account information. Error:`, error instanceof Error ? error.message : String(error), 'Dynamic sizing will be disabled for this cycle.');
   }
 
   // All strategy parameters are from adminSettings.
   const {
+    useDynamicSizing,
+    riskPercentage,
     buyAmountUsd,
     trailActivationProfit,
     trailDelta,
@@ -200,8 +200,20 @@ export async function runBotCycle(
         if (shouldBuyLong) {
             const entryPrice = currentPrice;
             const initialStopLossPrice = entryPrice * (1 - initialStopLossPercentage / 100);
+            
+            let quantityToBuy: number;
+            if(useDynamicSizing && usdtBalance > 0 && riskPercentage > 0) {
+                const amountToRisk = usdtBalance * (riskPercentage / 100);
+                const riskPerUnit = entryPrice - initialStopLossPrice;
+                quantityToBuy = amountToRisk / riskPerUnit;
+                console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Dynamic LONG size calculated for ${symbol}. Balance: ${usdtBalance}, Risk%: ${riskPercentage}, Amount to Risk: ${amountToRisk.toFixed(2)}, Qty: ${quantityToBuy.toFixed(4)}`);
+            } else {
+                quantityToBuy = buyAmountUsd / entryPrice;
+                console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Fixed LONG size used for ${symbol}. Fixed USD amount: ${buyAmountUsd}, Qty: ${quantityToBuy.toFixed(4)}`);
+            }
+
             console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): LONG ENTRY SIGNAL for ${symbol} at ${entryPrice.toFixed(4)}. Reason: ${longEntryReason}.`);
-            const quantityToBuy = buyAmountUsd / entryPrice;
+            
             const { baseAsset, quoteAsset } = getAssetsFromSymbol(symbol);
             try {
                 await tradeService.createTrade({
@@ -250,8 +262,20 @@ export async function runBotCycle(
         if (shouldSellShort) {
             const entryPrice = currentPrice;
             const initialStopLossPrice = entryPrice * (1 + initialStopLossPercentage / 100);
+
+            let quantityToSell: number;
+            if(useDynamicSizing && usdtBalance > 0 && riskPercentage > 0) {
+                const amountToRisk = usdtBalance * (riskPercentage / 100);
+                const riskPerUnit = initialStopLossPrice - entryPrice;
+                quantityToSell = amountToRisk / riskPerUnit;
+                 console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Dynamic SHORT size calculated for ${symbol}. Balance: ${usdtBalance}, Risk%: ${riskPercentage}, Amount to Risk: ${amountToRisk.toFixed(2)}, Qty: ${quantityToSell.toFixed(4)}`);
+            } else {
+                quantityToSell = buyAmountUsd / entryPrice;
+                console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): Fixed SHORT size used for ${symbol}. Fixed USD amount: ${buyAmountUsd}, Qty: ${quantityToSell.toFixed(4)}`);
+            }
+
             console.log(`[${botRunTimestamp}] Bot (Client ${clientUserId}): SHORT ENTRY SIGNAL for ${symbol} at ${entryPrice.toFixed(4)}. Reason: ${shortEntryReason}.`);
-            const quantityToSell = buyAmountUsd / entryPrice;
+
             const { baseAsset, quoteAsset } = getAssetsFromSymbol(symbol);
             try {
                 await tradeService.createTrade({

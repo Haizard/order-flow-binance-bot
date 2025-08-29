@@ -40,6 +40,7 @@ import { handleClearUserTrades } from "@/app/(app)/settings/actions";
 import { getSession } from "@/lib/session-client";
 import type { User } from "@/types/user";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
 
 const settingsFormSchema = z.object({
@@ -48,6 +49,12 @@ const settingsFormSchema = z.object({
   binanceApiKey: z.string().optional(),
   binanceSecretKey: z.string().optional(),
   monitoredSymbols: z.string().min(1, "At least one symbol is required."),
+  useDynamicSizing: z.boolean().optional(),
+  riskPercentage: z.coerce.number()
+    .positive("Risk percentage must be a positive number.")
+    .min(0.1, "Risk percentage must be at least 0.1%.")
+    .max(10, "Risk percentage cannot be more than 10%.")
+    .optional(),
   dipPercentage: z.coerce.number()
     .max(0, "Dip percentage should be 0 or negative (e.g., -5 for a 5% dip).")
     .min(-100, "Dip percentage cannot be less than -100.")
@@ -119,6 +126,7 @@ export function SettingsForm() {
   
   const isCurrentUserAdmin = sessionUser?.isAdmin ?? false;
   const isSubscribed = form.watch("hasActiveSubscription");
+  const useDynamicSizing = form.watch("useDynamicSizing");
 
   useEffect(() => {
     setIsDevelopmentEnv(process.env.NODE_ENV === 'development');
@@ -471,17 +479,57 @@ export function SettingsForm() {
                       </FormItem>
                     )}
                   />
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-8">
+                     <FormField
+                        control={form.control}
+                        name="useDynamicSizing"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 md:col-span-2">
+                            <div className="space-y-0.5">
+                              <FormLabel className="text-base">
+                                Use Dynamic Risk Sizing
+                              </FormLabel>
+                              <FormDescription>
+                                Calculate trade size based on account risk % instead of a fixed USD amount.
+                              </FormDescription>
+                            </div>
+                            <FormControl>
+                              <Switch
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                          </FormItem>
+                        )}
+                      />
                     <FormField
+                      control={form.control}
+                      name="riskPercentage"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Risk per Trade (%)</FormLabel>
+                          <FormControl>
+                            <Input type="number" placeholder="1" {...field} value={field.value ?? ""} step="0.1" disabled={!useDynamicSizing}/>
+                          </FormControl>
+                          <FormDescription className={cn(!useDynamicSizing && "text-muted-foreground/50")}>
+                            Account % to risk on a single trade.
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                     <FormField
                       control={form.control}
                       name="buyAmountUsd"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Trade Size (USD)</FormLabel>
+                          <FormLabel>Fixed Trade Size (USD)</FormLabel>
                           <FormControl>
-                            <Input type="number" placeholder="50" {...field} value={field.value ?? ""} step="1" />
+                            <Input type="number" placeholder="50" {...field} value={field.value ?? ""} step="1" disabled={useDynamicSizing} />
                           </FormControl>
-                          <FormDescription>Amount in USD for each new trade.</FormDescription>
+                          <FormDescription className={cn(useDynamicSizing && "text-muted-foreground/50")}>
+                            Fixed USD amount for each new trade.
+                          </FormDescription>
                           <FormMessage />
                         </FormItem>
                       )}
