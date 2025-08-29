@@ -133,9 +133,7 @@ export async function getAccountInformation(apiKeyInput: string, secretKeyInput:
 
 /**
  * Places a new order on the Binance exchange.
- * THIS IS A PLACEHOLDER and does not execute a real order. It simulates the API call.
- * In a real application, you would replace the content of this function with an actual `fetch` call
- * to the Binance API `POST /api/v3/order` endpoint.
+ * This function now executes a LIVE order on the exchange.
  *
  * @param apiKey - The user's Binance API key.
  * @param secretKey - The user's Binance API secret key.
@@ -143,8 +141,8 @@ export async function getAccountInformation(apiKeyInput: string, secretKeyInput:
  * @param side - The order side ('BUY' or 'SELL').
  * @param type - The order type (e.g., 'MARKET').
  * @param quantity - The quantity to trade.
- * @returns A promise resolving to the simulated order response.
- * @throws An error if the simulated order fails.
+ * @returns A promise resolving to the actual order response from the exchange.
+ * @throws An error if the order fails on the exchange.
  */
 export async function placeNewOrder(
   apiKey: string,
@@ -155,17 +153,15 @@ export async function placeNewOrder(
   quantity: number
 ): Promise<NewOrderResponse> {
   const logTimestamp = new Date().toISOString();
-  console.warn(`[${logTimestamp}] [placeNewOrder] FUNCTION IS IN SIMULATION MODE. NO REAL ORDER WILL BE PLACED.`);
+  console.log(`[${logTimestamp}] [placeNewOrder] ATTEMPTING LIVE TRADE: ${side} ${quantity.toPrecision(6)} ${symbol}`);
   
   if (!apiKey || !secretKey) {
     throw new Error('API Key or Secret Key is missing for placing an order.');
   }
 
-  // --- Start of Real Implementation Logic (for demonstration) ---
-  // In a real scenario, you would build the query string and signature like this:
   const timestamp = Date.now();
   // NOTE: Binance requires quantity to be formatted to a specific precision per symbol.
-  // This example uses a generic precision which may not work for all symbols.
+  // Using toPrecision() is a general approach; a production system might need a function to get symbol-specific precision rules.
   const queryString = `symbol=${symbol}&side=${side}&type=${type}&quantity=${quantity.toPrecision(6)}&timestamp=${timestamp}`;
 
   const signature = crypto
@@ -173,35 +169,35 @@ export async function placeNewOrder(
     .update(queryString)
     .digest('hex');
 
-  const url = `${BINANCE_API_BASE_URL}/order?${queryString}&signature=${signature}`;
-  
-  console.log(`[${logTimestamp}] [placeNewOrder] SIMULATING: Would send POST request to: ${url}`);
-  // --- End of Real Implementation Logic ---
+  const url = `${BINANCE_API_BASE_URL}/order`;
+  const body = `${queryString}&signature=${signature}`;
 
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'X-MBX-APIKEY': apiKey,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: body,
+    });
 
-  // --- Simulation Response ---
-  // This part simulates a successful API response from Binance.
-  // We're returning a realistic-looking order response.
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      const simulatedResponse: NewOrderResponse = {
-        symbol: symbol,
-        orderId: Math.floor(Math.random() * 1000000000), // A random order ID
-        orderListId: -1,
-        clientOrderId: `simulated_${timestamp}`,
-        transactTime: timestamp,
-        price: '0.00000000', // For MARKET orders, price is 0
-        origQty: quantity.toString(),
-        executedQty: quantity.toString(), // Assume full execution for simulation
-        cummulativeQuoteQty: '0.00000000', // This would be filled by the exchange
-        status: 'FILLED',
-        timeInForce: 'GTC',
-        type: 'MARKET',
-        side: side,
-        fills: [], // Fills array would be populated in a real response
-      };
-      console.log(`[${logTimestamp}] [placeNewOrder] SIMULATED success response for ${symbol}:`, simulatedResponse);
-      resolve(simulatedResponse);
-    }, 500); // Simulate network latency
-  });
+    const responseData = await response.json();
+
+    if (!response.ok) {
+        const errorMessage = `Binance API order failed: ${response.status} ${response.statusText}. Code: ${responseData.code}. Message: ${responseData.msg}`;
+        console.error(`[${logTimestamp}] [placeNewOrder] LIVE TRADE FAILED for ${symbol}:`, errorMessage);
+        throw new Error(errorMessage);
+    }
+    
+    console.log(`[${logTimestamp}] [placeNewOrder] LIVE TRADE SUCCESS for ${symbol}. Order ID: ${responseData.orderId}`);
+    return responseData as NewOrderResponse;
+
+  } catch (error) {
+    console.error(`[${logTimestamp}] [placeNewOrder] Exception during fetch for placing order on ${symbol}:`, error);
+    if (error instanceof Error) {
+        throw error;
+    }
+    throw new Error('An unknown error occurred while placing the order.');
+  }
 }
