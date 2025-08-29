@@ -10,6 +10,8 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'zod';
 
+const NEWS_API_KEY = process.env.NEWS_API_KEY;
+
 export const SentimentAnalysisInputSchema = z.object({
   symbol: z.string().describe('The trading symbol, e.g., BTC/USDT.'),
 });
@@ -19,38 +21,54 @@ export const SentimentAnalysisOutputSchema = z.enum(['Bullish', 'Bearish', 'Neut
   .describe('The overall market sentiment for the asset.');
 export type SentimentAnalysisOutput = z.infer<typeof SentimentAnalysisOutputSchema>;
 
-// This is a mock tool. In a real-world scenario, this would use an API
-// to fetch live news headlines from sources like news APIs or social media feeds.
+// This tool now uses the live newsapi.org service.
 const getRecentNewsTool = ai.defineTool(
     {
         name: 'getRecentNews',
         description: 'Gets recent financial news headlines for a given cryptocurrency asset.',
-        inputSchema: z.object({ asset: z.string().describe("The asset ticker, e.g., BTC") }),
+        inputSchema: z.object({ asset: z.string().describe("The full name of the asset, e.g., Bitcoin, Ethereum") }),
         outputSchema: z.object({
             headlines: z.array(z.string()).describe("A list of recent news headlines.")
         })
     },
     async (input) => {
-        console.log(`[sentiment-analysis-flow] Mock Tool: Fetching news for ${input.asset}`);
-        // In a real implementation, you'd fetch real news here.
-        // We return simulated headlines to demonstrate the flow's logic.
-        const mockHeadlines: Record<string, string[]> = {
-            "BTC": [
-                "Bitcoin ETF Inflows Reach Record Highs Amidst Positive Regulatory News",
-                "Major Investment Firm Announces 5% Bitcoin Allocation in Portfolio",
-                "Technical Analyst Warns of Potential Short-Term Correction for Bitcoin",
-            ],
-            "ETH": [
-                "Ethereum Upgrade 'Pectra' Promises Scalability Improvements, Driving Optimism",
-                "DeFi Sector on Ethereum Sees Resurgence, Total Value Locked (TVL) Soars",
-                "SEC Delays Decision on Spot Ethereum ETFs, Citing Market Concerns",
-            ]
-        };
-        const assetHeadlines = mockHeadlines[input.asset] || [
-            `Market for ${input.asset} Remains Stable with Moderate Trading Volume`,
-            `No Major News Events Reported for ${input.asset} in the Last 24 Hours`,
-        ];
-        return { headlines: assetHeadlines };
+        if (!NEWS_API_KEY) {
+            console.error(`[sentiment-analysis-flow] NewsAPI key is not configured. Returning empty headlines.`);
+            return { headlines: [] };
+        }
+        
+        console.log(`[sentiment-analysis-flow] Fetching live news for ${input.asset}`);
+        
+        const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(input.asset)}&language=en&sortBy=publishedAt&pageSize=10&apiKey=${NEWS_API_KEY}`;
+        
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                const errorBody = await response.text();
+                console.error(`[sentiment-analysis-flow] NewsAPI request failed with status ${response.status}:`, errorBody);
+                return { headlines: [`Error fetching news: ${response.statusText}`] };
+            }
+
+            const data = await response.json();
+
+            if (data.status === 'error') {
+                 console.error(`[sentiment-analysis-flow] NewsAPI returned an error:`, data.message);
+                 return { headlines: [`NewsAPI Error: ${data.message}`] };
+            }
+
+            const headlines = data.articles?.map((article: { title: string }) => article.title).filter(Boolean) || [];
+            
+            if (headlines.length === 0) {
+                 return { headlines: [`No recent headlines found for ${input.asset}.`] };
+            }
+
+            return { headlines };
+
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            console.error(`[sentiment-analysis-flow] Exception fetching news for ${input.asset}:`, errorMessage);
+            return { headlines: [`Failed to fetch news due to an exception: ${errorMessage}`] };
+        }
     }
 );
 
@@ -66,6 +84,7 @@ const sentimentPrompt = ai.definePrompt({
   - **Bearish**: The news is predominantly negative, suggesting downward price pressure.
   - **Neutral**: The news is mixed, or there is no significant news to suggest a strong directional bias.
 
+  The asset name for the tool needs to be the full name (e.g., 'Bitcoin' for BTC, 'Ethereum' for ETH). You must infer this from the symbol.
   Use the getRecentNews tool to fetch the latest headlines for the asset. Base your final decision solely on the headlines provided by the tool.
   `,
 });
@@ -86,6 +105,25 @@ const sentimentAnalysisFlow = ai.defineFlow(
 
 
 export async function analyzeSentiment(input: SentimentAnalysisInput): Promise<SentimentAnalysisOutput> {
-  const asset = input.symbol.replace(/USDT$/, '');
-  return sentimentAnalysisFlow({ symbol: asset });
+  const assetSymbol = input.symbol.replace(/USDT$/, '').replace(/BUSD$/, '');
+  
+  // Map symbol to full name for better news search results
+  const assetNameMapping: Record<string, string> = {
+    "BTC": "Bitcoin",
+    "ETH": "Ethereum",
+    "BNB": "Binance Coin",
+    "SOL": "Solana",
+    "XRP": "Ripple XRP",
+    "ADA": "Cardano",
+    "DOGE": "Dogecoin",
+    "LTC": "Litecoin",
+    "LINK": "Chainlink"
+  };
+
+  const assetName = assetNameMapping[assetSymbol] || assetSymbol; // Fallback to symbol if not in map
+
+  console.log(`[sentiment-analysis-flow] Mapped symbol ${assetSymbol} to asset name ${assetName} for news search.`);
+
+  // The 'symbol' in the input to the flow is now the full name, which the prompt will use for the tool call.
+  return sentimentAnalysisFlow({ symbol: assetName });
 }
