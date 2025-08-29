@@ -1,5 +1,4 @@
 
-
 'use server';
 /**
  * @fileOverview TradeService - Manages trade data using MongoDB, now with multi-user support and distinction for LONG/SHORT trades.
@@ -8,25 +7,17 @@
 import type { Trade, NewTradeInput } from '@/types/trade';
 import { v4 as uuidv4 } from 'uuid'; // For generating unique IDs
 import { MongoClient, type Db, type Collection, type WithId, type UpdateFilter, type Document } from 'mongodb';
-
-console.log(`[${new Date().toISOString()}] [tradeService] Module loading. Attempting to read MONGODB_URI from process.env...`);
+import { placeNewOrder } from './binance';
+import { getSettings } from './settingsService';
 
 let MONGODB_URI = process.env.MONGODB_URI;
 const MONGODB_URI_FALLBACK = "mongodb+srv://haithammisape:hrz123@cluster0.quboghr.mongodb.net/binanceTrailblazerDb?retryWrites=true&w=majority&appName=Cluster0";
 
 if (!MONGODB_URI) {
   const timestamp = new Date().toISOString();
-  console.warn(`[${timestamp}] [tradeService] **************************************************************************************`);
-  console.warn(`[${timestamp}] [tradeService] WARNING: MONGODB_URI environment variable was not found.`);
-  console.warn(`[${timestamp}] [tradeService] Attempting to use a hardcoded fallback URI (THIS IS A TEMPORARY WORKAROUND): ${MONGODB_URI_FALLBACK.substring(0, MONGODB_URI_FALLBACK.indexOf('@') + 1)}...`);
-  console.warn(`[${timestamp}] [tradeService] PLEASE RESOLVE YOUR .env.local CONFIGURATION OR ENVIRONMENT SETUP.`);
-  console.warn(`[${timestamp}] [tradeService] **************************************************************************************`);
+  console.warn(`[${timestamp}] [tradeService] WARNING: MONGODB_URI environment variable was not found. Using fallback.`);
   MONGODB_URI = MONGODB_URI_FALLBACK;
-} else {
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] [tradeService] MONGODB_URI successfully loaded from environment variables or using fallback.`);
 }
-
 
 const DB_NAME = process.env.MONGODB_DB_NAME || 'binanceTrailblazerDb'; 
 const COLLECTION_NAME = 'trades'; 
@@ -69,41 +60,62 @@ async function getTradesCollection(): Promise<Collection<Trade>> {
 }
 
 /**
- * Creates a new trade for a specific user and saves it to MongoDB.
- * @param tradeInput - The details of the trade to create, including userId, tradeDirection, and initialStopLossPrice.
- * @returns The created trade object.
+ * Creates a new trade record after successfully placing the order on the exchange.
+ * @param tradeInput - The details of the trade to create.
+ * @returns The created trade object with exchange order details.
+ * @throws Error if placing the order on the exchange fails or saving to DB fails.
  */
 export async function createTrade(tradeInput: NewTradeInput): Promise<Trade> {
   const logTimestamp = new Date().toISOString();
-  if (!tradeInput.userId || tradeInput.userId.trim() === "") {
-    console.error(`[${logTimestamp}] tradeService (MongoDB): Attempted to create trade without a valid userId for symbol: ${tradeInput.symbol}`);
+  const { userId, symbol, quantity, tradeDirection } = tradeInput;
+
+  if (!userId || userId.trim() === "") {
+    console.error(`[${logTimestamp}] tradeService: Attempted to create trade without a valid userId for symbol: ${symbol}`);
     throw new Error('A valid userId is required to create a trade.');
   }
-  console.log(`[${logTimestamp}] tradeService.createTrade (MongoDB) called for user: ${tradeInput.userId}, symbol: ${tradeInput.symbol}, direction: ${tradeInput.tradeDirection}, SL: ${tradeInput.initialStopLossPrice}`);
+
+  // 1. Get user's API keys
+  const userSettings = await getSettings(userId);
+  if (!userSettings.binanceApiKey || !userSettings.binanceSecretKey) {
+    throw new Error(`User ${userId} does not have API keys configured.`);
+  }
+
+  // 2. Place the order on the exchange
+  console.log(`[${logTimestamp}] tradeService: Placing ${tradeDirection} order for ${quantity} of ${symbol} for user ${userId}`);
+  const exchangeOrder = await placeNewOrder(
+    userSettings.binanceApiKey,
+    userSettings.binanceSecretKey,
+    symbol,
+    tradeDirection === 'LONG' ? 'BUY' : 'SELL',
+    'MARKET',
+    quantity
+  );
+
+  console.log(`[${logTimestamp}] tradeService: Exchange order placed successfully for user ${userId}. Order ID: ${exchangeOrder.orderId}`);
+
+  // 3. Create and save the trade record in our database
   const tradesCollection = await getTradesCollection();
   
   const newTrade: Trade = {
     id: uuidv4(), 
     entryTimestamp: Date.now(),
-    status: tradeInput.tradeDirection === 'LONG' ? 'ACTIVE_LONG_ENTRY' : 'ACTIVE_SHORT_ENTRY',
-    ...tradeInput, 
+    status: tradeDirection === 'LONG' ? 'ACTIVE_LONG_ENTRY' : 'ACTIVE_SHORT_ENTRY',
+    ...tradeInput,
+    exchangeOrderId: exchangeOrder.orderId,
+    exchangeStatus: exchangeOrder.status,
   };
 
   const result = await tradesCollection.insertOne(newTrade);
   if (!result.insertedId) {
-    console.error(`[${logTimestamp}] tradeService (MongoDB): Failed to insert trade for user ${tradeInput.userId}, symbol ${newTrade.symbol}`);
-    throw new Error('Failed to create trade in database.');
+    console.error(`[${logTimestamp}] tradeService (MongoDB): CRITICAL - Placed order ${exchangeOrder.orderId} but failed to insert trade record for user ${userId}, symbol ${newTrade.symbol}`);
+    throw new Error('Failed to create trade in database after placing exchange order.');
   }
   
-  console.log(`[${logTimestamp}] tradeService (MongoDB): Trade created with ID ${newTrade.id} for user ${tradeInput.userId}, direction ${newTrade.tradeDirection}`);
+  console.log(`[${logTimestamp}] tradeService (MongoDB): Trade record created with ID ${newTrade.id} for user ${userId}, linked to exchange order ${newTrade.exchangeOrderId}`);
   return newTrade; 
 }
 
-/**
- * Retrieves all trades for a specific user that are currently active from MongoDB.
- * @param userId - The ID of the user whose active trades to retrieve.
- * @returns A promise that resolves to an array of active Trade objects for the user.
- */
+
 export async function getActiveTrades(userId: string): Promise<Trade[]> {
   const logTimestamp = new Date().toISOString();
    if (!userId) {
@@ -124,11 +136,6 @@ export async function getActiveTrades(userId: string): Promise<Trade[]> {
   });
 }
 
-/**
- * Retrieves all trades for a specific user that have been closed from MongoDB.
- * @param userId - The ID of the user whose closed trades to retrieve.
- * @returns A promise that resolves to an array of closed Trade objects for the user.
- */
 export async function getClosedTrades(userId: string): Promise<Trade[]> {
   const logTimestamp = new Date().toISOString();
   if (!userId) {
@@ -151,14 +158,6 @@ export async function getClosedTrades(userId: string): Promise<Trade[]> {
   });
 }
 
-/**
- * Updates an existing trade for a specific user in MongoDB.
- * @param userId - The ID of the user who owns the trade.
- * @param tradeId - The application-level ID (uuid) of the trade to update.
- * @param updates - An object containing the fields to update.
- * @returns The updated trade object.
- * @throws Error if the trade is not found or update fails.
- */
 export async function updateTrade(
     userId: string, 
     tradeId: string, 
@@ -172,7 +171,7 @@ export async function updateTrade(
   console.log(`[${logTimestamp}] tradeService.updateTrade (MongoDB) called for user: ${userId}, ID: ${tradeId} with updates:`, JSON.stringify(updates));
   const tradesCollection = await getTradesCollection();
 
-  const finalUpdates: Partial<Document> = { ...updates }; // Use Document type for $set
+  const finalUpdates: Partial<Document> = { ...updates };
   if (finalUpdates.status === 'CLOSED_EXITED' || finalUpdates.status === 'CLOSED_ERROR') {
     if (!finalUpdates.exitTimestamp) {
       finalUpdates.exitTimestamp = Date.now();
@@ -193,12 +192,6 @@ export async function updateTrade(
   return updatedTrade as Trade;
 }
 
-/**
- * Retrieves a specific trade by its application-level ID for a specific user from MongoDB.
- * @param userId - The ID of the user who owns the trade.
- * @param tradeId The application-level ID (uuid) of the trade to retrieve.
- * @returns The trade object, or null if not found for that user.
- */
 export async function getTradeById(userId: string, tradeId: string): Promise<Trade | null> {
   const logTimestamp = new Date().toISOString();
   if (!userId) {
@@ -216,13 +209,6 @@ export async function getTradeById(userId: string, tradeId: string): Promise<Tra
   return tradeWithoutMongoId as Trade;
 }
 
-/**
- * Clears all trades for a specific user from the MongoDB collection.
- * USE WITH CAUTION. This function is protected and will only run in development
- * or if process.env.ALLOW_DB_CLEAR is explicitly set to 'true'.
- * @param userId - The ID of the user whose trades to clear.
- * @throws Error if the operation is not allowed in the current environment.
- */
 export async function clearUserTradesFromDb(userId: string): Promise<void> {
   const logTimestamp = new Date().toISOString();
   if (!userId) {
